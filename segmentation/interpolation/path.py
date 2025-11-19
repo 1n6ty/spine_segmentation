@@ -98,7 +98,17 @@ class CentralPath(vPath):
     
     def df(self, t: np.ndarray[np.float32]) -> np.ndarray[np.float32]:
         d: np.ndarray[np.float32] = np.array([self._cs_2d.dcs_x(t), self._cs_2d.dcs_y(t)], dtype=np.float32)
-        n /= np.linalg.norm(n)
+        d /= np.linalg.norm(d)
+        try:
+            iter(t)
+        except TypeError:
+            return d
+        else:
+            return d.T
+        
+    def d2f(self, t: np.ndarray[np.float32]) -> np.ndarray[np.float32]:
+        d: np.ndarray[np.float32] = np.array([self._cs_2d.d2cs_x(t), self._cs_2d.d2cs_y(t)], dtype=np.float32)
+        d /= np.linalg.norm(d)
         try:
             iter(t)
         except TypeError:

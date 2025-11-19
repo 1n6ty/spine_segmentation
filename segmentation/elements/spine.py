@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 from typing import Literal
 import numpy as np
+from scipy.integrate import fixed_quad
 
 from segmentation.elements.interface import Spine, Vertebrae
 from segmentation.elements.gap import Gap
-
 from segmentation.elements.vertebrae import PVertebrae
+from segmentation.elements.segment import Segment
+
 from segmentation.interpolation.interface import vPath
 from segmentation.interpolation.path import CentralPath
 from segmentation.heal.unstick import unstick
 from segmentation.heal.assemble import assemble
 from segmentation.heal.reveal import reveal
-from segmentation.medical_parameters.parameters import Gap_Parameters, Vertebraes_Parameters
+from segmentation.medical_parameters.parameters import Gap_Parameters, Vertebraes_Parameters, Segment_Parameters, Spine_Parameters
 
 from logging import Logger, getLogger
 
@@ -76,33 +80,88 @@ class PSpine(Spine):
         if projection == "frontal":
             _logger.info("Starting assembling.")
             self.vertebraes = assemble(kwargs["side_spine"], self)
+            self.vertebraes = unstick(self.vertebraes)
             _logger.info("Assembling done.")
         
-        self._set_names()
+        _logger.info("Rebuilding path.")
+        self.vpath = PSpine._compute_spine_central_path(
+            self.vertebraes,
+            kwargs.get("max_iter", 50),
+            kwargs.get("tol", 1e-9),
+            *ext_points
+        )
+        self._set_vpath()
+
+        self._set_v_names()
+        self.segments = self._get_segments()
+
         _logger.info("Starting parameters-computing.")
         self._compute_parameters()
         _logger.info("Parameters-computing done.")
 
-    def _compute_parameters(self) -> None:
-        for v in self.vertebraes:
-            v.compute_parameters(self.projection)
-        self.vertebraes_parameters = Vertebraes_Parameters(self.vertebraes)
-
-        gaps = zip(self.vertebraes[:-1], self.vertebraes[1:])
-        
-        self.gap_parameters = Gap_Parameters(
-            [Gap(g[0], g[1], f"{g[0].name}-{g[1].name}") for g in gaps]
-        )
-
-
-    def _set_names(self) -> None:
+    def _set_v_names(self) -> None:
         for i, v in enumerate(self.vertebraes):
             v.set_name(self._names[i])
+
+    def _compute_parameters(self) -> None:
+        self.vertebraes_parameters = Vertebraes_Parameters(self.vertebraes, self.projection)
+
+        self.gap_parameters = Gap_Parameters(
+            [Gap(g[0], g[1], f"{g[0].name}-{g[1].name}") for g in zip(self.vertebraes[:-1], self.vertebraes[1:])],
+            self.projection
+        )
+
+        self.segment_parameters = Segment_Parameters(self.segments, self.projection)
+        
+        self.spine_parameters = Spine_Parameters(self, self.projection)
 
     def _set_vpath(self) -> None:
         for i, v in enumerate(self.vertebraes):
             v.set_p(self.vpath.get_vertebrae_parametrization(i))
     
+    @staticmethod
+    def _kappat(t: np.float32, cls: PSpine) -> np.float32:
+        d = cls.vpath.df(t)
+        d2 = cls.vpath.d2f(t)
+        return (d[:, 0] * d2[:, 1] - d[:, 1] * d2[:, 0]) / np.pow(np.linalg.norm(d), 1.5)
+
+    def _get_segments(self) -> list[Segment]:
+        if self.projection == "side":
+            return [
+                Segment(self.vertebraes[1:6]),
+                Segment(self.vertebraes[6:18]),
+                Segment(self.vertebraes[18:23]),
+                Segment(self.vertebraes[6:10]),
+                Segment(self.vertebraes[10:14]),
+                Segment(self.vertebraes[14:18]),
+            ]
+        else:
+            segments = [[]]
+            s_i = 0
+            prev, total = 0, 0
+            start_t = self.vertebraes[0].p.t_bottom
+            for v in self.vertebraes:
+                total += fixed_quad(
+                    PSpine._kappat,
+                    start_t,
+                    v.p.t_up,
+                    args=(self, ),
+                    n=4
+                )[0]
+                
+                if (prev != 0 and np.sign(prev) != np.sign(total)) or np.abs(total) < np.abs(prev):
+                    segments[s_i] = Segment(segments[s_i])
+                    s_i += 1
+                    segments.append([])
+                    start_t = v.p.t_bottom
+                    total = 0
+
+                segments[s_i].append(v)
+                prev = total
+            segments[-1] = Segment(segments[-1])
+            return segments
+            
+
     @staticmethod
     def _compute_spine_central_path(
             vertebraes: list[Vertebrae],

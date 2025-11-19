@@ -5,7 +5,6 @@ import numpy as np
 from segmentation.utils import get_signed_angle
 from segmentation.interpolation.types import Parametrization
 from segmentation.elements.interface import Vertebrae
-from segmentation.medical_parameters.parameters import Vertebrae_Parameters
 
 from typing import Literal
 

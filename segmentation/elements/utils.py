@@ -1,3 +1,8 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from segmentation.elements.spine import PSpine
+
 import numpy as np
 import cv2, os
 from copy import deepcopy
@@ -5,10 +10,7 @@ from ultralytics.models import YOLO
 from ultralytics.engine.results import Results
 
 from segmentation.elements.interface import Vertebrae
-from segmentation.interpolation.interface import vPath
-
 from segmentation.elements.vertebrae import PVertebrae
-from segmentation.interpolation.path import CentralPath
 
 from logging import getLogger
 _logger = getLogger("segmentation:elements:utils")
