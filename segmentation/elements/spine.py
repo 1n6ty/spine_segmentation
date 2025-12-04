@@ -71,7 +71,7 @@ class PSpine(Spine):
             *ext_points
         )
         self._set_vpath()
-        
+
         if projection == "side":
             _logger.info("Starting revealing.")
             self.vertebraes = reveal(self)
@@ -133,15 +133,18 @@ class PSpine(Spine):
         if self.projection == "side":
             return [
                 Segment(self.vertebraes[1:6]),
+                Segment(self.vertebraes[1:18]),
                 Segment(self.vertebraes[6:18]),
-                Segment(self.vertebraes[18:23]),
+                Segment(self.vertebraes[18:24]),
                 Segment(self.vertebraes[6:10]),
-                Segment(self.vertebraes[10:14]),
-                Segment(self.vertebraes[14:18]),
+                Segment(self.vertebraes[9:14]),
+                Segment(self.vertebraes[13:18]),
             ]
         else:
-            segments = [[]]
-            s_i = 0
+            segments = [
+                self.vertebraes[1:18],
+                []
+            ]
             prev, total = 0, 0
             start_t = self.vertebraes[0].p.t_bottom
             for v in self.vertebraes:
@@ -154,16 +157,26 @@ class PSpine(Spine):
                 )[0]
                 
                 if (prev != 0 and np.sign(prev) != np.sign(total)) or np.abs(total) < np.abs(prev):
-                    segments[s_i] = Segment(segments[s_i])
-                    s_i += 1
-                    segments.append([])
+                    if any([s[0].name == segments[-1][0].name and s[-1].name == segments[-1][-1].name for s in segments[:-1]]):
+                        segments[-1] = []
+                    else:
+                        segments.append([])
+                    
                     start_t = v.p.t_bottom
                     total = 0
 
-                segments[s_i].append(v)
+                segments[-1].append(v)
                 prev = total
-            segments[-1] = Segment(segments[-1])
-            return segments
+            
+            s_i = 1
+            while s_i < len(segments):
+                if len(segments[s_i]) < 2:
+                    segments[s_i - 1] += segments[s_i]
+                    segments = segments[:s_i] + segments[s_i + 1:]
+                else:
+                    s_i += 1
+            
+            return [Segment(s) for s in segments]
             
 
     @staticmethod

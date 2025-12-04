@@ -213,7 +213,6 @@ class Spine_Parameters(Parameters):
             ("Угол наклона оси туловища Th1-L5", self._compute_p1),
             ("Длина оси туловища Th1-L5", self._compute_p2),
             ("Проекция ОГЦМ", self._compute_p3),
-
         ]
 
         self._compute()
