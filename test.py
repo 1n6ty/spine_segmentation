@@ -17,15 +17,15 @@ DATA_DIR = Path(__file__).resolve().parent / "Data/spine-segmentation/"
 
 # ------------------------- Side ----------------------------------
 
-test_file_path: Path = DATA_DIR / "t_side.png"
+test_file_path: Path = DATA_DIR / "dicom/side/1.dcm"
 logger.info(f"Start testing side: {test_file_path}")
 if test_file_path.suffix == ".dcm":
     side_pixel_array: np.ndarray = pydicom.dcmread(test_file_path).pixel_array
 else:
     side_pixel_array: np.ndarray = cv2.cvtColor(cv2.imread(test_file_path), cv2.COLOR_BGR2GRAY)
 
-model: YOLO = YOLO(Path(__file__).resolve().parent / "weights/best.pt")
-side_vertebraes = segment_vertebraes(side_pixel_array, model)
+model: YOLO = YOLO(Path(__file__).resolve().parent / "weights/best_side_new.pt")
+side_vertebraes = segment_vertebraes(side_pixel_array, model, conf=0.2)
 side_spine: PSpine = PSpine("side", side_vertebraes)
 
 side_spine_conv: np.ndarray = np.zeros_like(side_pixel_array, dtype=np.uint8)
@@ -42,14 +42,14 @@ for i in np.linspace(side_spine.vpath._t[0], side_spine.vpath._t[-1], 3000):
 
 # ------------------------- Frontal -------------------------------
 
-test_file_path: Path = DATA_DIR / "t_front.png"
+test_file_path: Path = DATA_DIR / "dicom/frontal/1.dcm"
 logger.info(f"Start testing front: {test_file_path}")
 if test_file_path.suffix == ".dcm":
     front_pixel_array: np.ndarray = pydicom.dcmread(test_file_path).pixel_array
 else:
     front_pixel_array: np.ndarray = cv2.cvtColor(cv2.imread(test_file_path), cv2.COLOR_BGR2GRAY)
 
-model: YOLO = YOLO(Path(__file__).resolve().parent / "weights/best.pt")
+model: YOLO = YOLO(Path(__file__).resolve().parent / "weights/best_side_new.pt")
 
 front_vertebraes = segment_vertebraes(front_pixel_array, model)
 front_spine: PSpine = PSpine("frontal", front_vertebraes, side_spine=side_spine)
@@ -71,14 +71,31 @@ for i in np.linspace(front_spine.vpath._t[0], front_spine.vpath._t[-1], 3000):
 # -------------------------Assembling-------------------------
 
 dfs = {
-    "Саг. Позвонки": side_spine.vertebraes_parameters.dataframe,
-    "Саг. Межпозвонковые диски": side_spine.gap_parameters.dataframe,
-    "Саг. Сегменты": side_spine.segment_parameters.dataframe,
-    "Саг. Позвоночник": side_spine.spine_parameters.dataframe,
-    "Фронт. Позвонки": front_spine.vertebraes_parameters.dataframe,
-    "Фронт. Межпозвонковые диски": front_spine.gap_parameters.dataframe,
-    "Фронт. Сегменты": front_spine.segment_parameters.dataframe,
-    "Фронт. Позвоночник": front_spine.spine_parameters.dataframe
+    "sg.v": side_spine.vertebraes_parameters.dataframe,
+    "sg.v Код": side_spine.vertebraes_parameters.codeframe,
+    "sg.v Текст": side_spine.vertebraes_parameters.strframe,
+    "sg.d": side_spine.gap_parameters.dataframe,
+    "sg.d Код": side_spine.gap_parameters.codeframe,
+    "sg.d Текст": side_spine.gap_parameters.strframe,
+    "sg.sg": side_spine.segment_parameters.dataframe,
+    "sg.sg Код": side_spine.segment_parameters.codeframe,
+    "sg.sg Текст": side_spine.segment_parameters.strframe,
+    "sg.sp": side_spine.spine_parameters.dataframe,
+    "sg.sp Код": side_spine.spine_parameters.codeframe,
+    "sg.sp Текст": side_spine.spine_parameters.strframe,
+    
+    "fr.v": front_spine.vertebraes_parameters.dataframe,
+    "fr.v Код": front_spine.vertebraes_parameters.codeframe,
+    "fr.v Текст": front_spine.vertebraes_parameters.strframe,
+    "fr.d": front_spine.gap_parameters.dataframe,
+    "fr.d Код": front_spine.gap_parameters.codeframe,
+    "fr.d Текст": front_spine.gap_parameters.strframe,
+    "fr.sg": front_spine.segment_parameters.dataframe,
+    "fr.sg Код": front_spine.segment_parameters.codeframe,
+    "fr.sg Текст": front_spine.segment_parameters.strframe,
+    "fr.sp": front_spine.spine_parameters.dataframe,
+    "fr.sp Код": front_spine.spine_parameters.codeframe,
+    "fr.sp Текст": front_spine.spine_parameters.strframe,
 }
 
 import pandas as pd

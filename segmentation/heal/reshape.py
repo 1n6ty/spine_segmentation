@@ -126,7 +126,6 @@ def reshape(spine: PSpine) -> list[PVertebrae]:
         new_middle_t = (nu[vind] + nb[vind]) / 2
         
         h_ratio = (nu[vind] - nb[vind]) / (new_vertebraes[vind].p.t_up - new_vertebraes[vind].p.t_bottom + 1e-9)
-        print(h_ratio)
         if h_ratio <= 0.5:
             old_p = new_vertebraes[vind].p
             logger.info(f"Reshaped vertebrae at index {vind}")
