@@ -14,6 +14,16 @@
             "h3": "Key features:"
         }
     },
+    "pageloader": {
+        "progress": "Progress"
+    },
+    "patient": {
+        "title": "Patient Information",
+        "privacy_note": {
+            "title": "Privacy Note",
+            "comment": "All DICOM metadata remains confidential and secure."
+        }
+    },
     "footer": {
         "p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",
         "p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
