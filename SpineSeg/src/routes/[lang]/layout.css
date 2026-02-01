@@ -1,0 +1,19 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto&display=swap");
+
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+:root {
+    --background: #fff;
+    --border: #0000001a;
+    --muted-foreground: #717182;
+    --card-foreground: oklch(14.5% 0 0);
+    --secondary: oklch(95% .0058 264.53);
+    --secondary-foreground: #030213;
+    --muted: #ececf0;
+}
+
+body {
+    @apply bg-(--background) min-h-screen;
+}

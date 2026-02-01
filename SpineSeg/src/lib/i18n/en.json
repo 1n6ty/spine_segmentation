@@ -1,0 +1,21 @@
+{
+    "header": {
+        "p": "Vertebralogical System for Spinal Disorder Diagnosis"
+    },
+    "main": {
+        "DICOM_upload_card": {
+            "h2": "DICOM File Upload",
+            "button": "Upload DICOM",
+            "p_under_button": "Upload a file in DICOM format by clicking the button above."
+        },
+        "welcome_h2": "Welcome to Spine Segmentation project",
+        "p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
+        "key_features": {
+            "h3": "Key features:"
+        }
+    },
+    "footer": {
+        "p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",
+        "p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
+    }
+}
