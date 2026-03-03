@@ -5,8 +5,7 @@
     "main": {
         "DICOM_upload_card": {
             "h2": "DICOM File Upload",
-            "button": "Upload DICOM",
-            "p_under_button": "Upload a file in DICOM format by clicking the button above."
+            "p_under_button": "Upload files in DICOM format by clicking one of the buttons above."
         },
         "welcome_h2": "Welcome to Spine Segmentation project",
         "p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
@@ -24,8 +23,37 @@
             "comment": "All DICOM metadata remains confidential and secure."
         }
     },
+    "editor": {
+        "header": "Image editor",
+        "projection": {
+            "zoom-in": "Zoom in",
+            "zoom-out": "Zoom out",
+            "full-screen": "Full-Screen mode",
+            "add-polygon": "Add",
+            "delete-polygon": "Delete",
+            "close": "Close",
+            "help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom"
+        },
+        "instructions": {
+            "header": "Instructions"
+        }
+    },
+    "measure": {
+        "header": "Parameters"
+    },
+    "report": {
+        "header": "Diagnostic Report",
+        "header_overall": "Overall Assessment",
+        "filter_by": "Filter by Status:",
+        "expand": "Expand all",
+        "collapse": "Collapse all"
+    },
     "footer": {
         "p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",
         "p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
+    },
+    "no_file_loaded": {
+        "p_up": "No file was chosen for analysis",
+        "p_down": "Upload files in DICOM format by clicking one of the buttons in top card."
     }
 }

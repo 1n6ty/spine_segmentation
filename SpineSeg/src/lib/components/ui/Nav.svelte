@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { page } from '$app/state';
     import { locale } from "svelte-i18n";
 
     const menu: Record<string, string[]> = {
@@ -10,19 +11,35 @@
         ],
         "ru": [
             "Информация о пациенте",
-            "X-Ray Рредактирование",
+            "X-Ray Редактирование",
             "Измерения",
             "Диагностический отчёт"
         ]
     } as const;
+    
+    const currentLocale = $derived(
+		$locale && $locale in menu ? $locale : 'en'
+	);
 
-    let { activeIndex = 0 } = $props();
+	const links = $derived([
+		`/${currentLocale}/patient`,
+		`/${currentLocale}/edit`,
+		`/${currentLocale}/measure`,
+		`/${currentLocale}/report`
+	]);
+
+	let activeIndex = $derived(
+		links.findIndex(link =>
+			page.url.pathname.includes(link)
+		)
+	);
 </script>
 
 <nav class="main-nav bg-(--muted) text-(--muted-foreground) h-9 items-center justify-center rounded-xl p-0.75 grid w-full grid-cols-4">
-    {#each menu[$locale && $locale in menu ? $locale: 'en'] as choice, i}
-        <button
-            type="button"
+    {#each menu[currentLocale] as choice, i}
+        <a
+            href={links[i]}
+            onclick={ (e) => { activeIndex = i; } }
             data-state={ (i == activeIndex) ? 'active': 'unactive' }
             class="
                 main-nav cursor-pointer truncate
@@ -47,7 +64,7 @@
             "
         >
             <span class="truncate">{ choice }</span>
-        </button>
+        </a>
     {/each}
 </nav>
 

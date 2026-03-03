@@ -32,5 +32,8 @@ export default defineConfig({
 				}
 			}
 		]
+	},
+	server: {
+		allowedHosts: ["octopus-outgoing-bee.ngrok-free.app"]
 	}
 });
