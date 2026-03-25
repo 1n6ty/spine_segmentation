@@ -1,21 +1,15 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 import numpy as np
 import cv2
 from copy import deepcopy
 from scipy.stats import linregress
 
-from segmentation.interpolation.interface import vPath
-from segmentation.interpolation.types import Parametrization
 from segmentation.elements.interface import Vertebrae
 from segmentation.elements.vertebrae import PVertebrae
 from segmentation.utils import get_signed_angle
 
 from logging import Logger, getLogger
-
-if TYPE_CHECKING:
-    from segmentation.elements.spine import PSpine
 
 def _cut_vertebrae(init_vertebrae, cut, mode):
     if mode == "up":

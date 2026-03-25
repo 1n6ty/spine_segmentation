@@ -75,17 +75,19 @@ def two_pass_instances(
     model: YOLO,
     tile_size: int = 640,
     overlap: int = 160,
-    conf_threshold: float = 0.2
+    conf_threshold: float = 0.5,
+    iou_threshold: float = 0.3,
+    max_iters: int = 5,
+    centroid_eps: float = 15.0
 ):
     """
-    Two-pass YOLO segmentation on a DICOM image, returning individual instances.
-    
-    Returns:
-        instances: list of dicts with keys:
-            'mask': np.ndarray (H, W) binary mask of this instance
-            'polygon': np.ndarray (N,2) global coordinates
-            'centroid': tuple (cx, cy)
+    Two-pass YOLO segmentation with iterative centroid refinement.
     """
+
+    def mask_iou(a, b):
+        inter = np.logical_and(a, b).sum()
+        union = np.logical_or(a, b).sum()
+        return inter / (union + 1e-6)
 
     # -------------------------
     # Load DICOM image
@@ -95,18 +97,16 @@ def two_pass_instances(
     img = (img * 255).astype(np.uint8)
     H, W = img.shape
 
+    stride = tile_size - overlap
+    instances = []
+
     # -------------------------
     # First pass: coarse tiling
     # -------------------------
-    stride = tile_size - overlap
-    first_pass_centers = []
-
     for gy in range(0, H, stride):
         for gx in range(0, W, stride):
-            x_end = min(gx + tile_size, W)
-            y_end = min(gy + tile_size, H)
-
-            tile = img[gy:y_end, gx:x_end]
+            tile = img[gy:min(gy + tile_size, H),
+                       gx:min(gx + tile_size, W)]
             tile_rgb = cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR)
 
             results = model.predict(
@@ -116,116 +116,121 @@ def two_pass_instances(
                 verbose=False
             )
 
-            # Extract polygon centers
             for r in results:
-                if not hasattr(r, 'masks') or r.masks is None:
+                if r.masks is None:
                     continue
 
-                for mask_poly in r.masks.xy:
-                    poly = np.array(mask_poly).reshape(-1, 2)
-                    if poly.shape[0] < 3:
+                for poly_local in r.masks.xy:
+                    poly_local = np.array(poly_local)
+                    if poly_local.shape[0] < 3:
                         continue
 
-                    cx = int(poly[:, 0].mean()) + gx
-                    cy = int(poly[:, 1].mean()) + gy
-                    first_pass_centers.append((cx, cy))
+                    # initial centroid (global)
+                    cx = int(poly_local[:, 0].mean()) + gx
+                    cy = int(poly_local[:, 1].mean()) + gy
 
-    # -------------------------
-    # Second pass: refinement tiles
-    # -------------------------
-    instances = []
+                    prev_c = np.array([cx, cy], dtype=np.float32)
 
-    for cx, cy in first_pass_centers:
-        x1 = max(cx - tile_size // 2, 0)
-        y1 = max(cy - tile_size // 2, 0)
-        x2 = min(cx + tile_size // 2, W)
-        y2 = min(cy + tile_size // 2, H)
+                    final_mask = None
+                    final_poly = None
+                    final_centroid = None
 
-        tile = img[y1:y2, x1:x2]
-        tile_rgb = cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR)
+                    # -------------------------
+                    # Iterative refinement
+                    # -------------------------
+                    for _ in range(max_iters):
+                        x1 = int(max(prev_c[0] - tile_size // 2, 0))
+                        y1 = int(max(prev_c[1] - tile_size // 2, 0))
+                        x2 = int(min(x1 + tile_size, W))
+                        y2 = int(min(y1 + tile_size, H))
 
-        results = model.predict(
-            tile_rgb,
-            imgsz=tile_size,
-            conf=conf_threshold,
-            verbose=False
-        )
+                        tile2 = img[y1:y2, x1:x2]
+                        tile2_rgb = cv2.cvtColor(tile2, cv2.COLOR_GRAY2BGR)
 
-        for r in results:
-            if not hasattr(r, 'masks') or r.masks is None:
-                continue
+                        results2 = model.predict(
+                            tile2_rgb,
+                            imgsz=tile_size,
+                            conf=conf_threshold,
+                            verbose=False
+                        )
 
-            for mask_poly in r.masks.xy:
-                poly = np.array(mask_poly).reshape(-1, 2)
-                if poly.shape[0] < 3:
-                    continue
+                        best = None
+                        best_dist = np.inf
 
-                # Convert polygon to global coordinates
-                poly[:, 0] += x1
-                poly[:, 1] += y1
+                        for r2 in results2:
+                            if r2.masks is None:
+                                continue
 
-                if cv2.pointPolygonTest(poly.astype(np.int32), (cx, cy), False) < 0:
-                    continue
+                            for poly in r2.masks.xy:
+                                poly = np.array(poly)
+                                if poly.shape[0] < 3:
+                                    continue
 
-                # Create binary mask for this instance
-                mask = np.zeros((H, W), dtype=np.uint8)
-                cv2.fillPoly(mask, [poly.astype(np.int32)], 1)
+                                poly[:, 0] += x1
+                                poly[:, 1] += y1
 
-                # Compute centroid
-                M = cv2.moments(mask)
-                if M["m00"] == 0:
-                    continue
-                cx_global = int(M["m10"] / M["m00"])
-                cy_global = int(M["m01"] / M["m00"])
+                                mask = np.zeros((H, W), dtype=np.uint8)
+                                cv2.fillPoly(mask, [poly.astype(np.int32)], 1)
 
-                instances.append({
-                    "mask": mask,
-                    "polygon": poly,
-                    "centroid": (cx_global, cy_global)
-                })
+                                M = cv2.moments(mask)
+                                if M["m00"] == 0:
+                                    continue
+
+                                c_new = np.array([
+                                    M["m10"] / M["m00"],
+                                    M["m01"] / M["m00"]
+                                ])
+
+                                dist = np.linalg.norm(c_new - prev_c)
+                                if dist < best_dist:
+                                    best_dist = dist
+                                    best = (mask, poly, c_new)
+
+                        if best is None:
+                            break
+
+                        final_mask, final_poly, final_centroid = best
+
+                        # convergence check
+                        if np.linalg.norm(final_centroid - prev_c) < centroid_eps:
+                            break
+
+                        prev_c = final_centroid
+
+                    if final_mask is None:
+                        continue
+
+                    # -------------------------
+                    # Instance deduplication
+                    # -------------------------
+                    duplicate = False
+                    for inst in instances:
+                        if mask_iou(inst["mask"], final_mask) > iou_threshold:
+                            duplicate = True
+                            break
+
+                    if duplicate:
+                        continue
+
+                    instances.append({
+                        "mask": final_mask,
+                        "polygon": final_poly,
+                        "centroid": (
+                            int(final_centroid[0]),
+                            int(final_centroid[1])
+                        )
+                    })
 
     return instances
-
-def merge_instances(instances, iou_thresh=0.3):
-    merged = []
-    used = [False] * len(instances)
-
-    for i, inst_i in enumerate(instances):
-        if used[i]:
-            continue
-        mask_i = inst_i["mask"].astype(bool)
-        merged_mask = mask_i.copy()
-
-        for j, inst_j in enumerate(instances):
-            if i == j or used[j]:
-                continue
-            mask_j = inst_j["mask"].astype(bool)
-            iou = (mask_i & mask_j).sum() / ((mask_i | mask_j).sum() + 1e-6)
-            if iou > iou_thresh:
-                merged_mask |= mask_j
-                used[j] = True
-
-        contours, _ = cv2.findContours(merged_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(contours) == 0:
-            continue
-        poly_merged = max(contours, key=cv2.contourArea).squeeze(1)
-        M = cv2.moments(merged_mask.astype(np.uint8))
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
-        merged.append({"mask": merged_mask.astype(np.uint8), "polygon": poly_merged, "centroid": (cx, cy)})
-        used[i] = True
-
-    return merged
 
 def segment_vertebraes(pixel_array: np.ndarray[np.uint8], model: YOLO, conf: float = 0.5) -> list[PVertebrae]:
     _logger.info("Starting segmentation process.")
     instances = two_pass_instances(pixel_array, model, conf_threshold=conf)
     _logger.info("Instances extracted.")
-    merged_instances = merge_instances(instances, iou_thresh=0.5)
     _logger.info("Segmentation done.")
 
     _logger.info("Starting vertebraes building.")
-    vertebraes: list[PVertebrae] = [PVertebrae(mask_xy=vm["polygon"].astype(np.int32)) for vm in merged_instances]
+    vertebraes: list[PVertebrae] = [PVertebrae(mask_xy=vm["polygon"].astype(np.int32)) for vm in instances]
     _logger.info(f"Built {len(vertebraes)} vertebraes.")
 
     vertebraes = _order_vertebraes(vertebraes)

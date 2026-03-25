@@ -14,7 +14,6 @@ from segmentation.interpolation.path import CentralPath
 from segmentation.heal.unstick import unstick
 from segmentation.heal.assemble import assemble
 from segmentation.heal.reveal import reveal
-from segmentation.heal.reshape import reshape
 from segmentation.medical_parameters.parameters import Gap_Parameters, Vertebraes_Parameters, Segment_Parameters, Spine_Parameters
 
 from logging import Logger, getLogger
@@ -75,17 +74,12 @@ class PSpine(Spine):
         if projection == "side":
             _logger.info("Starting revealing.")
             self.vertebraes = reveal(self)
-            _logger.info("Revealing done.")
-            _logger.info("Starting reshaping small vertebraes.")
-            self.vertebraes = reshape(self)
             self.vertebraes = unstick(self.vertebraes)
-            _logger.info("Reshaping done.")
         
         if projection == "frontal":
             _logger.info("Starting assembling.")
             self.vertebraes = assemble(kwargs["side_spine"], self)
             self.vertebraes = unstick(self.vertebraes)
-            _logger.info("Assembling done.")
         
         _logger.info("Rebuilding path.")
         self.vpath = PSpine._compute_spine_central_path(
@@ -101,7 +95,6 @@ class PSpine(Spine):
 
         _logger.info("Starting parameters-computing.")
         self._compute_parameters()
-        _logger.info("Parameters-computing done.")
 
     def _set_v_names(self) -> None:
         for i, v in enumerate(self.vertebraes):
