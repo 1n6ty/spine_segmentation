@@ -3,8 +3,8 @@
 
     import filterSVG from "$lib/assets/report/filter.svg";
     import angleSVG from "$lib/assets/report/angle.svg";
-    import downloadSVG from "$lib/assets/download.svg";
-    import documentSVG from "$lib/assets/document.svg";
+    import downloadSVG from "$lib/assets/icons/download.svg";
+    import documentSVG from "$lib/assets/icons/document.svg";
 
     const options: Record<string, {text: string, callback: (e: Event) => void}[]> = {
         "ru": [

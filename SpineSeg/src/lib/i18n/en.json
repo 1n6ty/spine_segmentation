@@ -25,18 +25,22 @@
     },
     "editor": {
         "header": "Image editor",
-        "projection": {
-            "zoom-in": "Zoom in",
-            "zoom-out": "Zoom out",
-            "full-screen": "Full-Screen mode",
-            "add-polygon": "Add",
-            "delete-polygon": "Delete",
-            "close": "Close",
-            "help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom"
-        },
+        "zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
+        "autofill": "Autofill",
+        "cancel": "Cancel",
         "instructions": {
             "header": "Instructions"
         }
+    },
+    "icons_alt": {
+        "zoom-in": "Zoom in",
+        "zoom-out": "Zoom out",
+        "add": "Add",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "back": "Back",
+        "forward": "Forward",
+        "magic": "Auto"
     },
     "measure": {
         "header": "Parameters"
@@ -55,5 +59,35 @@
     "no_file_loaded": {
         "p_up": "No file was chosen for analysis",
         "p_down": "Upload files in DICOM format by clicking one of the buttons in top card."
-    }
+    },
+    "vertebra": {
+        "head": "Vertebra",
+        "one": "vertebra",
+        "plural_1": "vertebras",
+        "plural_2": "vertebras"
+    },
+    "disk": {
+        "head": "Disk",
+        "one": "disk",
+        "plural_1": "disks",
+        "plural_2": "disks"
+    },
+    "part": {
+        "head": "Part",
+        "one": "part",
+        "plural_1": "parts",
+        "plural_2": "parts"
+    },
+    "parameters": {
+        "linear": "Linear Parameters",
+        "angular": "Angular Parameters",
+        "observation": "Status"
+    },
+    "units": {
+        "linear": "mm",
+        "angular": "°"
+    },
+    "not_found": "Not found",
+    "side_projection": "Lateral view",
+    "frontal_projection": "Frontal view"
 }

@@ -43,17 +43,7 @@
 
 <style>
   .loader {
-    background-image: url('$lib/assets/loader.png');
-    animation: spin-scale 2s linear infinite;
-  }
-
-  @keyframes spin-scale {
-    0% {
-      transform: rotate(0deg) scale(1);
-    }
-    100% {
-      transform: rotate(360deg) scale(1);
-    }
+    background-image: url('$lib/assets/icons/loader.svg');
   }
 
   .dot {

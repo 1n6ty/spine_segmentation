@@ -1,3 +1,27 @@
 {
-    
+    "localization": {
+        "datetime_format": "%d.%m.%YT%H:%M",
+        "default_language_code": "en-us",
+        "time_zone": "UTC"
+    },
+    "supported_languages": [ "en", "ru" ],
+    "storage": {
+        "static_url": "/static/",
+        "media_url": "/media/"
+    },
+    "limits": {
+        "data_upload_max_memory_size": 10485760,
+        "page_size_max": 100,
+        "wb_connections_count_max": 300
+    },
+    "session": {
+        "default_expiration_time": "expire_at_browser_close",
+        "extended_expiration_time": 2592000
+    },
+    "pagination": {
+        "default_page_size": 10
+    },
+    "notes": {
+        "lifetime": 2592000
+    }
 }

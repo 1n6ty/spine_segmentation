@@ -3,7 +3,7 @@
 	import { locale } from 'svelte-i18n';
 	import { onMount } from 'svelte';
 
-	import { patientExistsInStore } from '$lib/utils/patient.js';
+	import { patientAndStudyExistsInStore } from '$lib/utils/patient.js';
 
 	import './layout.css';
 	import favicon from '$lib/assets/icons/favicon.svg';
@@ -12,6 +12,8 @@
 	import Footer from '$lib/components/layout/Footer.svelte';
 	import DicomUploadCard from '$lib/components/ui/DicomUploadCard/DicomUploadCard.svelte';
 	import Nav from '$lib/components/ui/Nav.svelte';
+
+	import { cacheLoaded } from '$lib/stores/dicom/dicom.store';
 
 	let ready = $state(false);
 	let { children, data } = $props();
@@ -32,13 +34,13 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{#if ready}
+{#if ready && $cacheLoaded}
 	<Header />
 	<main class="container mx-auto px-4 py-6">
 		<div class="space-y-6">
 			<DicomUploadCard />
 			<div class="flex flex-col gap-2 w-full">
-				{#if $patientExistsInStore}
+				{#if $patientAndStudyExistsInStore}
 					<Nav />
 				{/if}
 				<div class="flex-1 outline-none mt-6">
@@ -57,16 +59,7 @@
 
 <style>
   .loader {
-    background-image: url('$lib/assets/loader.png');
+    background-image: url('$lib/assets/icons/loader.svg');
     animation: spin-scale 2s linear infinite;
-  }
-
-  @keyframes spin-scale {
-    0% {
-      transform: rotate(0deg) scale(1);
-    }
-    100% {
-      transform: rotate(360deg) scale(1);
-    }
   }
 </style>

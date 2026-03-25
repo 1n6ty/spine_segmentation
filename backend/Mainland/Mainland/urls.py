@@ -1,22 +1,28 @@
-"""
-URL configuration for Mainland project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
-from django.urls import path
+
+from django.urls import path, include
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+admin.site.site_header = "Spine Segmentation Admin"
+admin.site.site_title = "Spine Segmentation Admin Portal"
+admin.site.index_title = "Welcome to Spine Segmentation Researcher Portal"
+
+api_urlpatterns = [
+    path('dcm/', include('Dicom.urls')),
+    path('', include('Core.urls')),
+]
+
+from Mainland.pages import index
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    path('api/', include(api_urlpatterns)), # All API functionality
+
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+
+    path('<path:lang>', index, name="Core-pages-index-lang"),
 ]
+
+handler404 = 'Mainland.pages.view_404'

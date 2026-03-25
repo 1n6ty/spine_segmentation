@@ -55,6 +55,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'channels',
     'corsheaders',
+    'Core',
+    'Dicom'
 ]
 
 MIDDLEWARE = [

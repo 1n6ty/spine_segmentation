@@ -1,16 +1,26 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { locale, t } from "svelte-i18n";
+    import { PUBLIC_HISTORY_LIMIT } from "$env/static/public";
 
-	import Button from "$lib/components/ui/Button.svelte";
+	import Button from "$lib/components/ui/Button/Button.svelte";
 
-    import magicSVG from "$lib/assets/magic.svg";
-    import backSVG from "$lib/assets/back.svg";
-    import forwardSVG from "$lib/assets/forward.svg";
 
 	import { createDicomBitmap } from "$lib/utils/dicom";
-	import { dicomStore } from "$lib/stores/dicom/dicom.store";
+	import { dicomRegistryStore, dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 	import { currentPatientStore } from "$lib/stores/patient/patient.store";
+	import type { BitmapMeta, BitmapOptions } from "$lib/features/Editor/editor.type";
+	import { clampOffset, resizeCanvas } from "$lib/features/Editor/Map/canvas";
+	import { resizeMinimap } from "$lib/features/Editor/miniMap/canvas";
+	import { draw } from "$lib/features/Editor/Map/draw";
+	import { screenToWorld } from "$lib/utils/geometry/geometry";
+	import type { Point, Polygon } from "$lib/utils/geometry/geometry.type";
+	import { zoomAtPoint, zoomCenter } from "$lib/features/Editor/Map/zoom";
+	import { getPointUnderCursor, getPolygonUnderCursor } from "$lib/features/Editor/Map/cursor";
+	import { frontalPolygonsStore, sidePolygonsStore } from "$lib/stores/study/study.store";
+	import { drawMinimap } from "$lib/features/Editor/miniMap/draw";
+	import { orderReferencePoints } from "$lib/features/Editor/orderReferencePoints";
+	import { orderAndNameVertebrae } from "$lib/features/tspNamer";
 
     let { projection = "side" }: {
             projection: "side" | "frontal"
@@ -27,413 +37,140 @@
         }
     } as const;
 
-    
     /* -----------------------------
     View State
     ------------------------------ */
-    let scale = 1;
-    let minScale = 0.1;
-    let maxScale = 5, max_scale_coef = 15;
 
-    let offsetX = 0;
-    let offsetY = 0;
-
-    let isDragging = false;
-    let lastX = 0;
-    let lastY = 0;
-
-    /* -----------------------------
-    Polygon State
-    ------------------------------ */
-    type Point = { x: number; y: number };
-
-    type Polygon = {
-        id: string;
-        points: Point[];
+    let mainBitmapMeta: BitmapMeta = {
+        canvas: null,
+        ctx: null,
+        scale: { min: 1, max: 16, x: 1, y: 1},
+        offset: { x: 0, y: 0 },
+        pointsMeta: {
+            radius: 6
+        }
+    };
+    let mainBitmapOptions: BitmapOptions = {
+        scale: { maxC: 16 },
+        point: { hitC: 2 }
     };
 
-    let polygons: Polygon[] = [];
+    let miniBitmapMeta: BitmapMeta = {
+        canvas: null,
+        ctx: null,
+        scale: { min: 1, max: 16, x: 1, y: 1},
+        offset: { x: 0, y: 0 }
+    };
 
-    let currentPoints: Point[] = [];
-    let polygonCounter = 1;
-    let selectedPolygon: Polygon | null = $state(null);
-    let addMode: boolean = $state(false);
+    let scalePercentage: number = $state(100);
 
-    let draggingPoint: { poly: Polygon; index: number } | null = null;
-    const pointRadius = 6;
-    const pointHitRadius = 12
-
-    /* -----------------------------
-    Canvas references
-    ------------------------------ */
-    let mainCanvas: HTMLCanvasElement;
-    let minimapCanvas: HTMLCanvasElement;
-
-    let ctx: CanvasRenderingContext2D;
-    let miniCtx: CanvasRenderingContext2D;
+    let polygons = $derived((projection == "side") ? sidePolygonsStore: frontalPolygonsStore);
+    let points: Point[] = [];
 
     let dicomBitmap: ImageBitmap | null = $state(null);
 
-    function resizeCanvas() {
-        if (!mainCanvas) return;
-        const rect = mainCanvas.getBoundingClientRect();
-        
-        // Sync internal buffer to display size
-        mainCanvas.width = rect.width;
-        mainCanvas.height = rect.height;
+    let isDragging = false;
+    let lastX = 0, lastY = 0;
 
-        if (dicomBitmap) {
-            const ratio = Math.min(
-                mainCanvas.width / dicomBitmap.width,
-                mainCanvas.height / dicomBitmap.height
-            );
-
-            scale = ratio;
-            offsetX = (mainCanvas.width - dicomBitmap.width * ratio) / 2;
-            offsetY = (mainCanvas.height - dicomBitmap.height * ratio) / 2;
-
-            minScale = ratio;
-            maxScale = ratio * max_scale_coef;
-        }
-    }
-
-    function clampOffset() {
-        if (!dicomBitmap) return;
-        
-        // X axis
-        if (dicomBitmap.width * scale < mainCanvas.width) {
-            offsetX = (mainCanvas.width - dicomBitmap.width * scale) / 2;
-        } else {
-            offsetX = Math.min(0, Math.max(offsetX, mainCanvas.width - dicomBitmap.width * scale));
-        }
-
-        // Y axis
-        if (dicomBitmap.height * scale < mainCanvas.height) {
-            offsetY = (mainCanvas.height - dicomBitmap.height * scale) / 2;
-        } else {
-            offsetY = Math.min(0, Math.max(offsetY, mainCanvas.height - dicomBitmap.height * scale));
-        }
-    }
-
-    function resizeMinimap() {
-        const rect = minimapCanvas.getBoundingClientRect();
-        minimapCanvas.width = rect.width;
-        minimapCanvas.height = rect.height;
-        drawMinimap();
-    }
+    let addMode: boolean = $state(false);
+    let selectedPolygon: Polygon | null = $state(null);
+    let draggingPoint: { poly: Polygon; index: number } | null = null;
 
     $effect(() => {
-        const patient = $dicomStore.patients[$currentPatientStore.currentPatientID];
-        const study = patient?.studies[$currentPatientStore.currentStudyUID];
-        const series = study?.series[$currentPatientStore.currentSeriesUID];
-        const imageData = series?.images[$currentPatientStore.projectionsSopUID[projection]];
+        const patient = $dicomRegistryStore.patients[$currentPatientStore.patientID];
+        const study = patient?.studies[$currentPatientStore.studyUID];
+        const series = study?.series[$currentPatientStore.seriesUID];
+        const imageMeta = series?.images[$currentPatientStore.projectionsSopUID[projection]];
 
-        if (imageData) {
+        const imageData = (projection == "side") ? $dicomSidePixelDataStore : $dicomFrontalPixelDataStore;
+
+        if (imageData && imageMeta) {
             (async () => {
                 // Generate bitmap
-                const bitmap = await createDicomBitmap(imageData);
+                const bitmap = await createDicomBitmap(imageData, imageMeta);
                 
                 // Update state
                 dicomBitmap = bitmap;
                 
                 // Recalculate everything now that we have the bitmap
-                resizeCanvas();
-                resizeMinimap();
-                draw();
+                resizeCanvas(mainBitmapMeta, mainBitmapOptions, dicomBitmap);
+                resizeMinimap(miniBitmapMeta);
+
+                draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+                drawMinimap(mainBitmapMeta, miniBitmapMeta, dicomBitmap);
             })();
         }
     });
 
     onMount(() => {
-        ctx = mainCanvas.getContext("2d")!;
-        miniCtx = minimapCanvas.getContext("2d")!;
-        
-        resizeCanvas();
-        resizeMinimap();
+        if (!miniBitmapMeta.canvas || !mainBitmapMeta.canvas) return ;
+
+        mainBitmapMeta.ctx = mainBitmapMeta.canvas.getContext("2d")!;
+        miniBitmapMeta.ctx = miniBitmapMeta.canvas.getContext("2d")!;
 
         window.addEventListener("resize", () => {
-            resizeCanvas();
-            resizeMinimap();
-            draw();
+            resizeCanvas(mainBitmapMeta, mainBitmapOptions, dicomBitmap);
+            resizeMinimap(miniBitmapMeta);
+
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+            drawMinimap(mainBitmapMeta, miniBitmapMeta, dicomBitmap);
         });
     });
 
     /* -----------------------------
-    Coordinate helpers
+    Events
     ------------------------------ */
-    function screenToWorld(x: number, y: number): Point {
-        return {
-            x: (x - offsetX) / scale,
-            y: (y - offsetY) / scale
-        };
-    }
-
-    /* -----------------------------
-    Drawing
-    ------------------------------ */
-    function draw() {
-        if (!dicomBitmap || !ctx) return; // Guard clause
-        ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-
-        ctx.save();
-        ctx.translate(offsetX, offsetY);
-        ctx.scale(scale, scale);
-
-        // Drawing the bitmap is identical to drawing an image
-        ctx.drawImage(dicomBitmap, 0, 0);
-
-        drawPolygons(ctx);
-        ctx.restore();
-        drawMinimap();
-    }
-
-    function drawPolygons(context: CanvasRenderingContext2D) {
-        context.lineWidth = 2 / scale;
-
-        for (const poly of polygons) {
-            context.beginPath();
-            poly.points.forEach((p, i) => {
-                if (i === 0) context.moveTo(p.x, p.y);
-                else context.lineTo(p.x, p.y);
-            });
-            context.closePath();
-
-            context.strokeStyle = poly.id === selectedPolygon?.id ? "red" : "lime";
-            context.stroke();
-
-            // Compute left-most point for label
-            const minX = Math.min(...poly.points.map(p => p.x));
-            const centerY = getPolygonCenter(poly).y;
-
-            context.fillStyle = "yellow";
-            context.font = `${22 / scale}px sans-serif`;
-            context.textAlign = "right"; // align text to the left of minX
-            context.textBaseline = "middle"; // vertically centered
-            context.fillText(poly.id, minX - 5 / scale, centerY); // 5px padding left
-        }
-
-        // Draw current creating polygon
-        if (currentPoints.length > 0) {
-            context.beginPath();
-            currentPoints.forEach((p, i) => {
-                if (i === 0) context.moveTo(p.x, p.y);
-                else context.lineTo(p.x, p.y);
-            });
-            context.strokeStyle = "cyan";
-            context.stroke();
-        }
-        for (const p of currentPoints) {
-            context.beginPath();
-            context.arc(p.x, p.y, pointRadius / scale, 0, Math.PI * 2);
-            context.fillStyle = "cyan";
-            context.fill();
-            context.strokeStyle = "black";
-            context.lineWidth = 1 / scale;
-            context.stroke();
-        }
-
-        for (const poly of polygons) {
-            for (let i = 0; i < poly.points.length; i++) {
-                const p = poly.points[i];
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, pointRadius / scale, 0, Math.PI * 2);
-                ctx.fillStyle = poly.id === selectedPolygon?.id ? "red" : "lime";
-                ctx.fill();
-                ctx.strokeStyle = "black";
-                ctx.lineWidth = 1 / scale;
-                ctx.stroke();
-            }
-        }
-    }
-
-    function getPointUnderCursor(x: number, y: number): { poly: Polygon; index: number } | null {
-        // Check points of completed polygons (top-most first)
-        for (let i = polygons.length - 1; i >= 0; i--) {
-            const poly = polygons[i];
-            for (let j = 0; j < poly.points.length; j++) {
-                const p = poly.points[j];
-                const px = p.x * scale + offsetX;
-                const py = p.y * scale + offsetY;
-                const dx = px - x;
-                const dy = py - y;
-                if (Math.sqrt(dx*dx + dy*dy) < pointHitRadius) {
-                    return { poly, index: j };
-                }
-            }
-        }
-
-        // Optional: include currentPoints if polygon being drawn
-        for (let j = 0; j < currentPoints.length; j++) {
-            const p = currentPoints[j];
-            const px = p.x * scale + offsetX;
-            const py = p.y * scale + offsetY;
-            const dx = px - x;
-            const dy = py - y;
-            if (Math.sqrt(dx*dx + dy*dy) < pointHitRadius) {
-                return { poly: { id: "current", points: currentPoints }, index: j };
-            }
-        }
-
-        return null;
-    }
-
-    function getPolygonUnderCursor(x: number, y: number): Polygon | null {
-        // Check completed polygons (top-most first)
-        for (let i = polygons.length - 1; i >= 0; i--) {
-            const poly = polygons[i];
-            // Simple bounding box check
-            const xs = poly.points.map(p => p.x * scale + offsetX);
-            const ys = poly.points.map(p => p.y * scale + offsetY);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const minY = Math.min(...ys);
-            const maxY = Math.max(...ys);
-
-            if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-                return poly;
-            }
-        }
-        return null;
-    }
-
-
-
-    function getPolygonCenter(poly: Polygon): Point {
-        const sum = poly.points.reduce(
-            (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
-            { x: 0, y: 0 }
-        );
-        return {
-            x: sum.x / poly.points.length,
-            y: sum.y / poly.points.length
-        };
-    }
-
-    /* -----------------------------
-    Minimap
-    ------------------------------ */
-    function drawMinimap() {
-        if (!dicomBitmap || !miniCtx) return;
-        miniCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-
-        const ratio = Math.min(
-            minimapCanvas.width / dicomBitmap.width,
-            minimapCanvas.height / dicomBitmap.height
-        );
-
-        const imageOffsetX = (minimapCanvas.width - dicomBitmap.width * ratio) / 2;
-        const imageOffsetY = (minimapCanvas.height - dicomBitmap.height * ratio) / 2;
-
-        miniCtx.drawImage(
-            dicomBitmap,
-            imageOffsetX,
-            imageOffsetY,
-            dicomBitmap.width * ratio,
-            dicomBitmap.height * ratio
-        );
-
-        // Current viewport in world coordinates
-        const viewWidth = mainCanvas.width / scale;
-        const viewHeight = mainCanvas.height / scale;
-
-        const worldX = -offsetX / scale;
-        const worldY = -offsetY / scale;
-
-        // Draw viewport rectangle (add image offsets!)
-        miniCtx.strokeStyle = "red";
-        miniCtx.strokeRect(
-            imageOffsetX + worldX * ratio,
-            imageOffsetY + worldY * ratio,
-            viewWidth * ratio,
-            viewHeight * ratio
-        );
-    }
-
-    /* -----------------------------
-    Zoom
-    ------------------------------ */
-    function zoomAtPoint(factor: number, clientX: number, clientY: number) {
-        const rect = mainCanvas.getBoundingClientRect();
-
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
-
-        // Compute new scale first
-        const newScale = Math.max(minScale, Math.min(maxScale, scale * factor));
-
-        // World coordinates under cursor
-        const worldX = (x - offsetX) / scale;
-        const worldY = (y - offsetY) / scale;
-
-        // Update scale
-        scale = newScale;
-
-        // Compute offset so cursor stays in place
-        offsetX = x - worldX * scale;
-        offsetY = y - worldY * scale;
-
-        // Clamp after updating offset & scale
-        clampOffset();
-
-        draw();
-    }
-
+    
     function handleWheel(e: WheelEvent) {
         e.preventDefault();
         const factor = e.deltaY > 0 ? 0.9 : 1.1;
-        zoomAtPoint(factor, e.clientX, e.clientY);
-    }
-
-    function zoomCenter(factor: number) {
-        const rect = mainCanvas.getBoundingClientRect();
-        zoomAtPoint(
-            factor,
-            rect.left + rect.width / 2,
-            rect.top + rect.height / 2
-        );
+        scalePercentage = zoomAtPoint(miniBitmapMeta, mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points, factor, e.clientX, e.clientY);
     }
 
     function getEventClientXY(e: PointerEvent) {
-        const rect = mainCanvas.getBoundingClientRect();
+        if (!mainBitmapMeta.canvas) return { x: 0, y: 0 };
+
+        const rect = mainBitmapMeta.canvas.getBoundingClientRect();
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
-    /* -----------------------------
-    Pan
-    ------------------------------ */
     function pointerDown(e: PointerEvent) {
         e.preventDefault();
-        mainCanvas.setPointerCapture(e.pointerId);
 
-        const { x, y } = getEventClientXY(e);
+        if (!mainBitmapMeta.canvas) return ;
+
+        mainBitmapMeta.canvas.setPointerCapture(e.pointerId);
+
+        const clientP = getEventClientXY(e);
 
         if (addMode) {
             addPoint(e);
             return;
         }
 
-        const hitPoint = getPointUnderCursor(x, y);
+        const hitPoint = getPointUnderCursor(mainBitmapMeta, mainBitmapOptions, clientP, $polygons, points);
         if (hitPoint) {
+            saveHistory();
             draggingPoint = hitPoint;
             selectedPolygon = hitPoint.poly;
-            draw();
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
             return;
         }
 
-        const hitPoly = getPolygonUnderCursor(x, y);
+        const hitPoly = getPolygonUnderCursor(mainBitmapMeta, clientP, $polygons);
         if (hitPoly) {
             selectedPolygon = hitPoly;
-            draw();
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
             return;
         }
 
         selectedPolygon = null;
 
         isDragging = true;
-        lastX = x;
-        lastY = y;
+        lastX = clientP.x;
+        lastY = clientP.y;
 
-        draw();
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
 
     function pointerMove(e: PointerEvent) {
@@ -441,105 +178,195 @@
         const { x, y } = getEventClientXY(e);
 
         if (draggingPoint) {
-            const world = screenToWorld(x, y);
+            const world = screenToWorld(
+                { x: x, y: y },
+                { x: mainBitmapMeta.offset.x, y: mainBitmapMeta.offset.y },
+                { x: mainBitmapMeta.scale.x, y: mainBitmapMeta.scale.y },
+            );
             draggingPoint.poly.points[draggingPoint.index] = world;
-            draw();
+
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
             return;
         }
 
         if (isDragging) {
-            offsetX += x - lastX;
-            offsetY += y - lastY;
+            mainBitmapMeta.offset.x += x - lastX;
+            mainBitmapMeta.offset.y += y - lastY;
             lastX = x;
             lastY = y;
 
-            clampOffset();
-            draw();
+            clampOffset(mainBitmapMeta, dicomBitmap);
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+            drawMinimap(mainBitmapMeta, miniBitmapMeta, dicomBitmap);
         }
     }
 
     function pointerUp(e: PointerEvent) {
         e.preventDefault();
+
+        if (!mainBitmapMeta.canvas) return ;
+
         draggingPoint = null;
         isDragging = false;
-        mainCanvas.releasePointerCapture(e.pointerId);
-        draw();
+
+        polygons.update(store => {
+            if (store.length > 1) {
+                store.forEach((poly, i) => {
+                    if (i == 0) {
+                        orderReferencePoints(poly, store[i + 1], "down");
+                    } else {
+                        orderReferencePoints(poly, store[i - 1], "up");
+                    }
+                });
+            }
+
+            store = orderAndNameVertebrae(store);
+
+            return store;
+        });
+
+        mainBitmapMeta.canvas.releasePointerCapture(e.pointerId);
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
 
 
     /* -----------------------------
     Polygon creation
     ------------------------------ */
+    let history = $state<{ past: Polygon[][], future: Polygon[][] }>({
+        past: [],
+        future: []
+    });
+    // Helper to deep clone the polygons to prevent reference sharing in history
+    const clone = (data: Polygon[]) => JSON.parse(JSON.stringify(data));
+
+    function saveHistory() {
+        // Save current state to past, clear future
+        history.past.push(clone($polygons));
+        history.future = [];
+        
+        // Optional: Limit history
+        if (history.past.length > parseInt(PUBLIC_HISTORY_LIMIT)) history.past.shift();
+    }
+
+    function undo() {
+        if (history.past.length === 0) return;
+        
+        const previous = history.past.pop()!;
+        history.future.push(clone($polygons));
+        
+        polygons.set(previous);
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+    }
+
+    function redo() {
+        if (history.future.length === 0) return;
+        
+        const next = history.future.pop()!;
+        history.past.push(clone($polygons));
+        
+        polygons.set(next);
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+    }
+
     function addPoint(e: PointerEvent) {
-        const rect = mainCanvas.getBoundingClientRect();
+        if (!mainBitmapMeta.canvas) return ;
+
+        const rect = mainBitmapMeta.canvas.getBoundingClientRect();
         const world = screenToWorld(
-            e.clientX - rect.left,
-            e.clientY - rect.top
+            { x: e.clientX - rect.left, y: e.clientY - rect.top },
+            { x: mainBitmapMeta.offset.x, y: mainBitmapMeta.offset.y },
+            { x: mainBitmapMeta.scale.x, y: mainBitmapMeta.scale.y },
         );
 
-        currentPoints.push(world);
+        points.push(world);
 
-        if (currentPoints.length === 4) {
+        if (points.length === 4) {
+            saveHistory();
+
             const newPoly: Polygon = {
-                id: `P${polygonCounter++}`,
-                points: [...currentPoints]
+                id: "",
+                points: [...points]
             };
 
-            polygons.push(newPoly);
+            polygons.update(store => {
+                store.push(newPoly);
+
+                if (store.length > 1) {
+                    store.forEach((poly, i) => {
+                        if (i == 0) {
+                            orderReferencePoints(poly, store[i + 1], "down");
+                        } else {
+                            orderReferencePoints(poly, store[i - 1], "up");
+                        }
+                    });
+                }
+
+                store = orderAndNameVertebrae(store);
+
+                return store;
+            });
+
             selectedPolygon = newPoly;
-            currentPoints = [];
+            points = [];
             addMode = false;
         }
 
-        draw();
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
-
-
 
     function toggleAddMode() {
         // Exit add mode
         addMode = !addMode;
 
         // Discard any partially placed points
-        currentPoints = [];
+        points = [];
 
-        draw(); // redraw to remove temporary points
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
 
     function deleteSelected() {
         if (!selectedPolygon) return;
 
-        polygons = polygons.filter(p => p.id !== selectedPolygon?.id);
+        saveHistory();
+
+        polygons.set(
+            orderAndNameVertebrae(
+                $polygons.filter(p => p.id !== selectedPolygon?.id)
+            )
+        );
+
         selectedPolygon = null;
-        draw();
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
 
     function clickMinimap(e: MouseEvent) {
-        if (!dicomBitmap) return;
+        if (!dicomBitmap || !miniBitmapMeta.canvas || !mainBitmapMeta.canvas) return ;
 
-        const rect = minimapCanvas.getBoundingClientRect();
+        const rect = miniBitmapMeta.canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
         // Compute image drawing ratio and offsets exactly like in drawMinimap
         const ratio = Math.min(
-            minimapCanvas.width / dicomBitmap.width,
-            minimapCanvas.height / dicomBitmap.height
+            miniBitmapMeta.canvas.width / dicomBitmap.width,
+            miniBitmapMeta.canvas.height / dicomBitmap.height
         );
 
-        const imageOffsetX = (minimapCanvas.width - dicomBitmap.width * ratio) / 2;
-        const imageOffsetY = (minimapCanvas.height - dicomBitmap.height * ratio) / 2;
+        const imageOffsetX = (miniBitmapMeta.canvas.width - dicomBitmap.width * ratio) / 2;
+        const imageOffsetY = (miniBitmapMeta.canvas.height - dicomBitmap.height * ratio) / 2;
 
         // Mouse position relative to the image
         const relX = (mouseX - imageOffsetX) / ratio;
         const relY = (mouseY - imageOffsetY) / ratio;
 
         // Center the main canvas viewport on that point
-        offsetX = -relX * scale + mainCanvas.width / 2;
-        offsetY = -relY * scale + mainCanvas.height / 2;
+        mainBitmapMeta.offset.x = -relX * mainBitmapMeta.scale.x + mainBitmapMeta.canvas.width / 2;
+        mainBitmapMeta.offset.y = -relY * mainBitmapMeta.scale.y + mainBitmapMeta.canvas.height / 2;
 
-        clampOffset();
-        draw();
+        clampOffset(mainBitmapMeta, dicomBitmap);
+        draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+        drawMinimap(mainBitmapMeta, miniBitmapMeta, dicomBitmap);
     }
 
 </script>
@@ -547,86 +374,22 @@
 <div class="bg-(--card) text-(--card-foreground) flex flex-col gap-2 rounded-xl border border-(--border) p-4">
     <h3 class="font-semibold">{ projection_h[$locale && $locale in projection_h ? $locale: 'en'][projection] }</h3>
     <div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
-        <button
-        class="
-            inline-flex items-center justify-center whitespace-nowrap
-            text-sm font-medium transition-all
-            disabled:pointer-events-none disabled:opacity-50 disabled:cursor-none
-            not-disabled:cursor-pointer
-            [&_img]:pointer-events-none
-            [&_img:not([class*='size-'])]:size-4
-            shrink-0 [&_img]:shrink-0
-            outline-none focus-visible:border-(--ring)
-            focus-visible:ring-(--ring)/50 focus-visible:ring-[3px]
-            aria-invalid:ring-(--destructive)/20
-            aria-invalid:border-(--destructive)
-            border border-(--border)
-            bg-(--background) text-(--foreground)
-            hover:bg-(--accent) hover:text-(--accent-foreground)
-            h-8 rounded-md gap-1.5 px-3 has-[>img]:px-2.5
-        "
-        title="back"
-        >
-            <img src={backSVG} alt="back icon"/>
-        </button>
-        <button
-        class="
-            inline-flex items-center justify-center whitespace-nowrap
-            text-sm font-medium transition-all
-            disabled:pointer-events-none disabled:opacity-50 disabled:cursor-none
-            not-disabled:cursor-pointer
-            [&_img]:pointer-events-none
-            [&_img:not([class*='size-'])]:size-4
-            shrink-0 [&_img]:shrink-0
-            outline-none focus-visible:border-(--ring)
-            focus-visible:ring-(--ring)/50 focus-visible:ring-[3px]
-            aria-invalid:ring-(--destructive)/20
-            aria-invalid:border-(--destructive)
-            border border-(--border)
-            bg-(--background) text-(--foreground)
-            hover:bg-(--accent) hover:text-(--accent-foreground)
-            h-8 rounded-md gap-1.5 px-3 has-[>img]:px-2.5
-        "
-        title="forward"
-        >
-            <img src={forwardSVG} alt="magic icon"/>
-        </button>
-        <button
-        class="
-            inline-flex items-center justify-center whitespace-nowrap
-            text-sm font-medium transition-all
-            disabled:pointer-events-none disabled:opacity-50 disabled:cursor-none
-            not-disabled:cursor-pointer
-            [&_img]:pointer-events-none
-            [&_img:not([class*='size-'])]:size-4
-            shrink-0 [&_img]:shrink-0
-            outline-none focus-visible:border-(--ring)
-            focus-visible:ring-(--ring)/50 focus-visible:ring-[3px]
-            aria-invalid:ring-(--destructive)/20
-            aria-invalid:border-(--destructive)
-            border border-(--border)
-            bg-(--background) text-(--foreground)
-            hover:bg-(--accent) hover:text-(--accent-foreground)
-            h-8 rounded-md gap-1.5 px-3 has-[>img]:px-2.5
-        "
-        title="magic"
-        >
-            <img src={magicSVG} alt="magic icon"/>
-            Autofill
-        </button>
-        <Button type="zoom-in" callback={() => zoomCenter(1.1)} />
-        <Button type="zoom-out" callback={() => zoomCenter(0.9)} />
+        <Button type="back" callback={ undo } disabled={ history.past.length === 0 }/>
+        <Button type="forward" callback={ redo} disabled={ history.future.length === 0 }/>
+        <Button type="magic" callback={ () => {} }>{ $t("editor.autofill") }</Button>
+        <Button type="zoom-in" callback={() => {scalePercentage = zoomCenter(miniBitmapMeta, mainBitmapMeta, dicomBitmap, selectedPolygon, 1.1, $polygons, points)} } />
+        <Button type="zoom-out" callback={() => {scalePercentage = zoomCenter(miniBitmapMeta, mainBitmapMeta, dicomBitmap, selectedPolygon, 0.9, $polygons, points)} } />
         {#if addMode}
-            <Button type="cancel" callback={toggleAddMode} disabled={false} >cancel</Button>
+            <Button type="cancel" callback={toggleAddMode} disabled={false} >{ $t('editor.cancel') }</Button>
         {:else}
-            <Button type="add-polygon" callback={toggleAddMode} disabled={false} />
+            <Button type="add" callback={toggleAddMode} disabled={false} />
         {/if}
-        <Button type="delete-polygon" callback={deleteSelected} disabled={!selectedPolygon} />
+        <Button type="delete" callback={deleteSelected} disabled={!selectedPolygon} />
     </div>
     <div class="border border-(--border) rounded-lg overflow-hidden relative h-150">
         <div class="overflow-hidden flex justify-center h-full">
             <canvas
-                bind:this={mainCanvas}
+                bind:this={mainBitmapMeta.canvas}
                 class="h-full w-full cursor-grab touch-none"
                 class:cursor-crosshair={addMode}
                 class:cursor-grab={!addMode}
@@ -636,11 +399,11 @@
                 onwheel={handleWheel}
             ></canvas>
             <div class="absolute flex justify-center bottom-2 right-2 border-2 border-(--primary) rounded shadow-lg bg-(--background)/90 w-40 h-56">
-                <canvas class="block cursor-pointer w-full h-full" bind:this={minimapCanvas} onclick={clickMinimap}></canvas>
+                <canvas class="block cursor-pointer w-full h-full" bind:this={miniBitmapMeta.canvas} onclick={clickMinimap}></canvas>
             </div>
         </div>
     </div>
     <div class="mt-2 flex items-center justify-end text-sm text-(--muted-foreground)">
-        <p class="text-xs">{ $t('editor.projection.help', { values: {percentage: 100} }) }</p>
+        <p class="text-xs">{ $t('editor.zoom_help', { values: {percentage: scalePercentage} }) }</p>
     </div>
 </div>

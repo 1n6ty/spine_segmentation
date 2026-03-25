@@ -1,7 +1,7 @@
 type CurrentPatient = {
-    currentPatientID: string,
-    currentStudyUID: string,
-    currentSeriesUID: string,
+    patientID: string,
+    studyUID: string,
+    seriesUID: string,
     projectionsSopUID: { frontal: string, side: string }
 }
 

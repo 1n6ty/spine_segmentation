@@ -4,7 +4,7 @@
     import boneSVG from "$lib/assets/icons/bone.svg";
 
     import XrayEditorCard from "$lib/components/ui/XrayEditorCard.svelte";
-	import { frontalProjectionExistsInStore, sideProjectionExistsInStore } from "$lib/utils/patient";
+	import { dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 
     const instructions: Record<string, string[]> = {
         "ru": [
@@ -29,12 +29,12 @@
 </script>
 
 
-{#if ($sideProjectionExistsInStore || $frontalProjectionExistsInStore)}
+{#if $dicomSidePixelDataStore || $dicomFrontalPixelDataStore}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {#if $sideProjectionExistsInStore}
+        {#if $dicomSidePixelDataStore}
             <XrayEditorCard projection="side" />
         {/if}
-        {#if $frontalProjectionExistsInStore}
+        {#if $dicomFrontalPixelDataStore}
             <XrayEditorCard projection="frontal" />
         {/if}
     </div>

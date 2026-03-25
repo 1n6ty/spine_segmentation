@@ -5,11 +5,11 @@
     import boneSVG from "$lib/assets/icons/bone.svg";
 
     import PatientInfo from "$lib/components/layout/PatientInfo/PatientInfo.svelte";
-	import { patientExistsInStore } from "$lib/utils/patient";
+	import { patientAndStudyExistsInStore } from "$lib/utils/patient";
 </script>
 
 <div class="bg-(--card) text-(--card-foreground) flex flex-col gap-6 rounded-xl border border-(--border) p-6">
-    {#if $patientExistsInStore}
+    {#if $patientAndStudyExistsInStore}
         <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold">{ $t('patient.title') }</h2>
             <span class="inline-flex items-center justify-center rounded-md border border-(--border) px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>img]:size-3 [&>img]:pointer-events-none focus-visible:border-(--ring) focus-visible:ring-(--ring)/50 focus-visible:ring-[3px] aria-invalid:ring-(--destructive)/20 dark:aria-invalid:ring-(--destructive)/40 aria-invalid:border-(--destructive) transition-[color,box-shadow] overflow-hidden text-(--foreground) [a&]:hover:bg-(--accent) [a&]:hover:text-(--accent-foreground) gap-1">

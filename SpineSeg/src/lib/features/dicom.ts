@@ -1,9 +1,10 @@
-import type { DicomImage, Series, Study, Patient, Facility } from "$lib/stores/dicom/dicom.type";
+import type { PatientSummary, Facility, StudySummary, SeriesSummary, DicomImageMetadata, DicomImagePixelData } from "$lib/stores/dicom/dicom.type";
 
 import * as dicomParser from "dicom-parser";
-import { dicomStore } from "$lib/stores/dicom/dicom.store";
+import { dicomRegistryStore, dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 import { currentPatientStore } from "$lib/stores/patient/patient.store";
 import { PUBLIC_MAX_PATIENTS_COUNT, PUBLIC_MAX_STUDIES_PER_PATIENT_COUNT } from '$env/static/public';
+import { PixelCache } from "./dicomPixelDataCache";
 
 function replaceNonMissing<T>(existing: T, incoming: T): T {
   const result = { ...existing };
@@ -27,7 +28,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
   // ---------------------
   // PATIENT
   // ---------------------
-  const newPatient: Patient = {
+  const newPatient: PatientSummary = {
     patientID: dataSet.string("x00100020") || crypto.randomUUID(),
     name: dataSet.string("x00100010"),
     birthDate: dataSet.string("x00100030"),
@@ -48,7 +49,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
   // ---------------------
   // STUDY
   // ---------------------
-  const newStudy: Study = {
+  const newStudy: StudySummary = {
     studyInstanceUID: dataSet.string("x0020000d")!,
     studyDate: dataSet.string("x00080020"),
     description: dataSet.string("x00081030"),
@@ -61,7 +62,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
   // ---------------------
   // SERIES
   // ---------------------
-  const newSeries: Series = {
+  const newSeries: SeriesSummary = {
     seriesInstanceUID: dataSet.string("x0020000e")!,
     modality: dataSet.string("x00080060"),
     bodyPart: dataSet.string("x00180015"),
@@ -76,7 +77,11 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
     dataSet.elements.x7fe00010!.dataOffset,
     dataSet.elements.x7fe00010!.length
   );
-  const newImage: DicomImage = {
+
+  const spacingString = dataSet.string("x00280030") || dataSet.string("x00181164") || "1.0\\1.0";
+  const [rowSpacing, colSpacing] = spacingString.split('\\').map(Number);
+  
+  const newImage: DicomImageMetadata = {
     sopInstanceUID: dataSet.string("x00080018")!,
     rows: dataSet.uint16("x00280010"),
     cols: dataSet.uint16("x00280011"),
@@ -84,7 +89,11 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
     intercept: Number(dataSet.string("x00281052") || 0),
     windowCenter: Number(dataSet.string("x00281050") || 0),
     windowWidth: Number(dataSet.string("x00281051") || 0),
-    pixelData: dataSet.uint16("x00280103") === 1
+    isSigned: dataSet.uint16("x00280103") === 1,
+    mmPerPixel: rowSpacing || 1.0
+  };
+
+  const dicomPixelData: DicomImagePixelData = newImage.isSigned
     ? new Int16Array(
       pixelDataRaw.buffer,
       pixelDataRaw.byteOffset,
@@ -94,11 +103,11 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
       pixelDataRaw.buffer,
       pixelDataRaw.byteOffset,
       pixelDataRaw.byteLength / 2
-    )
-  }
+    );
 
-  dicomStore.update(store => {
+  PixelCache.save(newImage.sopInstanceUID, dicomPixelData);
 
+  dicomRegistryStore.update(store => {
     // Patient
     if (!store.patients[newPatient.patientID] && Object.keys(store.patients).length >= parseInt(PUBLIC_MAX_PATIENTS_COUNT)) {
       let patientIDs = Object.keys(store.patients);
@@ -108,6 +117,14 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
           if (store.patients[id].lastAccessTime < store.patients[earliestID].lastAccessTime) earliestID = id;
       }
       
+      Object.keys(store.patients[earliestID].studies).forEach(keyStudy => {
+        Object.keys(store.patients[earliestID].studies[keyStudy].series).forEach(keySeries => {
+          Object.keys(store.patients[earliestID].studies[keyStudy].series[keySeries].images).forEach(keyImage => {
+            PixelCache.clear(keyImage);
+          });
+        });
+      });
+
       delete store.patients[earliestID];
     }
 
@@ -127,6 +144,12 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
       for (const id of studiesIDs) {
           if (patient.studies[id].lastAccessTime < patient.studies[earliestID].lastAccessTime) earliestID = id;
       }
+
+      Object.keys(patient.studies[earliestID].series).forEach(keySeries => {
+        Object.keys(patient.studies[earliestID].series[keySeries].images).forEach(keyImage => {
+          PixelCache.clear(keyImage);
+        });
+      });
 
       delete patient.studies[earliestID];
     }
@@ -166,10 +189,10 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
   });
 
   currentPatientStore.update(store => {
-    if(!(store.currentPatientID == newPatient.patientID && store.currentStudyUID == newStudy.studyInstanceUID && store.currentSeriesUID == newSeries.seriesInstanceUID)){
-      store.currentPatientID = newPatient.patientID;
-      store.currentStudyUID = newStudy.studyInstanceUID;
-      store.currentSeriesUID = newSeries.seriesInstanceUID;
+    if(!(store.patientID == newPatient.patientID && store.studyUID == newStudy.studyInstanceUID && store.seriesUID == newSeries.seriesInstanceUID)){
+      store.patientID = newPatient.patientID;
+      store.studyUID = newStudy.studyInstanceUID;
+      store.seriesUID = newSeries.seriesInstanceUID;
       store.projectionsSopUID = { frontal: "", side: "" };
     }
 
@@ -177,4 +200,10 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
 
     return store;
   });
+
+  if (projection == "side") {
+    dicomSidePixelDataStore.set(dicomPixelData);
+  } else if (projection == "frontal") {
+    dicomFrontalPixelDataStore.set(dicomPixelData);
+  }
 }

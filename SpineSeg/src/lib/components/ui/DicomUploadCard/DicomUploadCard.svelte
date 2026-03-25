@@ -1,7 +1,7 @@
 <script lang="ts">
     import { t, locale } from "svelte-i18n";
 
-    import documentImg from "$lib/assets/document.png";
+    import documentImg from "$lib/assets/icons/document.svg";
 	import type { UploadBtnType } from "$lib/components/ui/DicomUploadCard/DicomUploadCard.type";
 
 	import { parseAndStoreDicom } from "$lib/features/dicom";

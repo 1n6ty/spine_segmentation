@@ -1,18 +1,18 @@
 services:
-  spine-segmentation-mysql:
+  mysql:
     extends:
       file: compose.yaml
-      service: spine-segmentation-mysql
+      service: mysql
 
-  spine-segmentation-redis:
+  redis:
     extends:
       file: compose.yaml
-      service: spine-segmentation-redis
+      service: redis
 
-  spine-segmentation-mainland:
+  mainland:
     extends:
       file: compose.yaml
-      service: spine-segmentation-mainland
+      service: mainland
     build:
       target: development
     develop:
@@ -24,10 +24,10 @@ services:
           ignore:
             - "*/__pycache__/*"
 
-  spine-segmentation-mainland-celery:
+  mainland-celery:
     extends:
       file: compose.yaml
-      service: spine-segmentation-mainland-celery
+      service: mainland-celery
     build:
       target: development
     develop:
@@ -39,9 +39,9 @@ services:
           ignore:
             - "*/__pycache__/*"
 
-  spine-segmentation-nginx:
+  nginx:
     extends:
       file: compose.yaml
-      service: spine-segmentation-nginx
+      service: nginx
     ports:
       - "${HOST_HTTP_PORT}:80"

@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { locale } from "svelte-i18n";
+    import { locale, t } from "svelte-i18n";
 
     import { currentPatientStore } from "$lib/stores/patient/patient.store";
-    import { dicomStore } from "$lib/stores/dicom/dicom.store";
+    import { dicomRegistryStore, dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 
     import documentSVG from "$lib/assets/icons/document.svg";
     import userSVG from "$lib/assets/icons/user.svg";
@@ -14,14 +14,8 @@
     import type { PatientInfoBlock } from "$lib/components/layout/PatientInfo/PatientInfo.type";
 
     import InfoBlock from "$lib/components/layout/PatientInfo/InfoBlock.svelte";
-	import { getPatientAge, parseDicomDate } from "$lib/utils/dicom";
-	import { frontalProjectionExistsInStore, sideProjectionExistsInStore } from "$lib/utils/patient";
-
-    const localeMap = {
-        ru: "Не найдено",
-        en: "Not found"
-    } as const;
-    let localePlaceholder: string = $derived(localeMap[($locale as keyof typeof localeMap) ?? 'en']);
+	import { parseDicomDate } from "$lib/utils/dicom";
+    import { getPatientAge } from "$lib/utils/patient";
 
     let info: PatientInfoBlock[] = $derived([
         {
@@ -33,25 +27,25 @@
                     icon: userSVG,
                     alt: "user icon",
                     title: { en: "Patient Name", ru: "Имя пациента" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.name ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.name ?? $t('not_found')
                 },
                 {
                     icon: hashtagSVG,
                     alt: "hashtag icon",
                     title: { en: "Patient Id", ru: "ID пациента" },
-                    comment: $currentPatientStore.currentPatientID
+                    comment: $currentPatientStore.patientID
                 },
                 {
                     icon: calendarSVG,
                     alt: "calendar icon",
                     title: { en: "Date of Birth", ru: "Дата рождения" },
-                    comment: parseDicomDate($dicomStore.patients?.[$currentPatientStore.currentPatientID]?.birthDate) ?? localePlaceholder
+                    comment: parseDicomDate($dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.birthDate) ?? $t('not_found')
                 },
                 {
                     icon: documentSVG,
                     alt: "document icon",
                     title: { en: "Sex / Age", ru: "Пол / Возраст" },
-                    comment: `${$dicomStore.patients?.[$currentPatientStore.currentPatientID]?.sex ?? localePlaceholder} • ${getPatientAge($dicomStore.patients?.[$currentPatientStore.currentPatientID]?.birthDate) ?? localePlaceholder}`
+                    comment: `${$dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.sex ?? $t('not_found')} • ${getPatientAge($dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.birthDate) ?? $t('not_found')}`
                 }
             ]
         },
@@ -64,25 +58,25 @@
                     icon: calendarSVG,
                     alt: "calendar icon",
                     title: { en: "Study Date", ru: "Дата проведения" },
-                    comment: parseDicomDate($dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.studyDate) ?? localePlaceholder
+                    comment: parseDicomDate($dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.studyDate) ?? $t('not_found')
                 },
                 {
                     icon: hashtagSVG,
                     alt: "hashtag icon",
                     title: { en: "Study Id", ru: "ID исследования" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.studyInstanceUID ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.studyInstanceUID ?? $t('not_found')
                 },
                 {
                     icon: documentSVG,
                     alt: "document icon",
                     title: { en: "Description", ru: "Описание" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.description ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.description ?? $t('not_found')
                 },
                 {
                     icon: userSVG,
                     alt: "user icon",
                     title: { en: "Physician Name", ru: "Имя лаборанта, проводившего исследование" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.physicianName ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.physicianName ?? $t('not_found')
                 },
             ]
         },
@@ -95,19 +89,19 @@
                     icon: documentSVG,
                     alt: "document icon",
                     title: { en: "Modality", ru: "Модальность" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.series[$currentPatientStore.currentSeriesUID]?.modality ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.series[$currentPatientStore.seriesUID]?.modality ?? $t('not_found')
                 },
                 {
                     icon: userSVG,
                     alt: "user icon",
                     title: { en: "Body Part Examined", ru: "Исследуемая часть тела" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.series[$currentPatientStore.currentSeriesUID]?.bodyPart ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.series[$currentPatientStore.seriesUID]?.bodyPart ?? $t('not_found')
                 },
                 {
                     icon: documentSVG,
                     alt: "document icon",
                     title: { en: "Available Views", ru: "Доступные для исследования проекции" },
-                    comment: `${$sideProjectionExistsInStore ? "LATERAL": ""} / ${$frontalProjectionExistsInStore ? "FRONTAL": ""}`
+                    comment: `${$dicomSidePixelDataStore ? "LATERAL": ""} / ${$dicomFrontalPixelDataStore ? "FRONTAL": ""}`
                 }
             ]
         },
@@ -120,19 +114,19 @@
                     icon: facilitySVG,
                     alt: "facility icon",
                     title: { en: "Institution", ru: "Наименование заведения" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.facility.institutionName ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.facility.institutionName ?? $t('not_found')
                 },
                 {
                     icon: facilitySVG,
                     alt: "facility icon",
                     title: { en: "Institution address", ru: "Адрес заведения" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.facility.institutionAddress ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.facility.institutionAddress ?? $t('not_found')
                 },
                 {
                     icon: documentSVG,
                     alt: "document icon",
                     title: { en: "Station Name", ru: "Наименование установки" },
-                    comment: $dicomStore.patients?.[$currentPatientStore.currentPatientID]?.studies[$currentPatientStore.currentStudyUID]?.facility.stationName ?? localePlaceholder
+                    comment: $dicomRegistryStore.patients?.[$currentPatientStore.patientID]?.studies[$currentPatientStore.studyUID]?.facility.stationName ?? $t('not_found')
                 }
             ]
         }

@@ -1,4 +1,4 @@
-import type { DicomImage } from "$lib/stores/dicom/dicom.type";
+import type { DicomImageMetadata, DicomImagePixelData } from "$lib/stores/dicom/dicom.type";
 
 /**
  * Parses a DICOM date (DA) or datetime (DT) string into a human-readable format.
@@ -46,59 +46,39 @@ function parseDicomDate(dicomDate: string | null | undefined): string | null {
 }
 
 /**
- * Calculate age from a DICOM birth date (DA) string.
- * Returns null if the date is invalid or missing.
- *
- * @param dicomBirthDate - DICOM birth date (YYYYMMDD)
- * @returns Age in years or null if invalid
- */
-function getPatientAge(dicomBirthDate: string | null | undefined): number | null {
-    if (!dicomBirthDate || dicomBirthDate.length < 8) return null;
-
-    const year = parseInt(dicomBirthDate.slice(0, 4));
-    const month = parseInt(dicomBirthDate.slice(4, 6)) - 1; // JS months are 0-based
-    const day = parseInt(dicomBirthDate.slice(6, 8));
-
-    if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
-
-    const birthDate = new Date(year, month, day);
-    const today = new Date();
-
-    let age = today.getFullYear() - birthDate.getFullYear();
-
-    // Adjust if birthday hasn't occurred yet this year
-    const hasHadBirthdayThisYear =
-        today.getMonth() > birthDate.getMonth() ||
-        (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
-
-    if (!hasHadBirthdayThisYear) age--;
-
-    return age >= 0 ? age : null;
-}
-
-/**
  * Converts raw DICOM pixel data into a GPU-ready ImageBitmap.
  * Fixed for TypeScript Overload errors.
  */
-async function createDicomBitmap(image: any): Promise<ImageBitmap> {
-  const rows = image.rows;
-  const cols = image.cols;
-  const pixelData = image.pixelData;
-  const { slope, intercept, windowCenter, windowWidth } = image;
+async function createDicomBitmap(pixelData: DicomImagePixelData, imageMeta: DicomImageMetadata): Promise<ImageBitmap> {
+  const { slope, intercept, windowCenter, windowWidth, rows, cols } = imageMeta;
+  
+  // Guard against missing dimensions
+  if (!rows || !cols || !pixelData) {
+    throw new Error("Invalid DICOM metadata or pixel data");
+  }
 
   const numPixels = rows * cols;
   const output = new Uint8ClampedArray(numPixels * 4);
 
+  // 2. Pre-calculate windowing constants to save CPU cycles
   const low = windowCenter - windowWidth / 2;
   const high = windowCenter + windowWidth / 2;
+  const range = windowWidth || 1; // Prevent division by zero
 
   for (let i = 0; i < numPixels; i++) {
-    const val = pixelData[i] * slope + intercept;
+    // FIX: Access pixelData directly (not .buffer)
+    // The TypedArray (Uint16/Int16) handles the 2-byte offset automatically
+    const rawVal = pixelData[i];
+    const val = rawVal * slope + intercept;
 
-    let intensity = 0;
-    if (val <= low) intensity = 0;
-    else if (val > high) intensity = 255;
-    else intensity = ((val - low) / windowWidth) * 255;
+    let intensity: number;
+    if (val <= low) {
+      intensity = 0;
+    } else if (val >= high) {
+      intensity = 255;
+    } else {
+      intensity = ((val - low) / range) * 255;
+    }
 
     const idx = i * 4;
     output[idx] = intensity;     // R
@@ -107,10 +87,10 @@ async function createDicomBitmap(image: any): Promise<ImageBitmap> {
     output[idx + 3] = 255;       // A
   }
 
-  // FIX: Explicitly cast or ensure rows/cols are numbers to satisfy Overload 2
+  // 3. Create ImageData with explicit dimensions
   const imageData = new ImageData(output, cols, rows);
   
   return await createImageBitmap(imageData);
 }
 
-export { parseDicomDate, getPatientAge, createDicomBitmap };
+export { parseDicomDate, createDicomBitmap };

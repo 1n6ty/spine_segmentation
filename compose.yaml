@@ -1,26 +1,20 @@
 volumes:
-  spine-segmentation-media:
+  media:
     external: false
-    name: spine-segmentation-media
-  spine-segmentation-static:
+    name: ${PROJECT_NAME}-media
+  static:
     external: false
-    name: spine-segmentation-static
-  spine-segmentation-mysql-data:
+    name: ${PROJECT_NAME}-static
+  mysql-data:
     external: false
-    name: spine-segmentation-mysql-data
-  spine-segmentation-redis-data:
+    name: ${PROJECT_NAME}-mysql-data
+  redis-data:
     external: false
-    name: spine-segmentation-redis-data
+    name: ${PROJECT_NAME}-redis-data
 
 networks:
   spine-segmentation-net:
-    external: false
-    name: spine-segmentation-net
-    driver: bridge
-    ipam:
-     config:
-       - subnet: 192.168.2.0/24
-         gateway: 192.168.2.1
+    external: true
 
 
 x-django-base: &django-base
@@ -29,8 +23,6 @@ x-django-base: &django-base
     args:
       USER_ID: 1000
       GROUP_ID: 1000
-  networks:
-    galaktek_loyalty-net:
   environment:
   # ----------------API-------------------
     - SECRET_KEY=${SECRET_KEY}
@@ -44,36 +36,38 @@ x-django-base: &django-base
     - HOST_IP=${HOST_IP}
     - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-}
   #-----------------DataBase--------------
-    - MYSQL_HOST=spine-segmentation-mysql
+    - MYSQL_HOST=${PROJECT_NAME}-mysql
     - MYSQL_DB_NAME=${MYSQL_DB_NAME}
     - MYSQL_DB_USER=${MYSQL_DB_USER}
     - MYSQL_DB_PASSWORD=${MYSQL_DB_PASSWORD}
   # ----------------Redis-----------------
-    - REDIS_HOST=spine-segmentation-redis
+    - REDIS_HOST=${PROJECT_NAME}-redis
     - REDIS_DB_INDEX=0
   #------------------Celery---------------
     - CELERY_REDIS_INDEX=1
   depends_on:
-    spine-segmentation-redis:
+    redis:
       condition: service_healthy
       restart: true
-    spine-segmentation-mysql:
+    mysql:
       condition: service_healthy
       restart: true
   volumes:
-    - spine-segmentation-static:/home/Mainland/static:rw
-    - spine-segmentation-media:/home/Mainland/media:rw
+    - static:/home/Mainland/static:rw
+    - media:/home/Mainland/media:rw
   restart: always
 
 
 services:
-  spine-segmentation-mysql:
-    container_name: spine-segmentation-mysql
+  mysql:
+    container_name: ${PROJECT_NAME}-mysql
     build: ./backend/Mysql
     networks:
       spine-segmentation-net:
+        aliases:
+          - ${PROJECT_NAME}-mysql
     volumes:
-      - spine-segmentation-mysql-data:/var/lib/mysql/:rw
+      - mysql-data:/var/lib/mysql/:rw
     environment:
     # -----------------DataBase---------------
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
@@ -90,13 +84,15 @@ services:
       start_period: 30s
     restart: always
 
-  spine-segmentation-redis:
-    container_name: spine-segmentation-redis
+  redis:
+    container_name: ${PROJECT_NAME}-redis
     image: redis:8.2.1
     networks:
       spine-segmentation-net:
+        aliases:
+          - ${PROJECT_NAME}-redis
     volumes:
-      - spine-segmentation-redis-data:/data:rw
+      - redis-data:/data:rw
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 5s
@@ -105,9 +101,13 @@ services:
       start_period: 5s
     restart: always
 
-  spine-segmentation-mainland:
-    container_name: spine-segmentation-mainland
+  mainland:
+    container_name: ${PROJECT_NAME}-mainland
     <<: *django-base
+    networks:
+      spine-segmentation-net:
+        aliases:
+          - ${PROJECT_NAME}-mainland
     expose:
       - 8080
     healthcheck:
@@ -127,9 +127,13 @@ services:
       .venv/bin/gunicorn Mainland.asgi:application -k uvicorn_worker.UvicornWorker --workers 1 --timeout 0 -b 0.0.0.0:8080
       "
   
-  spine-segmentation-mainland-celery:
-    container_name: spine-segmentation-mainland-celery
+  mainland-celery:
+    container_name: ${PROJECT_NAME}-mainland-celery
     <<: *django-base
+    networks:
+      spine-segmentation-net:
+        aliases:
+          - ${PROJECT_NAME}-mainland-celery
     healthcheck:
       test: ["CMD-SHELL", ".venv/bin/celery -A Mainland inspect ping"]
       interval: 60s
@@ -138,19 +142,21 @@ services:
       start_period: 30s
     command: >
       bash -ec "
-      .venv/bin/python3 -m celery -A Mainland worker -Q broadcast_ws,broadcast_db --loglevel=info
+      .venv/bin/python3 -m celery -A Mainland worker -Q broadcast_ws,broadcast_db,segmentation --loglevel=info
       "
 
-  spine-segmentation-nginx:
-    container_name: spine-segmentation-nginx
+  nginx:
+    container_name: ${PROJECT_NAME}-nginx
     build: ./backend/Nginx
     networks:
       spine-segmentation-net:
+        aliases:
+          - ${PROJECT_NAME}-nginx
     environment:
     # -----------Domains-----------------
       - DOMAIN=${DOMAIN}
     # ----------------API---------------------
-      - MAINLAND_HOST=spine-segmentation-mainland
+      - MAINLAND_HOST=${PROJECT_NAME}-mainland
     healthcheck:
       test: ["CMD", "service", "nginx", "status"]
       interval: 30s
@@ -158,13 +164,10 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
-      galaktek-loyalty-api:
-          condition: service_healthy
-          restart: true
-      galaktek-loyalty-telegram-bot:
+      mainland:
           condition: service_healthy
           restart: true
     volumes:
-      - spine-segmentation-static:/app/spine-segmentation-static:ro
-      - spine-segmentation-media:/app/spine-segmentation-media:ro
+      - static:/app/static:ro
+      - media:/app/media:ro
     restart: always

@@ -1,0 +1,31 @@
+services:
+  mysql:
+    extends:
+      file: compose.yaml
+      service: mysql
+
+  redis:
+    extends:
+      file: compose.yaml
+      service: redis
+
+  mainland:
+    extends:
+      file: compose.yaml
+      service: mainland
+    build:
+      target: production
+
+  mainland-celery:
+    extends:
+      file: compose.yaml
+      service: mainland-celery
+    build:
+      target: production
+
+  nginx:
+    extends:
+      file: compose.yaml
+      service: nginx
+    expose:
+      - 80
