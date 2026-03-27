@@ -1,6 +1,5 @@
 import uuid
 from django.db import models
-from django.utils import timezone
 
 class Patient(models.Model):
     patient_id = models.CharField(max_length=64, primary_key=True, default=uuid.uuid4)
@@ -47,6 +46,8 @@ class DicomImage(models.Model):
     series = models.ForeignKey(Series, on_delete=models.CASCADE, related_name='images')
     projection = models.CharField(max_length=16, choices=PROJECTION_CHOICES, null=True, blank=True)
     
+    reference_points = models.JSONField(null=True, blank=True, default=dict)
+
     # Image Metadata
     rows = models.IntegerField(null=True, blank=True)
     cols = models.IntegerField(null=True, blank=True)
@@ -62,4 +63,3 @@ class DicomImage(models.Model):
 
     def __str__(self):
         return self.sop_instance_uid
-    

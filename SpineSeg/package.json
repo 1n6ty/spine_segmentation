@@ -49,6 +49,8 @@
 		"vitest-browser-svelte": "^2.0.2"
 	},
 	"dependencies": {
+		"@cornerstonejs/core": "^4.20.0",
+		"@cornerstonejs/dicom-image-loader": "^4.20.0",
 		"dicom-parser": "^1.8.21",
 		"mathjs": "^15.1.1",
 		"svelte-i18n": "^4.0.1"

@@ -8,6 +8,7 @@ admin.site.site_title = "Spine Segmentation Admin Portal"
 admin.site.index_title = "Welcome to Spine Segmentation Researcher Portal"
 
 api_urlpatterns = [
+    path('dsl/', include('DSL.urls')),
     path('dcm/', include('Dicom.urls')),
     path('', include('Core.urls')),
 ]

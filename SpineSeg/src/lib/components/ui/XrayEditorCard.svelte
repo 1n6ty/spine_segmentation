@@ -5,7 +5,6 @@
 
 	import Button from "$lib/components/ui/Button/Button.svelte";
 
-
 	import { createDicomBitmap } from "$lib/utils/dicom";
 	import { dicomRegistryStore, dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 	import { currentPatientStore } from "$lib/stores/patient/patient.store";

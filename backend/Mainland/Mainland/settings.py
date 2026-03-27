@@ -15,7 +15,7 @@ local_ip_address = socket.gethostbyname(hostname)
 SECRET_KEY = os.getenv("SECRET_KEY", str(uuid.uuid4()))
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 # CSRF settings
 
@@ -51,12 +51,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_crontab',
+    'django_cleanup.apps.CleanupConfig',
     'rest_framework',
     'drf_spectacular',
     'channels',
     'corsheaders',
     'Core',
-    'Dicom'
+    'Dicom',
+    'DSL'
 ]
 
 MIDDLEWARE = [
@@ -71,6 +73,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'Mainland.urls'
+APPEND_SLASH = True
 
 TEMPLATES = [
     {
@@ -122,7 +125,6 @@ DATABASES = {
     }
 }
 
-
 # Password validation
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -140,18 +142,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# Internationalization
-
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
-
-
 # Static files (CSS, JavaScript, Images)
 
 STATIC_URL = 'static/'
@@ -161,6 +151,21 @@ STATIC_ROOT = BASE_DIR / 'static'
 
 with open(STATIC_ROOT / 'api.manifest.json', 'r') as f:
     API_MANIFEST = json.load(f)
+
+# Internationalization
+
+LANGUAGE_CODE = API_MANIFEST["localization"]["default_language_code"]
+
+TIME_ZONE = API_MANIFEST["localization"]["time_zone"]
+USE_I18N = True
+DATETIME_FORMAT = API_MANIFEST["localization"]["datetime_format"]
+L10N = False
+USE_TZ = True
+TIME_ZONE = "UTC"
+
+# Media files
+MEDIA_URL = API_MANIFEST["storage"]["media_url"]
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # DRF settings
 

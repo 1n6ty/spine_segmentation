@@ -6,6 +6,71 @@ import { currentPatientStore } from "$lib/stores/patient/patient.store";
 import { PUBLIC_MAX_PATIENTS_COUNT, PUBLIC_MAX_STUDIES_PER_PATIENT_COUNT } from '$env/static/public';
 import { PixelCache } from "./dicomPixelDataCache";
 
+export interface ParsedDicomImage {
+  pixelData: Int16Array | Uint16Array | Uint8Array;
+  metadata: DicomImageMetadata;
+}
+
+/**
+ * Extracts metadata and a safely aligned TypedArray of pixel data.
+ */
+export function extractDicomData(dataSet: any): ParsedDicomImage {
+  // 1. Check for Compression
+  const transferSyntax = dataSet.string("x00020010") || "1.2.840.10008.1.2.1";
+  const isCompressed = ![
+    "1.2.840.10008.1.2",   // Implicit VR Little Endian
+    "1.2.840.10008.1.2.1", // Explicit VR Little Endian
+    "1.2.840.10008.1.2.2"  // Explicit VR Big Endian
+  ].includes(transferSyntax);
+
+  if (isCompressed) {
+    throw new Error(`Compressed Transfer Syntax (${transferSyntax}) requires a specialized decoder.`);
+  }
+
+  // 2. Locate Pixel Data
+  const element = dataSet.elements.x7fe00010;
+  if (!element || element.length === 0) {
+    throw new Error("No pixel data found in DICOM file.");
+  }
+
+  // 3. Handle Buffer Alignment safely via slice
+  const pixelBuffer = dataSet.byteArray.buffer.slice(
+    element.dataOffset,
+    element.dataOffset + element.length
+  );
+
+  // 4. Parse Spacing
+  const spacingString = dataSet.string("x00280030") || dataSet.string("x00181164") || "1.0\\1.0";
+  const [rowSpacing, colSpacing] = spacingString.split('\\').map(Number);
+
+  // 5. Construct Metadata matching your exact structure
+  const metadata: DicomImageMetadata = {
+    sopInstanceUID: dataSet.string("x00080018")!,
+    rows: dataSet.uint16("x00280010"),
+    cols: dataSet.uint16("x00280011"),
+    slope: Number(dataSet.string("x00281053") || 1),
+    intercept: Number(dataSet.string("x00281052") || 0),
+    windowCenter: Number(dataSet.string("x00281050") || 0),
+    windowWidth: Number(dataSet.string("x00281051") || 0),
+    isSigned: dataSet.uint16("x00280103") === 1,
+    mmPerPixel: rowSpacing || 1.0
+  };
+
+  // 6. Generate the correct TypedArray for the pixels
+  const bitsAllocated = dataSet.uint16("x00280100") || 16;
+  let pixelData: Int16Array | Uint16Array | Uint8Array;
+
+  if (bitsAllocated === 8) {
+    pixelData = new Uint8Array(pixelBuffer);
+  } else {
+    pixelData = metadata.isSigned
+      ? new Int16Array(pixelBuffer)
+      : new Uint16Array(pixelBuffer);
+  }
+
+  return { pixelData, metadata };
+}
+
 function replaceNonMissing<T>(existing: T, incoming: T): T {
   const result = { ...existing };
 
@@ -78,6 +143,11 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
     dataSet.elements.x7fe00010!.length
   );
 
+  const pixelBuffer = pixelDataRaw.buffer.slice(
+    pixelDataRaw.byteOffset,
+    pixelDataRaw.byteOffset + pixelDataRaw.byteLength
+  );
+
   const spacingString = dataSet.string("x00280030") || dataSet.string("x00181164") || "1.0\\1.0";
   const [rowSpacing, colSpacing] = spacingString.split('\\').map(Number);
   
@@ -93,17 +163,9 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
     mmPerPixel: rowSpacing || 1.0
   };
 
-  const dicomPixelData: DicomImagePixelData = newImage.isSigned
-    ? new Int16Array(
-      pixelDataRaw.buffer,
-      pixelDataRaw.byteOffset,
-      pixelDataRaw.byteLength / 2
-    )
-    : new Uint16Array(
-      pixelDataRaw.buffer,
-      pixelDataRaw.byteOffset,
-      pixelDataRaw.byteLength / 2
-    );
+  const dicomPixelData = newImage.isSigned
+  ? new Int16Array(pixelBuffer)
+  : new Uint16Array(pixelBuffer);
 
   PixelCache.save(newImage.sopInstanceUID, dicomPixelData);
 

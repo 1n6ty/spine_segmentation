@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator, ConfigDict
-from typing import Any
+from typing import Any, Optional
 
 from django.core.files.uploadedfile import UploadedFile
 
@@ -18,3 +18,6 @@ class Parse_POST_schema(BaseModel):
             raise ValueError("Only DICOM files are allowed.")
             
         return v
+    
+class Info_GET_schema(BaseModel):
+    sop_uid: str

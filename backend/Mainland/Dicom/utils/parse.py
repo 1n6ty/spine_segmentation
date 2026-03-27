@@ -1,9 +1,11 @@
 import pydicom, uuid, hashlib
+from asgiref.sync import sync_to_async
+
 from django.utils import timezone
+from channels.layers import get_channel_layer
 
 from Dicom.models import Patient, Study, Series, DicomImage
-
-from celery import shared_task
+from Dicom.tasks.segmentation import segment_vertebraes
 
 def calculate_file_hash(file_obj):
     """Calculates the SHA-256 hash of a file object."""
@@ -74,19 +76,14 @@ def get_projection_orientation(ds):
 
     return None
 
-# --------------
-# Tasks
-# --------------
-
-
-def parse_and_store_dicom(file_obj):
+async def parse_and_store_dicom(file_obj):
     """
     Parses an uploaded DICOM file and stores/updates its metadata in the database.
     file_obj: An InMemoryUploadedFile or file-like object
     projection: 'frontal' or 'side'
     """
     # 1. Parse the DICOM file
-    dcm = pydicom.dcmread(file_obj)
+    dcm = await sync_to_async(pydicom.dcmread)(file_obj)
     now = timezone.now()
 
     # 2. Extract and Store Patient
@@ -98,7 +95,7 @@ def parse_and_store_dicom(file_obj):
         'last_access_time': now
     }
 
-    patient, _ = Patient.objects.update_or_create(
+    patient, _ = await Patient.objects.aupdate_or_create(
         patient_id=patient_id,
         defaults={k: v for k, v in patient_defaults.items() if v is not None}
     )
@@ -118,7 +115,7 @@ def parse_and_store_dicom(file_obj):
         'station_name': get_dcm_value(dcm, 'StationName'),
         'last_access_time': now
     }
-    study, _ = Study.objects.update_or_create(
+    study, _ = await Study.objects.aupdate_or_create(
         study_instance_uid=study_uid,
         defaults={k: v for k, v in study_defaults.items() if v is not None}
     )
@@ -133,7 +130,7 @@ def parse_and_store_dicom(file_obj):
         'modality': get_dcm_value(dcm, 'Modality'),
         'body_part': get_dcm_value(dcm, 'BodyPartExamined')
     }
-    series, _ = Series.objects.update_or_create(
+    series, _ = await Series.objects.aupdate_or_create(
         series_instance_uid=series_uid,
         defaults={k: v for k, v in series_defaults.items() if v is not None}
     )
@@ -148,7 +145,7 @@ def parse_and_store_dicom(file_obj):
     mm_per_pixel = float(spacing[0]) if isinstance(spacing, pydicom.multival.MultiValue) else 1.0
 
     new_file_hash = calculate_file_hash(file_obj)
-    existing_image = DicomImage.objects.filter(sop_instance_uid=sop_uid).first()
+    existing_image = await DicomImage.objects.filter(sop_instance_uid=sop_uid).afirst()
     
     content_changed = False
     if not existing_image or existing_image.file_hash != new_file_hash:
@@ -168,16 +165,26 @@ def parse_and_store_dicom(file_obj):
         'file_hash': new_file_hash
     }
 
-    image, _ = DicomImage.objects.update_or_create(
+    image, _ = await DicomImage.objects.aupdate_or_create(
         sop_instance_uid=sop_uid,
         defaults={k: v for k, v in image_defaults.items() if v is not None}
     )
 
+    channel_layer = get_channel_layer()
     # Save the actual file to the model's FileField
-    if content_changed:
+    if content_changed or True: #TODO Change it (DEBUG only)
+        await channel_layer.group_send(
+            f"Dicom.segment.{sop_uid}",
+            {
+                "type": "from_task_event",
+                "data": {
+                    "status": "image.processing"
+                },
+            }
+        )
         file_obj.seek(0)
-        image.dicom_file.save(f"{sop_uid}.dcm", file_obj, save=True)
+        await sync_to_async(image.dicom_file.save)(f"{sop_uid}.dcm", file_obj, save=True)
 
-        #TODO Here should be reference points computing
+        segment_vertebraes.delay(sop_uid)
 
     return patient, study, series, image
