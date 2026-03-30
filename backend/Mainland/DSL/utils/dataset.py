@@ -41,31 +41,34 @@ def get_orm_fields(
 
         visited.add(current_model)
 
-        for field in current_model._meta.concrete_fields:
-            name = f"{prefix}{field.name}" if prefix else field.name
-            fields[name] = field
+        # get_fields() returns both forward and reverse relations
+        for field in current_model._meta.get_fields():
+            
+            # Determine the name to use in the lookup (e.g., 'author' or 'book_set')
+            # Reverse relations use 'get_accessor_name()'
+            if hasattr(field, 'get_accessor_name'):
+                name = field.get_accessor_name()
+            else:
+                name = field.name
 
+            full_name = f"{prefix}{name}" if prefix else name
+            
+            # Avoid duplicate processing and infinite loops
+            if full_name in fields:
+                continue
+                
+            fields[full_name] = field
+
+            # Check for related model to continue walking
+            related_model = getattr(field, 'related_model', None)
+            
             if (
-                field.is_relation
-                and field.related_model
-                and field.related_model not in visited
+                related_model 
+                and related_model not in visited
             ):
                 walk(
-                    field.related_model,
-                    prefix=f"{name}__",
-                    depth=depth + 1,
-                    visited=visited.copy(),
-                )
-
-        # many-to-many fields (THIS is what you’re missing)
-        for field in current_model._meta.many_to_many:
-            name = f"{prefix}{field.name}" if prefix else field.name
-            fields[name] = field
-
-            if field.related_model and field.related_model not in visited:
-                walk(
-                    field.related_model,
-                    prefix=f"{name}__",
+                    related_model,
+                    prefix=f"{full_name}__",
                     depth=depth + 1,
                     visited=visited.copy(),
                 )
