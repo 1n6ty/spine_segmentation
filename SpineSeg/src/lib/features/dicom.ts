@@ -1,14 +1,37 @@
-import type { PatientSummary, Facility, StudySummary, SeriesSummary, DicomImageMetadata, DicomImagePixelData } from "$lib/stores/dicom/dicom.type";
+import type { PatientSummary, Facility, StudySummary, SeriesSummary, DicomImageMetadata } from "$lib/stores/dicom/dicom.type";
 
 import * as dicomParser from "dicom-parser";
 import { dicomRegistryStore, dicomSidePixelDataStore, dicomFrontalPixelDataStore } from "$lib/stores/dicom/dicom.store";
 import { currentPatientStore } from "$lib/stores/patient/patient.store";
 import { PUBLIC_MAX_PATIENTS_COUNT, PUBLIC_MAX_STUDIES_PER_PATIENT_COUNT } from '$env/static/public';
 import { PixelCache } from "./dicomPixelDataCache";
+import { createProjectionSocket, frontalProcessingStatusStore, sideProcessingStatusStore } from "$lib/stores/websocket/xraysockets.store";
+import type { Polygon } from "$lib/utils/geometry/geometry.type";
+
+import { autoPolygons } from "$lib/stores/study/study.store";
 
 export interface ParsedDicomImage {
   pixelData: Int16Array | Uint16Array | Uint8Array;
   metadata: DicomImageMetadata;
+}
+
+export function formatJson2Polygons(data: any): Polygon[] {
+  console.log(data.vertebraes.map((e: any) => {
+    return {
+      id: e.name,
+      points: e.points.map((p: any) => {
+        return { x: p[0], y: p[1] };
+      })
+    }
+  }));
+  return data.vertebraes.map((e: any) => {
+    return {
+      id: e.name,
+      points: e.points.map((p: any) => {
+        return { x: p[0], y: p[1] };
+      })
+    }
+  })
 }
 
 /**
@@ -123,7 +146,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
     facility: {},
     series: {}
   }
-  
+
   // ---------------------
   // SERIES
   // ---------------------
@@ -150,7 +173,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
 
   const spacingString = dataSet.string("x00280030") || dataSet.string("x00181164") || "1.0\\1.0";
   const [rowSpacing, colSpacing] = spacingString.split('\\').map(Number);
-  
+
   const newImage: DicomImageMetadata = {
     sopInstanceUID: dataSet.string("x00080018")!,
     rows: dataSet.uint16("x00280010"),
@@ -178,7 +201,7 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
       for (const id of patientIDs) {
           if (store.patients[id].lastAccessTime < store.patients[earliestID].lastAccessTime) earliestID = id;
       }
-      
+
       Object.keys(store.patients[earliestID].studies).forEach(keyStudy => {
         Object.keys(store.patients[earliestID].studies[keyStudy].series).forEach(keySeries => {
           Object.keys(store.patients[earliestID].studies[keyStudy].series[keySeries].images).forEach(keyImage => {
@@ -268,4 +291,76 @@ export async function parseAndStoreDicom(file: File, projection: "frontal" | "si
   } else if (projection == "frontal") {
     dicomFrontalPixelDataStore.set(dicomPixelData);
   }
+
+  const processingStatusStore = (projection == "side") ? sideProcessingStatusStore: frontalProcessingStatusStore;
+
+  autoPolygons.update(store => {
+    store[projection] = [];
+    return store;
+  })
+  processingStatusStore.set("image.processing");
+
+  fetch('/api/dsl/select/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': window.CSRF_TOKEN
+    },
+    body: JSON.stringify({
+      "dataset": "dicom_images",
+      "select": [
+        "ref_points"
+      ],
+      "filter": {
+        "field": "sop_uid",
+        "op": "eq",
+        "value": newImage.sopInstanceUID
+      }
+    })
+  })
+  .then(response => {
+    if (!response.ok) throw new Error('Upload failed');
+    return response.json();
+  })
+  .then(data => {
+    if (data.data.meta.total_items > 0) {
+      processingStatusStore.set("done");
+      autoPolygons.update(store => {
+        store[projection] = formatJson2Polygons(data.data.result[0].ref_points);
+        return store;
+      })
+    } else {
+      createProjectionSocket(
+        projection,
+        newImage.sopInstanceUID,
+        () => {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          console.log(`Socket open. Starting upload for ${newImage.sopInstanceUID}...`);
+
+          fetch('/api/dcm/parse/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': window.CSRF_TOKEN
+            },
+            body: formData,
+          })
+          .then(response => {
+            if (!response.ok) throw new Error('Upload failed');
+            return response.json();
+          })
+          .then(data => {
+            console.log("Upload complete. Server is now processing.");
+          })
+          .catch(err => {
+            console.error("Upload error:", err);
+          });
+        }
+      );
+    }
+  })
+  .catch(err => {
+    console.error("Upload error:", err);
+  });
 }

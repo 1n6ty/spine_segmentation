@@ -20,12 +20,7 @@ class DSL_ViewSet(StdViewSet):
 
     pagination_class = DSL_Pagination
 
-    def get_permissions(self):
-        if self.action == "select":
-            permission_classes = [DatasetPermission]
-        else:
-            permission_classes = [AllowAny]
-        return [permission() for permission in permission_classes]
+    
 
     dataset_description, dataset_examples = generate_dataset_examples_and_schema()
 

@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 
     path('<path:lang>', index, name="Core-pages-index-lang"),
+    path('<path:lang>/<path:sub>', index, name="Core-pages-index-lang-sub"),
 ]
 
 handler404 = 'Mainland.pages.view_404'

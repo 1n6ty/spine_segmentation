@@ -52,7 +52,7 @@ def segment_vertebraes(sop_instance_uid: str):
 
         async_to_sync(channel_layer.group_send)(
             f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "segmentation.processing"}}
+            {"type": "from_task_event", "data": {"status": "segmentation.processing", "ref_points": None}}
         )
         # 3. Run the YOLO segmentation
         vertebraes_list = segment_spine_from_S1_to_C2(
@@ -63,7 +63,7 @@ def segment_vertebraes(sop_instance_uid: str):
         
         async_to_sync(channel_layer.group_send)(
             f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "saving"}}
+            {"type": "from_task_event", "data": {"status": "saving", "ref_points": None}}
         )
 
         parsed_vertebraes = {"vertebraes": []}
@@ -80,7 +80,7 @@ def segment_vertebraes(sop_instance_uid: str):
 
         async_to_sync(channel_layer.group_send)(
             f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "done"}}
+            {"type": "from_task_event", "data": {"status": "done", "ref_points": parsed_vertebraes}}
         )
 
     except DicomImage.DoesNotExist:

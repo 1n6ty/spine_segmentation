@@ -26,7 +26,7 @@ def view_404(request, exception=None) -> HttpResponseRedirect:
     
     return redirect(f'/{user_language if user_language in supported else "en"}')
 
-async def index(req: HttpRequest, lang=None) -> JsonResponse | HttpResponse:
+async def index(req: HttpRequest, lang=None, sub=None) -> JsonResponse | HttpResponse:
     """Main page view.
 
         Args

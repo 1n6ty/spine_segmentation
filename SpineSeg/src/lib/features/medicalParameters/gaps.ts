@@ -15,8 +15,9 @@ export const getGapSagittalParams = (g: Gap) => {
         ?.images[current.projectionsSopUID.side]
         ?.mmPerPixel;
 
-    const v_top = M.vectorSub(g.top.shape.points[1], g.top.shape.points[0]);
-    const v_bot = M.vectorSub(g.bottom.shape.points[1], g.bottom.shape.points[0]);
+    const v_top = M.vectorSub(g.top.shape.points[0], g.top.shape.points[3]);
+    const v_bot = M.vectorSub(g.bottom.shape.points[1], g.bottom.shape.points[2]);
+    const v_dist = M.vectorSub(v_top, v_bot);
     const g01 = M.vectorSub(g.bottom.shape.points[0], g.top.shape.points[1]);
     const g21 = M.vectorSub(g.top.shape.points[2], g.top.shape.points[1]);
     const p5_val = (M.dotProduct(g01, g21)) / (M.distance(g.top.shape.points[2], g.top.shape.points[1]) + M.EPSILON);
@@ -24,9 +25,9 @@ export const getGapSagittalParams = (g: Gap) => {
     return {
         name: g.name,
         params: {
-            p1: { val: M.angleBetweenVectors(v_top, v_bot), type: "angular" },
-            p2: { val: M.distance(g.top.shape.points[1], g.bottom.shape.points[0]) * mmPerPixel, type: "linear" },
-            p3: { val: M.distance(g.top.shape.points[2], g.bottom.shape.points[3]) * mmPerPixel, type: "linear" },
+            p1: { val: M.distance(g.top.shape.points[1], g.bottom.shape.points[0]) * mmPerPixel, type: "linear" },
+            p2: { val: M.distance(g.top.shape.points[2], g.bottom.shape.points[3]) * mmPerPixel, type: "linear" },
+            p3: { val: M.distance(v_dist, v_dist) * mmPerPixel, type: "linear" },
             p4: { val: M.angleBetweenVectors(M.vectorSub(g.top.shape.points[1], g.bottom.shape.points[0]), M.vectorSub(g.top.shape.points[2], g.bottom.shape.points[3])), type: "angular" },
             p5: { val: p5_val * mmPerPixel, type: "linear" },
             p6: { val: M.angleBetweenVectors(g01, g21), type: "angular" },

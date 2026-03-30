@@ -3,6 +3,8 @@
     import { locale, t } from "svelte-i18n";
     import { PUBLIC_HISTORY_LIMIT } from "$env/static/public";
 
+    import loaderSVG from "$lib/assets/icons/loader.svg";
+
 	import Button from "$lib/components/ui/Button/Button.svelte";
 
 	import { createDicomBitmap } from "$lib/utils/dicom";
@@ -16,10 +18,12 @@
 	import type { Point, Polygon } from "$lib/utils/geometry/geometry.type";
 	import { zoomAtPoint, zoomCenter } from "$lib/features/Editor/Map/zoom";
 	import { getPointUnderCursor, getPolygonUnderCursor } from "$lib/features/Editor/Map/cursor";
-	import { frontalPolygonsStore, sidePolygonsStore } from "$lib/stores/study/study.store";
+	import { autoPolygons, frontalPolygonsStore, sidePolygonsStore } from "$lib/stores/study/study.store";
 	import { drawMinimap } from "$lib/features/Editor/miniMap/draw";
 	import { orderReferencePoints } from "$lib/features/Editor/orderReferencePoints";
 	import { orderAndNameVertebrae } from "$lib/features/tspNamer";
+	import { frontalProcessingStatusStore, sideProcessingStatusStore } from "$lib/stores/websocket/xraysockets.store";
+	import { frontalXrayHistory, sideXrayHistory } from "$lib/stores/xrayhistory/history.store";
 
     let { projection = "side" }: {
             projection: "side" | "frontal"
@@ -61,6 +65,8 @@
         offset: { x: 0, y: 0 }
     };
 
+    let history = $derived((projection == "side") ? sideXrayHistory: frontalXrayHistory);
+
     let scalePercentage: number = $state(100);
 
     let polygons = $derived((projection == "side") ? sidePolygonsStore: frontalPolygonsStore);
@@ -87,6 +93,8 @@
             (async () => {
                 // Generate bitmap
                 const bitmap = await createDicomBitmap(imageData, imageMeta);
+                polygons.set([]);
+                history.set({ past: [], future: [] });
                 
                 // Update state
                 dicomBitmap = bitmap;
@@ -232,37 +240,43 @@
     /* -----------------------------
     Polygon creation
     ------------------------------ */
-    let history = $state<{ past: Polygon[][], future: Polygon[][] }>({
-        past: [],
-        future: []
-    });
     // Helper to deep clone the polygons to prevent reference sharing in history
     const clone = (data: Polygon[]) => JSON.parse(JSON.stringify(data));
 
     function saveHistory() {
         // Save current state to past, clear future
-        history.past.push(clone($polygons));
-        history.future = [];
+        $history.past.push(clone($polygons));
+        history.update(store => {
+            store.future = [];
+            return store;
+        });
         
         // Optional: Limit history
-        if (history.past.length > parseInt(PUBLIC_HISTORY_LIMIT)) history.past.shift();
+        if ($history.past.length > parseInt(PUBLIC_HISTORY_LIMIT)) $history.past.shift();
     }
 
     function undo() {
-        if (history.past.length === 0) return;
+        if ($history.past.length === 0) return;
         
-        const previous = history.past.pop()!;
-        history.future.push(clone($polygons));
+        const previous = $history.past[$history.past.length];
+        history.update(store => {
+            store.past.pop();
+            store.future.push(clone($polygons));
+            return store;
+        });
         
         polygons.set(previous);
         draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
     }
 
     function redo() {
-        if (history.future.length === 0) return;
+        if ($history.future.length === 0) return;
         
-        const next = history.future.pop()!;
-        history.past.push(clone($polygons));
+        const next = $history.future[$history.future.length];
+        history.update(store => {
+            store.past.push(clone($polygons));
+            return store;
+        });
         
         polygons.set(next);
         draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
@@ -368,14 +382,28 @@
         drawMinimap(mainBitmapMeta, miniBitmapMeta, dicomBitmap);
     }
 
+    let processingStatusStore = $derived((projection == "side") ? sideProcessingStatusStore: frontalProcessingStatusStore);
+    let magicPressed = $state(false);
+
+    $effect(() => {
+        if (magicPressed && $processingStatusStore == "done" && $autoPolygons[projection]) {
+            saveHistory();
+
+            polygons.set($autoPolygons[projection]);
+
+            draw(mainBitmapMeta, dicomBitmap, selectedPolygon, $polygons, points);
+            
+            magicPressed = false;
+        }
+    })
 </script>
 
 <div class="bg-(--card) text-(--card-foreground) flex flex-col gap-2 rounded-xl border border-(--border) p-4">
     <h3 class="font-semibold">{ projection_h[$locale && $locale in projection_h ? $locale: 'en'][projection] }</h3>
     <div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
-        <Button type="back" callback={ undo } disabled={ history.past.length === 0 }/>
-        <Button type="forward" callback={ redo} disabled={ history.future.length === 0 }/>
-        <Button type="magic" callback={ () => {} }>{ $t("editor.autofill") }</Button>
+        <Button type="back" callback={ undo } disabled={ $history.past.length === 0 }/>
+        <Button type="forward" callback={ redo} disabled={ $history.future.length === 0 }/>
+        <Button type="magic" callback={ () => { magicPressed = true } } disabled={ magicPressed } >{ $t("editor.autofill") }</Button>
         <Button type="zoom-in" callback={() => {scalePercentage = zoomCenter(miniBitmapMeta, mainBitmapMeta, dicomBitmap, selectedPolygon, 1.1, $polygons, points)} } />
         <Button type="zoom-out" callback={() => {scalePercentage = zoomCenter(miniBitmapMeta, mainBitmapMeta, dicomBitmap, selectedPolygon, 0.9, $polygons, points)} } />
         {#if addMode}
@@ -386,6 +414,14 @@
         <Button type="delete" callback={deleteSelected} disabled={!selectedPolygon} />
     </div>
     <div class="border border-(--border) rounded-lg overflow-hidden relative h-150">
+        {#if magicPressed}
+            <div class="absolute inset-0 z-50 flex items-center justify-center bg-(--background)/50 backdrop-blur-sm">
+                <div class="bg-(--card) text-(--card-foreground) border border-(--border) shadow-lg rounded-xl p-6 flex flex-col items-center gap-4">
+                    <img src={ loaderSVG } alt="loader" class="w-12 h-12" />
+                    <span class="text-sm font-medium">{ $t("editor.loading." + ($processingStatusStore ?? "image.processing")) }</span>
+                </div>
+            </div>
+        {/if}
         <div class="overflow-hidden flex justify-center h-full">
             <canvas
                 bind:this={mainBitmapMeta.canvas}

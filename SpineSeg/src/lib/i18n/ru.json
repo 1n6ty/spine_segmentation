@@ -30,6 +30,16 @@
         "cancel": "Отменить",
         "instructions": {
             "header": "Инструкции"
+        },
+        "loading": {
+            "image": {
+                "processing": "Подготовка..."
+            },
+            "segmentation": {
+                "processing": "Сегментация..."
+            },
+            "saving": "Сохранение...",
+            "done": "Готово!"
         }
     },
     "icons_alt": {

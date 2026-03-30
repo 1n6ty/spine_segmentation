@@ -5,6 +5,8 @@ import type { Gap, Segment, Spine, Vertebrae } from "$lib/features/medicalParame
 const frontalPolygonsStore = writable<ProjectionPolygonsStore>([]);
 const sidePolygonsStore = writable<ProjectionPolygonsStore>([]);
 
+const autoPolygons = writable<{ side: ProjectionPolygonsStore, frontal: ProjectionPolygonsStore }>({ side: [], frontal: [] });
+
 export interface StructuralElements {
     vertebrae: Vertebrae[];
     gaps: Gap[];
@@ -71,4 +73,4 @@ function createStructuralStore(polygonStore: Readable<ProjectionPolygonsStore>):
 const frontalStructureStore = createStructuralStore(frontalPolygonsStore);
 const sideStructureStore = createStructuralStore(sidePolygonsStore);
 
-export { sidePolygonsStore, frontalPolygonsStore, sideStructureStore, frontalStructureStore };
+export { sidePolygonsStore, frontalPolygonsStore, sideStructureStore, frontalStructureStore, autoPolygons };

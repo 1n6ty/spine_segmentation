@@ -30,6 +30,16 @@
         "cancel": "Cancel",
         "instructions": {
             "header": "Instructions"
+        },
+        "loading": {
+            "image": {
+                "processing": "Preparing..."
+            },
+            "segmentation": {
+                "processing": "Segmentation in process..."
+            },
+            "saving": "Saving in process...",
+            "done": "Done!"
         }
     },
     "icons_alt": {
