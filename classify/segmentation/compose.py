@@ -1,10 +1,9 @@
 import numpy as np
 from copy import deepcopy
-from ultralytics.models import YOLO
 from logging import getLogger
 
 from segmentation.elements import Vertebrae
-from segmentation.instances import _two_pass_instances
+from segmentation.instances import get_instances
 from segmentation.utils import compute_spine_central_path, set_central_path_to_vertebraes, set_vertebraes_names
 from segmentation.heal.unstick import unstick
 from segmentation.heal.reveal import reveal
@@ -62,12 +61,9 @@ def _order_vertebraes_reference_points(vertebraes: list[Vertebrae]) -> list[Vert
 
     return new_vertebraes
 
-def segment_spine_from_S1_to_C2(pixel_array: np.ndarray[np.uint8], model: YOLO, conf: float = 0.5) -> list[Vertebrae]:
-    _logger.debug("Instances extraction...")
-    instances = _two_pass_instances(pixel_array, model, conf_threshold=conf)
-
+def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32]) -> list[Vertebrae]:
     _logger.debug("Starting vertebraes building...")
-    vertebraes: list[Vertebrae] = [Vertebrae(mask_xy=vm["polygon"].astype(np.int32)) for vm in instances]
+    vertebraes: list[Vertebrae] = [Vertebrae(mask_xy=vm) for vm in polygons]
     _logger.debug(f"Built {len(vertebraes)} vertebraes.")
 
     _logger.debug(f"Ordering vertebraes and their reference points...")
@@ -86,3 +82,10 @@ def segment_spine_from_S1_to_C2(pixel_array: np.ndarray[np.uint8], model: YOLO, 
     vertebraes = set_vertebraes_names(vertebraes)
 
     return vertebraes
+
+
+def segment_spine_from_S1_to_C2(pixel_array: np.ndarray[np.uint8], model_path: str) -> list[Vertebrae]:
+    _logger.debug("Instances extraction...")
+    instances = get_instances(pixel_array, model_path=model_path)
+
+    return segment_spine_from_S1_to_C2_masks([vm["polygon"].astype(np.int32) for vm in instances])

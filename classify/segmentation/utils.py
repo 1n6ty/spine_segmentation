@@ -53,7 +53,8 @@ def compute_spine_central_path(
 def set_vertebraes_names(vertebraes: list[Vertebrae]) -> None:
     new_vertebraes = deepcopy(vertebraes)
     for i, v in enumerate(new_vertebraes):
-        v.set_name(_NAMES[i])
+        if i < len(_NAMES):
+            v.set_name(_NAMES[i])
     
     return new_vertebraes
 

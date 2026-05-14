@@ -52,6 +52,7 @@
 		"@cornerstonejs/core": "^4.20.0",
 		"@cornerstonejs/dicom-image-loader": "^4.20.0",
 		"dicom-parser": "^1.8.21",
+		"idb": "^8.0.3",
 		"mathjs": "^15.1.1",
 		"svelte-i18n": "^4.0.1"
 	}

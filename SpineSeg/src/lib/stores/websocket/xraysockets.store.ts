@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import { createSocket } from "./websocket.store";
 import type { SocketStore } from "./websocket.type";
 import { autoPolygons } from "../study/study.store";
-import { formatJson2Polygons } from "$lib/features/dicom";
+import { formatJson2Polygons } from "$lib/features/dicomParser";
 
 interface SegmentMessage {
     data: {status: string; ref_points: any}

@@ -1,0 +1,124 @@
+{
+    "header": {
+        "p": "Vertebralogical System for Spinal Disorder Diagnosis",
+        "logout": "Logout"
+    },
+    "login": {
+        "email": "Email",
+        "password": "Password",
+        "submit": "Sign In"
+    },
+    "main": {
+        "DICOM_upload_card": {
+            "h2": "DICOM File Upload",
+            "p_under_button": "Upload files in DICOM format by clicking one of the buttons above.",
+            "p_under_button_accepted": "All files uploaded. Clear or create a new session to upload new files.",
+            "clear_session": "Clear Session"
+        },
+        "welcome_h2": "Welcome to Spine Segmentation project",
+        "p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
+        "key_features": {
+            "h3": "Key features:"
+        }
+    },
+    "pageloader": {
+        "progress": "Progress"
+    },
+    "patient": {
+        "title": "Patient Information",
+        "privacy_note": {
+            "title": "Privacy Note",
+            "comment": "All DICOM metadata remains confidential and secure."
+        }
+    },
+    "editor": {
+        "header": "Image editor",
+        "zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
+        "autofill": "Autofill",
+        "cancel": "Cancel",
+        "instructions": {
+            "header": "Instructions"
+        },
+        "loading": {
+            "image": {
+                "processing": "Preparing..."
+            },
+            "segmentation": {
+                "processing": "Segmentation in process..."
+            },
+            "saving": "Saving in process...",
+            "done": "Done!"
+        }
+    },
+    "icons_alt": {
+        "zoom-in": "Zoom in",
+        "zoom-out": "Zoom out",
+        "add": "Add",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "back": "Back",
+        "forward": "Forward",
+        "magic": "Auto"
+    },
+    "measure": {
+        "header": "Parameters"
+    },
+    "report": {
+        "header": "Diagnostic Report",
+        "header_overall": "Overall Assessment",
+        "filter_by": "Filter by Status:",
+        "expand": "Expand all",
+        "collapse": "Collapse all"
+    },
+    "footer": {
+        "p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",
+        "p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
+    },
+    "no_file_loaded": {
+        "p_up": "No file was chosen for analysis",
+        "p_down": "Upload files in DICOM format by clicking one of the buttons in top card."
+    },
+    "vertebra": {
+        "head": "Vertebra",
+        "one": "vertebra",
+        "plural_1": "vertebras",
+        "plural_2": "vertebras"
+    },
+    "disk": {
+        "head": "Disk",
+        "one": "disk",
+        "plural_1": "disks",
+        "plural_2": "disks"
+    },
+    "part": {
+        "head": "Part",
+        "one": "part",
+        "plural_1": "parts",
+        "plural_2": "parts"
+    },
+    "parameters": {
+        "linear": "Linear Parameters",
+        "angular": "Angular Parameters",
+        "observation": "Status"
+    },
+    "units": {
+        "linear": "mm",
+        "angular": "°",
+        "time": {
+            "d": "d",
+            "h": "h",
+            "m": "m",
+            "ago": "ago",
+            "now": "now"
+        }
+    },
+    "research": {
+        "head": "Researches",
+        "active": "active",
+        "delete_all": "Clear all",
+        "create_new": "New research"
+    },
+    "not_found": "Not found",
+    "side_projection": "Lateral view",
+    "frontal_projection": "Frontal view"
+}

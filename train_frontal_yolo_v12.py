@@ -128,22 +128,22 @@ names:
         data=str(TMP_DIR / "data.yaml"),
         epochs=500,
         imgsz=TILE_SIZE,
-        batch=16,
+        batch=4,
         device="cpu",
 
         # ---- Augmentations ----
-        hsv_h=0.0,
-        hsv_s=0.0,
-        hsv_v=0.15,
+        # hsv_h=0.0,
+        # hsv_s=0.0,
+        # hsv_v=0.15,
 
-        fliplr=0.5,
-        flipud=0.0,
+        # fliplr=0.5,
+        # flipud=0.0,
 
-        scale=0.2,
-        translate=0.05,
-        degrees=5.0,
+        # scale=0.2,
+        # translate=0.05,
+        degrees=7.0,
 
-        mosaic=0.0,
+        # mosaic=0.0,
         mixup=0.0,
 
         # ---- Optimization ----

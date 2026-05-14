@@ -1,31 +1,28 @@
 <script lang="ts">
     import { page } from '$app/state';
+	import type { supportedLocales } from '$lib/core/i18n/index.svelte';
     import { locale } from "svelte-i18n";
 
-    const menu: Record<string, string[]> = {
-        "en": [
+    const menu: Record<typeof supportedLocales[number], string[]> = {
+        "en-US": [
             "Patient Info",
             "X-Ray Editing",
             "Measurements",
             "Diagnostic report"
         ],
-        "ru": [
+        "ru-RU": [
             "Информация о пациенте",
             "X-Ray Редактирование",
             "Измерения",
             "Диагностический отчёт"
         ]
     } as const;
-    
-    const currentLocale = $derived(
-		$locale && $locale in menu ? $locale : 'en'
-	);
 
 	const links = $derived([
-		`/${currentLocale}/patient`,
-		`/${currentLocale}/edit`,
-		`/${currentLocale}/measure`,
-		`/${currentLocale}/report`
+		`/${$locale}/patient`,
+		`/${$locale}/edit`,
+		`/${$locale}/measure`,
+		`/${$locale}/report`
 	]);
 
 	let activeIndex = $derived(
@@ -36,7 +33,7 @@
 </script>
 
 <nav class="main-nav bg-(--muted) text-(--muted-foreground) h-9 items-center justify-center rounded-xl p-0.75 grid w-full grid-cols-4">
-    {#each menu[currentLocale] as choice, i}
+    {#each menu[$locale as typeof supportedLocales[number]] as choice, i}
         <a
             href={links[i]}
             onclick={ (e) => { activeIndex = i; } }

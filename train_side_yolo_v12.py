@@ -41,6 +41,7 @@ def tile_image(dicom_path: Path, filled_path: Path, tile_size: int, overlap: int
             tile = img[y:y_end, x:x_end]
             filled_tile = filled[y:y_end, x:x_end]
 
+            # vertebrae
             tresh = cv2.inRange(filled_tile, np.array([0, 0, 200], dtype=np.uint8), np.array([100, 100, 255], dtype=np.uint8))
             contours, hierarchy = cv2.findContours(tresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -128,22 +129,22 @@ names:
         data=str(TMP_DIR / "data.yaml"),
         epochs=500,
         imgsz=TILE_SIZE,
-        batch=16,
+        batch=4,
         device="cpu",
 
         # ---- Augmentations ----
-        hsv_h=0.0,
-        hsv_s=0.0,
-        hsv_v=0.15,
+        # hsv_h=0.0,
+        # hsv_s=0.0,
+        # hsv_v=0.15,
 
-        fliplr=0.5,
-        flipud=0.0,
+        # fliplr=0.5,
+        # flipud=0.0,
 
-        scale=0.2,
-        translate=0.05,
-        degrees=5.0,
+        # scale=0.2,
+        # translate=0.05,
+        degrees=7.0,
 
-        mosaic=0.0,
+        # mosaic=0.0,
         mixup=0.0,
 
         # ---- Optimization ----

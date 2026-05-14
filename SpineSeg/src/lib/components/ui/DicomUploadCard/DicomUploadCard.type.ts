@@ -1,7 +1,10 @@
-type ProjectionType = "side" | "frontal";
+import type { Projection } from "$lib/features/dicom/types";
 
 type UploadBtnType = {
-    lable: string,
+    label: string,
+    projection: Projection,
+    accepted: string,
+    acceptedComment: string,
     btn: string,
     id: string,
     callback: (e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement; }) => void
