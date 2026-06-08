@@ -1,4 +1,4 @@
-export function getPatientAge(birthDate: Date | null): number | null {
+export function getPatientAge(birthDate: Date | null | undefined): number | null {
     if(!birthDate) return null;
     const today = new Date();
 

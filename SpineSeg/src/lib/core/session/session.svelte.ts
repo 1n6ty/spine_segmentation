@@ -1,7 +1,9 @@
 import { FileCache } from "$lib/features/dicom/cache";
-import type { Projection } from "$lib/features/dicom/types";
+import type { Patient, Projection, Series, Study } from "$lib/features/dicom/types";
 import { PatientService } from "./patient.svelte";
 import { registry } from "./registry.svelte";
+import type { SeriesService } from "./series.svelte";
+import type { StudyService } from "./study.svelte";
 import type { SessionProjection } from "./types";
 import * as dicomParser from 'dicom-parser';
 
@@ -176,4 +178,82 @@ export class SessionService {
             if (p.patient) p.patient.destroy();
         });
     }
+
+    // Just public getters of merged parameters
+
+    mergedPatient = $derived.by(
+        () => {
+            const services = Object.values(this.projections)
+                .map(p => p.patient)
+                .filter((s): s is PatientService => !!s);
+
+            if (services.length === 0) return null;
+
+            const [first, ...rest] = services;
+            
+            return rest.reduce((acc, curr) => ({
+                patientUID: acc.patientUID || curr.patientUID,
+                name: acc.name || curr.name,
+                birthDate: acc.birthDate || curr.birthDate,
+                sex: acc.sex || curr.sex,
+            }), {
+                patientUID: first.patientUID,
+                name: first.name,
+                birthDate: first.birthDate,
+                sex: first.sex,
+            } satisfies Patient);
+        }
+    )
+
+    mergedStudy = $derived.by(
+        () => {
+            const services = Object.values(this.projections)
+                .map(p => p.patient?.study)
+                .filter((s): s is StudyService => !!s);
+
+            if (services.length === 0) return null;
+
+            const [first, ...rest] = services;
+
+            return rest.reduce((acc, curr) => ({
+                studyUID: acc.studyUID || curr.studyUID,
+                studyDate: acc.studyDate || curr.studyDate,
+                description: acc.description || curr.description,
+                physicianName: acc.physicianName || curr.physicianName,
+                institutionName: acc.institutionName || curr.institutionName,
+                institutionAddress: acc.institutionAddress || curr.institutionAddress,
+                stationName: acc.stationName || curr.stationName,
+            }), {
+                studyUID: first.studyUID,
+                studyDate: first.studyDate,
+                description: first.description,
+                physicianName: first.physicianName,
+                institutionName: first.institutionName,
+                institutionAddress: first.institutionAddress,
+                stationName: first.stationName,
+            } satisfies Study);
+        }
+    )
+
+    mergedSeries = $derived.by(
+        () => {
+            const services = Object.values(this.projections)
+                .map(p => p.patient?.study?.series)
+                .filter((s): s is SeriesService => !!s);
+
+            if (services.length === 0) return null;
+
+            const [first, ...rest] = services;
+
+            return rest.reduce((acc, curr) => ({
+                seriesUID: acc.seriesUID || curr.seriesUID,
+                modality: acc.modality || curr.modality,
+                bodyPart: acc.bodyPart || curr.bodyPart,
+            }), {
+                seriesUID: first.seriesUID,
+                modality: first.modality,
+                bodyPart: first.bodyPart,
+            } satisfies Series);
+        }
+    )
 };

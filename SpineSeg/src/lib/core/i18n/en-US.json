@@ -78,19 +78,19 @@
         "p_up": "No file was chosen for analysis",
         "p_down": "Upload files in DICOM format by clicking one of the buttons in top card."
     },
-    "vertebra": {
+    "vertebras": {
         "head": "Vertebra",
         "one": "vertebra",
         "plural_1": "vertebras",
         "plural_2": "vertebras"
     },
-    "disk": {
+    "gaps": {
         "head": "Disk",
         "one": "disk",
         "plural_1": "disks",
         "plural_2": "disks"
     },
-    "part": {
+    "segments": {
         "head": "Part",
         "one": "part",
         "plural_1": "parts",
@@ -119,6 +119,7 @@
         "create_new": "New research"
     },
     "not_found": "Not found",
+    "not_enough": "Not enough data",
     "side_projection": "Lateral view",
     "frontal_projection": "Frontal view"
 }

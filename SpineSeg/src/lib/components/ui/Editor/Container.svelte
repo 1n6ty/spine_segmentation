@@ -37,8 +37,6 @@
         const canvas = projectionContainer.mainCanvas;
 
         if (bitmap && canvas) {
-            // Give the browser a tiny moment to calculate canvas dimensions
-            // or use requestAnimationFrame
             requestAnimationFrame(() => {
                 projectionContainer.nav.zoomToFit();
             });

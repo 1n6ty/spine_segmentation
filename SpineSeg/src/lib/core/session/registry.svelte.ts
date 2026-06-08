@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { SessionValue } from "./types";
+import { FileCache } from "$lib/features/dicom/cache";
 
 interface DicomStorage extends DBSchema {
     sessions: {
@@ -103,15 +104,28 @@ class RegistryService {
     // 2. Remove from local state FIRST (Reactive update)
     // Using a temporary variable and reassignment can be cleaner for Svelte's proxy
     const newValues = { ...this.sessionValues };
+    const hashes = [ this.sessionValues[sessionUID].projections.side.hash, this.sessionValues[sessionUID].projections.frontal.hash ];
     delete newValues[sessionUID];
     this.sessionValues = newValues;
 
     // 3. Then handle the DB
     const db = await this.initDB();
     await db.delete('sessions', sessionUID);
+
+    // 4. Delete from FileCache
+    hashes.forEach(h => {
+      FileCache.delete(h);
+    })
   }
 
   async clearAll(): Promise<void> {
+    const sideHashes = Object.values(this.sessionValues).map(sv => {
+      return sv.projections.side.hash;
+    });
+    const frontalHashes = Object.values(this.sessionValues).map(sv => {
+      return sv.projections.frontal.hash;
+    });
+
     // 1. Clear reactive state
     this.sessionValues = {};
 
@@ -120,6 +134,13 @@ class RegistryService {
     const tx = db.transaction('sessions', 'readwrite');
     await tx.objectStore('sessions').clear();
     await tx.done;
+
+    sideHashes.forEach(h => {
+      FileCache.delete(h);
+    });
+    frontalHashes.forEach(h => {
+      FileCache.delete(h);
+    })
   }
 
   private async getRecentSessions(): Promise<DicomStorage['sessions']['value'][]> {

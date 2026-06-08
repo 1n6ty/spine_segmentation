@@ -96,7 +96,6 @@ export class EditingController {
         const hit = getPointAndPolygonUnderCursor(
             worldPoint,
             this.parent.session.projections[projection].polygons,
-            this.draftPoints,
             worldHitRadius
         );
 

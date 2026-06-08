@@ -54,59 +54,66 @@ function getOrderedReferencePoints(
     nearestPolygon: Polygon,
     pos: "up" | "down"
 ): Polygon {
-    const nearestCenter = getPolygonCenter(nearestPolygon);
+    if (polygon.points.length === 0) return polygon;
 
-    // 1. Find the distances from each point to the nearest polygon's center
-    const distances = polygon.points.map((p, index) => ({
-        p,
-        index,
-        dist: getDistance(p, nearestCenter)
-    }));
-    
-    // Sort to find the 2 nearest points
-    distances.sort((a, b) => a.dist - b.dist);
-    
-    const nearestIndices = [distances[0].index, distances[1].index];
-    const nearestPoints = [distances[0].p, distances[1].p];
-    
-    // Get the remaining points
-    const otherPoints = polygon.points.filter((_, i) => !nearestIndices.includes(i));
+    // 1. Calculate the average (centroid) of the nearest polygon's points
+    const nearestAvg = getPolygonCenter(nearestPolygon);
 
-    // 2. Assign up/down points by wrapping them in temporary Polygon objects
-    // This makes them compatible with your getPolygonCenter utility
-    let up: Polygon;
-    let down: Polygon;
-
-    if (pos === "up") {
-        up = { uuid: "temp_up", id: "temp_up", points: nearestPoints };
-        down = { uuid: "temp_down", id: "temp_down", points: otherPoints };
-    } else {
-        down = { uuid: "temp_down", id: "temp_down", points: nearestPoints };
-        up = { uuid: "temp_up", id: "temp_up", points: otherPoints };
-    }
-
-    // 3. Calculate averages and main vector
-    const downAvg = getPolygonCenter(down);
-    const upAvg = getPolygonCenter(up);
-    const mainVec = { x: upAvg.x - downAvg.x, y: upAvg.y - downAvg.y };
-
-    // 4. Calculate signed angles and sort
-    const angles = polygon.points.map(p => {
-        const vecToPoint = { x: p.x - downAvg.x, y: p.y - downAvg.y };
-        return {
-            point: p,
-            angle: getSignedAngle(mainVec, vecToPoint)
-        };
+    // 2. Find the 2 closest points to the nearest average (mimicking np.argpartition)
+    const indexedDistances = polygon.points.map((p, index) => {
+        const distance = Math.sqrt((p.x - nearestAvg.x) ** 2 + (p.y - nearestAvg.y) ** 2);
+        return { index, distance };
     });
 
-    // Sort descending (replicating np.argsort()[::-1])
-    angles.sort((a, b) => b.angle - a.angle);
 
-    // Apply the newly ordered points back to the polygon
+    // Sort ascending to extract the top 2 closest indices
+    indexedDistances.sort((a, b) => b.distance - a.distance);
+    const nearestIndexes = [indexedDistances[0].index, indexedDistances[1].index];
+
+    // 3. Separate points into 'up' and 'down' groups based on the 'pos' argument
+    const closestPoints = nearestIndexes.map((idx) => polygon.points[idx]);
+    const remainingPoints = polygon.points.filter((_, idx) => !nearestIndexes.includes(idx));
+
+    let up: Point[];
+    let down: Point[];
+
+    if (pos === "down") {
+        up = closestPoints;
+        down = remainingPoints;
+    } else {
+        up = remainingPoints;
+        down = closestPoints;
+    }
+
+    // 4. Calculate down_avg and the main vector (main_vec)
+    const downSum = down.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    const downAvg: Point = { x: downSum.x / down.length, y: downSum.y / down.length };
+
+    const upSum = up.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    const upAvg: Point = { x: upSum.x / up.length, y: upSum.y / up.length };
+
+    const mainVec: Point = { x: upAvg.x - downAvg.x, y: upAvg.y - downAvg.y };
+
+    // 5. Calculate signed angles and sort points in descending order (mimicking np.argsort(...)[::-1])
+    const pointsWithAngles = polygon.points.map((p) => {
+        const vecToPoint: Point = { x: p.x - downAvg.x, y: p.y - downAvg.y };
+        const angle = getSignedAngle(mainVec, vecToPoint);
+        return { p, angle };
+    });
+
+    // Sort descending by angle
+    pointsWithAngles.sort((a, b) => b.angle - a.angle);
+
+    console.log({
+        uuid: polygon.uuid,
+        id: polygon.id,
+        points: polygon.points = pointsWithAngles.map((item) => item.p)
+    });
+    // Update the polygon points in place
     return {
         uuid: polygon.uuid,
         id: polygon.id,
-        points: angles.map(item => item.point)
+        points: polygon.points = pointsWithAngles.map((item) => item.p)
     };
 }
 
@@ -133,7 +140,7 @@ export function orderAndName(
     const orderedPolygons = sequence.map((originalIdx, orderIdx) => {
         let poly = polygons[originalIdx];
 
-        poly = (orderIdx == 0) ? getOrderedReferencePoints(poly, polygons[sequence[orderIdx + 1]], "down"): getOrderedReferencePoints(poly, polygons[sequence[orderIdx - 1]], "up");
+        poly = (orderIdx == 0) ? getOrderedReferencePoints(poly, polygons[sequence[orderIdx + 1]], "up"): getOrderedReferencePoints(poly, polygons[sequence[orderIdx - 1]], "down");
         
         // Assign name from the specific array if available
         if (vertebraeNames[orderIdx]) {

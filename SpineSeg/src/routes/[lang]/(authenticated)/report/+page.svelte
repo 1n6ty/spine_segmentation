@@ -58,11 +58,11 @@
         ],
         "en": [
             {
-                title: "Vertebraes' parameters",
-                nav: "Vertebraes"
+                title: "Vertebras' parameters",
+                nav: "Vertebras"
             },
             {
-                title: "Parameters of disks between vertebraes",
+                title: "Parameters of disks between vertebras",
                 nav: "Disks"
             },
             {

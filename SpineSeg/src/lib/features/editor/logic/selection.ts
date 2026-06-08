@@ -8,27 +8,12 @@ import type { Point, Polygon } from "$lib/shared/geometry/geometry.type";
  * @param worldHitRadius The hit radius converted to world units (pixelRadius / scale)
  */
 export function getPointAndPolygonUnderCursor(
-    worldPoint: Point, 
-    polygons: Polygon[], 
-    draftPoints: Point[] = [], 
+    worldPoint: Point,
+    polygons: Polygon[],
     worldHitRadius: number
 ): {point: Point | null, indexInPolygon: number | null, polygon: Polygon | null} {
 
-    // 1. Check draft points
-    for (let j = 0; j < draftPoints.length; j++) {
-        const p = draftPoints[j];
-        const dx = p.x - worldPoint.x;
-        const dy = p.y - worldPoint.y;
-        if (Math.sqrt(dx * dx + dy * dy) < worldHitRadius) {
-            return {
-                point: { x: p.x, y: p.y },
-                indexInPolygon: j,
-                polygon: null
-            };
-        }
-    }
-
-    // 2. Check completed polygons (reverse order to hit top-most first)
+    // 1. PHASE 1: Check ALL completed polygon vertices first (reverse order)
     for (let i = polygons.length - 1; i >= 0; i--) {
         const poly = polygons[i];
         for (let j = 0; j < poly.points.length; j++) {
@@ -43,13 +28,17 @@ export function getPointAndPolygonUnderCursor(
                 };
             }
         }
+    }
 
+    // 2. PHASE 2: If no vertex was hit anywhere, check if cursor is INSIDE a polygon body
+    for (let i = polygons.length - 1; i >= 0; i--) {
+        const poly = polygons[i];
         if (isPointInPolygon(worldPoint, poly.points)) {
             return {
                 point: null,
                 indexInPolygon: null,
                 polygon: poly
-            }
+            };
         }
     }
 

@@ -21,11 +21,7 @@ function getDistance(p1: Point, p2: Point): number {
 
 // Replicates get_signed_angle
 function getSignedAngle(v1: Point, v2: Point): number {
-    // Math.atan2(cross_product, dot_product) yields the signed angle
-    return Math.atan2(
-        v1.x * v2.y - v1.y * v2.x, 
-        v1.x * v2.x + v1.y * v2.y
-    );
+    return Math.atan2(v1.y * v2.x - v1.x * v2.y, v1.x * v2.x + v1.y * v2.y);
 }
 
 function distance(p1: Point, p2: Point): number {

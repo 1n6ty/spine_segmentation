@@ -24,13 +24,15 @@
             <p>{ $t('patient.privacy_note.comment') }</p>
         </div>
     </div>
-{:else}    
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold">{ $t('patient.title') }</h2>
-    </div>
-    <div class="text-center text-(--muted-foreground) py-8">
-        <img src={boneSVG} alt="bone icon" class="w-16 h-16 mx-auto mb-4 opacity-20"/>
-        <p>{ $t('no_file_loaded.p_up') }</p>
-        <p class="text-sm mt-2">{ $t('no_file_loaded.p_down') }</p>
+{:else}
+    <div class="bg-(--card) text-(--card-foreground) flex flex-col gap-6 rounded-xl border border-(--border) p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold">{ $t('patient.title') }</h2>
+        </div>
+        <div class="text-center text-(--muted-foreground) py-8">
+            <img src={boneSVG} alt="bone icon" class="w-16 h-16 mx-auto mb-4 opacity-20"/>
+            <p>{ $t('no_file_loaded.p_up') }</p>
+            <p class="text-sm mt-2">{ $t('no_file_loaded.p_down') }</p>
+        </div>
     </div>
 {/if}
