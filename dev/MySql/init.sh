@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOSQL
+
+CREATE DATABASE IF NOT EXISTS \`${DEFAULT_DB_NAME}\`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
+  IDENTIFIED BY '${DB_PASSWORD}';
+
+GRANT ALL PRIVILEGES ON \`${DEFAULT_DB_NAME}\`.* TO '${DB_USER}'@'%';
+
+CREATE USER IF NOT EXISTS 'proxysql_monitor'@'%' IDENTIFIED BY 'proxysql_monitor';
+GRANT USAGE, REPLICATION CLIENT ON *.* TO 'proxysql_monitor'@'%';
+
+FLUSH PRIVILEGES;
+
+EOSQL

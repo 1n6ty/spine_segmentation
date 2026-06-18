@@ -28,14 +28,14 @@ src/routes/
     (public)/
       login/+page.svelte
     (authenticated)/
-      +layout.server.ts            # intended auth guard — currently a no-op (see below)
+      +layout.svelte                # client-side auth guard (see below)
       patient/+page.svelte
       edit/+page.svelte
       measure/+page.svelte
       report/+page.svelte
 ```
 
-The `(authenticated)` route group's guard in `+layout.server.ts` has its session-check `redirect()` call fully commented out and unconditionally returns `{ user: { name: "Doctor" } }`. **There is currently no real authentication boundary** — any visitor can reach `edit`, `measure`, `report`, and `patient` (which displays patient PHI) without logging in. The `login` page itself is UI-only: the form has no `on:submit` handler and never calls anything.
+`login` now submits real credentials to the backend's session auth, and `(authenticated)/+layout.svelte` redirects to `/login` (client-side, via `onMount`) if no `sessionid` cookie is present. There is **no** `+layout.server.ts` guard — this app is a static SPA (`adapter-static` + SPA fallback), so there's no server at request time to run one against. This guard is a UX heuristic only; the real gap is server-side — see [security-privacy.md](security-privacy.md) and [../../docs/doctor-profile.md](../../docs/doctor-profile.md).
 
 ## State management
 
@@ -57,10 +57,10 @@ See [security-privacy.md](security-privacy.md) for a gap in how these two stores
 
 ## Folder conventions
 
-- **`core/`** — singletons and infrastructure: `i18n`, `network` (CSRF token helper), `session` (`SessionService` and its sub-entities `patient`/`study`/`series`/`sopInstance`/`researcher`/`autosegmentation`), `project.svelte.ts`.
-- **`features/`** — domain logic, one folder per feature: `dicom` (parsing, caching, bitmap rendering), `editor` (canvas interaction split into `core/controllers` for edit/history/nav state, `rendering` for draw functions, `logic` for polygon ordering/selection), `medical-parameters` (`calculators/`, `store.svelte.ts`, `config.ts`, `types.ts`, `locale.ts` (shared `LocaleKey`/`Localized` types), `regions.ts` (fixed anatomical regions, shared by the `measure` page's segments tab and the diagnosis engine), and `diagnosis/` — the rule-based diagnosis-text engine powering the report page, see [clinical-rules-reference.md](clinical-rules-reference.md)).
+- **`core/`** — singletons and infrastructure: `i18n`, `network` (CSRF token helper), `session` (`SessionService` and its sub-entities `patient`/`study`/`series`/`sopInstance`/`researcher`), `project.svelte.ts`.
+- **`features/`** — domain logic, one folder per feature: `dicom` (parsing, caching, bitmap rendering), `editor` (canvas interaction split into `core/controllers` for edit/history/nav state, `rendering` for draw functions, `logic` for polygon ordering/selection), `autofill` (the magic-button orchestration — DSL cache-check, upload, segmentation WebSocket, point-order normalization; see [../../docs/autofill-integration.md](../../docs/autofill-integration.md)), `medical-parameters` (`calculators/`, `store.svelte.ts`, `config.ts`, `types.ts`, `locale.ts` (shared `LocaleKey`/`Localized` types), `regions.ts` (fixed anatomical regions, shared by the `measure` page's segments tab and the diagnosis engine), and `diagnosis/` — the rule-based diagnosis-text engine powering the report page, see [clinical-rules-reference.md](clinical-rules-reference.md)).
 - **`shared/`** — `geometry` (pure math, no Svelte/DOM dependency), `utils` (file hashing, patient helpers).
 - **`components/`** — `layout/` for page-section components (`Measurements/*`, `PatientInfo/*`, `Header`/`Footer`/`ProfileBar`), `ui/` for generic widgets (`Button`, `DicomUploadCard`, `Editor/Container.svelte`, `Sessions/{Card,Manager}.svelte`, `Nav`).
-- **`stores/websocket/`** — `websocket.store.ts` (generic reconnecting-socket factory) + `xraysockets.store.ts` (segmentation-status-specific wrapper). The latter currently has a broken import — see [backend-integration.md](backend-integration.md).
+- **`stores/websocket/`** — `websocket.store.ts` (generic reconnecting-socket factory) + `xraysockets.store.ts` (`createSegmentationSocket`, a thin typed wrapper for the segmentation WebSocket).
 
 Naming convention: reactive class/store files use the `.svelte.ts` suffix (Svelte 5's signal for "this file uses runes"); everything else is plain kebab-case TypeScript. One naming collision worth knowing about: `features/dicomParser.ts` (top-level) and `features/dicom/parser.ts` are two different files with different responsibilities — see [gaps-and-recommendations.md](gaps-and-recommendations.md).

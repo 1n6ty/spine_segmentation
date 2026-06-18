@@ -1,0 +1,54 @@
+datadir="/var/lib/proxysql"
+
+# --------------------------------------------------------------------
+# 1. Admin Interface Configuration (Port 6032)
+# --------------------------------------------------------------------
+admin_variables={
+    admin_credentials="admin:adminpassword"
+    mysql_ifaces="0.0.0.0:6032"
+}
+
+# --------------------------------------------------------------------
+# 2. Global Engine & Monitoring Settings
+# --------------------------------------------------------------------
+mysql_variables={
+    threads=4
+    max_connections=2048
+    interfaces="0.0.0.0:6033"
+
+    mysql-default_authentication_plugin="caching_sha2_password"
+
+    # Credentials matching dev/MySql/init.sh
+    monitor_username="proxysql_monitor"
+    monitor_password="proxysql_monitor"
+}
+
+# --------------------------------------------------------------------
+# 3. Backend Target Instantiations
+# --------------------------------------------------------------------
+# Seed node is placed in both the writer (40) and reader (42) host groups.
+# spine-segmentation runs a single MySQL instance today, so HG 42 is unused
+# until a real read replica is introduced, same as the dev topology this
+# was mirrored from.
+mysql_servers =
+(
+    { address="mysql", port=3306, hostgroup=40, max_connections=1000, weight=1 },
+    { address="mysql", port=3306, hostgroup=42, max_connections=1000, weight=1 }
+)
+
+# --------------------------------------------------------------------
+# 4. Client Application Access Rules
+# --------------------------------------------------------------------
+mysql_users =
+(
+    { username="${DB_USER}", password="${DB_PASSWORD}", default_hostgroup=40, active=1, transaction_persistent=1 }
+)
+
+# --------------------------------------------------------------------
+# 5. Routing Rules (Read/Write Splitting)
+# --------------------------------------------------------------------
+mysql_query_rules =
+(
+    { rule_id=1, active=1, match_pattern="^SELECT .* FOR UPDATE", destination_hostgroup=40, apply=1 },
+    { rule_id=2, active=1, match_pattern="^SELECT", destination_hostgroup=42, apply=1 }
+)

@@ -6,8 +6,7 @@ export PROJECT_NAME=$PROJECT_NAME
 
 # Default Variables
 ENV_PATH=".env"
-MODE="prod"
-SETTINGS_FILE="Mainland.settings"
+DJANGO_ENV="dev"
 ACTION=""
 WATCH=false
 NETWORK_NAME="spine-segmentation-net"
@@ -21,21 +20,18 @@ print_help() {
 Usage: $0 <action> [options]
 
 Actions:
-  build           Build SpineSeg, panel, and backend Docker images
-  up              Start the application (builds SpineSegs, deploys containers)
-  fcopy           Rebuild SpineSeg/panel and copy static files to running container
-  test            Run SpineSeg and backend tests
-  start           Start existing containers
-  stop            Stop running containers
+  create-net      Creates multi-host overlay network
+  remove-net      Removes multi-host overlay network
+  build           Build panel, and backend Docker images
+  up/update       Start the application (builds panel, deploys containers)
+  test            Run frontend and backend tests
   down            Stop and remove containers (preserve volumes)
   rm              Stop and remove containers and volumes
   logs            Show container logs
   help            Show this help message
 
 Options:
-  --build-postfix=POSTFIX  Build postfix for SpineSeg (default: base)
   --env-path=PATH          Environment file path (default: .env)
-  --dev                    Use development settings
   --watch                  Use in-time synchronization
 EOF
 }
@@ -62,38 +58,7 @@ remove_net() {
 
 # Docker Compose Wrapper to keep commands clean
 dc() {
-  docker compose -f "compose.yaml" -f "compose.${MODE}.yaml" --env-file "${ENV_PATH}" "$@"
-}
-
-# Consolidate the SpineSeg/panel build logic
-build_statics() {
-  echo "Building SpineSeg..."
-  npm install --prefix ./SpineSeg
-  npm run build --prefix ./SpineSeg
-
-  echo "Assembling static files and templates..."
-  rm -rf ./static ./templates || true
-  mkdir -p static templates
-
-  if [[ -d ./backend/Mainland/templates ]]; then
-    cp -r ./backend/Mainland/templates/. ./templates/
-  fi
-  if [[ -d ./backend/Mainland/static ]]; then
-    cp -r ./backend/Mainland/static/. ./static/
-  fi
-
-  cp -r ./SpineSeg/dist/*.html ./templates/ 2>/dev/null || true
-  cp -r ./SpineSeg/dist/static/. ./static/
-}
-
-# Consolidate container copy logic
-copy_to_container() {
-  echo "Copying static files to container..."
-  dc exec --user root mainland bash -c "rm -rf /home/Mainland/static/* /home/Mainland/templates/*"
-  dc cp ./static/. mainland:/home/Mainland/static
-  dc cp ./templates/. mainland:/home/Mainland/templates
-  rm -rf ./static ./templates || true
-  dc restart mainland
+  docker compose -f "compose.dev.yml" --env-file "${ENV_PATH}" "$@"
 }
 
 # ----------------------------------------
@@ -105,25 +70,15 @@ while [[ $# -gt 0 ]]; do
     --env-path=*)
       ENV_PATH="${1#*=}"
       ;;
-    --dev)
-      SETTINGS_FILE="Mainland.settings_dev"
-      MODE="dev"
-      WATCH=true
-      ;;
     --watch)
       WATCH=true
       ;;
-    net|build|up|fcopy|test|start|stop|down|rm|logs|help)
+    create-net|remove-net|build|restore|up|update|test|down|rm|logs|help)
       if [[ -n "$ACTION" ]]; then
         echo "Error: Only one action can be specified (found '$ACTION' and '$1')."
         exit 1
       fi
       ACTION="$1"
-      ;;
-    *)
-      echo "Unknown option: $1"
-      print_help
-      exit 1
       ;;
   esac
   shift
@@ -136,80 +91,81 @@ if [[ -z "$ACTION" || "$ACTION" == "help" ]]; then
 fi
 
 if [[ "$ACTION" == "test" ]]; then
-  SETTINGS_FILE="Mainland.settings_test"
+  DJANGO_ENV="test"
 fi
 
-export DJANGO_SETTINGS_MODULE="${SETTINGS_FILE}"
+export DJANGO_ENV=$DJANGO_ENV
 
 # ----------------------------------------
 # Action Execution
 # ----------------------------------------
 
 case "$ACTION" in
-  net)
+  create-net)
     ensure_net
     ;;
-  
+
+  remove-net)
+    remove_net
+    ;;
+
   build)
     ensure_net
-    build_statics
     echo "Building Docker images..."
-    dc build
+    dc build --pull
     ;;
-    
-  fcopy)
-    build_statics
-    copy_to_container
-    ;;
-    
-  up)
+
+  up|update)
     ensure_net
-    build_statics
-    echo "Starting backend..."
-    dc up -d --build --force-recreate
-    copy_to_container
-    echo "Success! Server started!"
-    
+
+    echo "Launching web and background worker infrastructure layers..."
+    dc up -d
+    echo "Success! Application stack fully initialized!"
+
     if [[ "$WATCH" == true ]]; then
-      echo "Enabling watching mode..."
+      echo "Enabling file watching system synchronization..."
       dc up --watch
     fi
     ;;
-    
+
   test)
     ensure_net
-    echo "Running SpineSeg tests..."
-    npm install --prefix ./SpineSeg
-    npm run test --prefix ./SpineSeg
+    echo "Executing frontend unit test suites..."
+    docker run --rm \
+      -v "$(pwd)/SpineSeg:/app/SpineSeg" \
+      -v "/app/SpineSeg/node_modules" \
+      -w /app/SpineSeg \
+      node:26-alpine \
+      sh -c "npm ci && npm run test:unit -- --run"
 
-    echo "Starting backend for testing..."
-    dc up -d --build --force-recreate
-    
-    echo "Running backend tests..."
-    dc exec mainland .venv/bin/python3 manage.py makemigrations --check --dry-run
-    dc exec mainland .venv/bin/python3 manage.py test
-    
-    echo "Cleaning up test environment..."
-    dc down --rmi local -v
-    ;;
-    
-  start)
-    dc start
-    ;;
-    
-  stop)
-    dc stop
-    ;;
-    
-  down)
-    dc down --rmi local
-    ;;
-    
-  rm)
+    echo "Initializing isolated test runtime atmosphere..."
+    dc up -d --build --force-recreate --wait --no-deps api
+
+    echo "Verifying migration state schema integrity..."
+    dc exec api .venv/bin/python3 manage.py makemigrations --check --dry-run
+
+    echo "Executing test suites..."
+    dc exec api bash -ec ".venv/bin/coverage run manage.py test && .venv/bin/coverage report"
+
+    echo "Tearing down test environment..."
     dc down --rmi local -v
     remove_net
     ;;
-    
+
+  down)
+    dc down --rmi local
+    ;;
+
+  rm)
+    read -p "DANGER: Purging all persistent data volumes... Are you sure? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]] then
+      dc down --rmi local -v
+        
+      echo "Cleanup complete: Persistent storage purged."
+    fi
+    ;;
+
   logs)
     dc logs -f
     ;;

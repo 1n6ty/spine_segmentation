@@ -21,7 +21,7 @@ These are pure functions — no DOM, no Svelte component harness needed, cheap t
 
 ## Third tier: e2e happy path
 
-A full upload → patient → edit → measure → report run is valuable, but more valuable once backend integration exists (see [backend-integration.md](backend-integration.md)) — today it would only exercise the manual-annotation-only path, which is real but partial (no AI segmentation step to test).
+A full upload → patient → edit → measure → report run is valuable. Backend integration now exists (autofill — see [../../docs/autofill-integration.md](../../docs/autofill-integration.md)), with unit coverage for its pure orchestration logic (`autofill.test.ts`: cache-hit/miss branching, socket-close-without-done rejection, point-order invariance), but no e2e run against a live backend stack (MySQL/Redis/Celery/YOLO weights) has been done in this environment — still a gap worth closing once such a stack is reachable.
 
 ## Recommendation
 

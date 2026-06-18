@@ -1,0 +1,183 @@
+include:
+  - ./dev/compose.yaml
+
+networks:
+  spine-segmentation-net:
+    external: true
+
+x-django-base: &django-base
+  build:
+    context: .
+    dockerfile: ./backend/Mainland/Dockerfile
+    target: development
+    args:
+      USER_ID: 1000
+      GROUP_ID: 1000
+  environment:
+  # ----------------API-------------------
+    - SECRET_KEY=${SECRET_KEY:-secret}
+    - DJANGO_ENV=${DJANGO_ENV:-dev}
+  # ----------------Admin-Panel-----------
+    - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
+    - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin}
+    - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@mail.com}
+  #-----------------DataBase--------------
+    - PROXYSQL_HOST=proxysql
+    - DEFAULT_DB_NAME=${DEFAULT_DB_NAME:-db}
+    - DB_USER=${DB_USER:-mainland_user}
+    - DB_PASSWORD=${DB_PASSWORD:-mainland}
+    - LOGS_DB_NAME=${LOGS_DB_NAME:-logs}
+  # ---------------Redis------------------
+    - REDIS_HOST=redis-proxy
+    - REDIS_PASSWORD=${REDIS_PASSWORD}
+    - CACHE_REDIS_PORT=6379
+    - SESSION_REDIS_PORT=6380
+    - CELERY_REDIS_PORT=6381
+  # ---------------MinIO------------------
+    - MINIO_PROXY_HOST=minio-proxy
+    - MINIO_USER=root
+    - MINIO_PASSWORD=rootpassword123
+    - MINIO_PUBLIC_MEDIA_BUCKET=media-public
+    - MINIO_PRIVATE_MEDIA_BUCKET=media-private
+  depends_on:
+    redis-proxy:
+      condition: service_healthy
+    proxysql:
+      condition: service_healthy
+    migration:
+      condition: service_completed_successfully
+    minio-init:
+      condition: service_completed_successfully
+  develop:
+    watch:
+      - action: rebuild
+        path: ./backend/Mainland/req.txt
+      - action: rebuild
+        path: ./backend/Mainland/req.dev.txt
+      - action: sync
+        path: ./backend/Mainland
+        target: /home/Mainland
+        initial_sync: true
+        ignore:
+          - "*/__pycache__/*"
+          - "*req*.txt"
+      - action: rebuild
+        path: ./SpineSeg
+        ignore:
+          - "*/node_modules/*"
+
+services:
+  
+  migration:
+    <<: *django-base
+    networks:
+      - spine-segmentation-net
+    command: >
+      bash -ec "
+        echo '-> Running pending Django database migrations...' &&
+        .venv/bin/python3 manage.py migrate --noinput &&
+        echo '-> Ensuring default administrative superuser exists...' &&
+        .venv/bin/python3 manage.py create_superuser_if_not_exists
+      "
+    depends_on:
+      proxysql:
+        condition: service_healthy
+      redis-proxy:
+        condition: service_healthy
+
+  api:
+    <<: *django-base
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/health/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    command: >
+      bash -ec ".venv/bin/uvicorn Mainland.asgi:application --host 0.0.0.0 --port 8080 --reload"
+  
+  api-celery:
+    <<: *django-base
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", ".venv/bin/celery -A Mainland inspect ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command: >
+      bash -ec ".venv/bin/python3 -m celery -A Mainland worker -Q ws,db,segmentation --concurrency=1 --loglevel=info"
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/Mainland/req.txt
+        - action: rebuild
+          path: ./backend/Mainland/req.dev.txt
+        - action: sync+restart
+          path: ./backend/Mainland
+          target: /home/Mainland
+          initial_sync: true
+          ignore:
+            - "*/__pycache__/*"
+            - "*req*.txt"
+  
+  api-cron:
+    <<: *django-base
+    networks: 
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep supercronic || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    command: |
+      bash -ec "
+      echo '-> Compiling settings...'
+      .venv/bin/python3 ./compile-cron.py
+      echo '-> Handing execution schedules over to Supercronic engine...'
+      exec /usr/local/bin/supercronic /tmp/crontab.txt
+      "
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/Mainland/req.txt
+        - action: rebuild
+          path: ./backend/Mainland/req.dev.txt
+        - action: sync+restart
+          path: ./backend/Mainland
+          target: /home/Mainland
+          initial_sync: true
+          ignore:
+            - "*/__pycache__/*"
+            - "*req*.txt"
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./backend/Nginx/Dockerfile
+    networks:
+      - spine-segmentation-net
+    environment:
+      - API_HOST=api
+      - MINIO_PROXY_HOST=minio-proxy
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/api/health/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    develop:
+      watch:
+        - action: rebuild
+          path: ./SpineSeg
+          ignore:
+            - "*/node_modules/*"
+        - action: rebuild
+          path: ./backend/Mainland/static

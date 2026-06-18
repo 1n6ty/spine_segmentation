@@ -4,17 +4,17 @@ Prioritized, ticket-shaped. Each item links to the doc with full detail.
 
 ## P0 — blocking or clinically risky
 
-1. **Backend segmentation/parse utilities deleted from disk.** `backend/Mainland/Dicom/utils/parse.py` and `Dicom/utils/segmentation/*` are unstaged-deleted while still imported by `views/dcmparse.py` and `tasks/segmentation.py`. Both `/api/dcm/parse/` and the WebSocket segmentation route crash as a result. Blocks all real frontend↔backend integration. Backend-side fix, not frontend — but everything else in this list that depends on integration is blocked by it. → [backend-integration.md](backend-integration.md)
+1. ~~Backend segmentation/parse utilities deleted from disk.~~ **Resolved** (backend-side, outside this audit) — `Dicom/utils/parse.py` and `Dicom/utils/segmentation/*` have been restored. `/api/dcm/parse` and the segmentation WebSocket are real, working endpoints now (verified from the caller side — `Dicom/utils/` itself is intentionally not read, see [../../docs/backend-architecture.md](../../docs/backend-architecture.md)). → [backend-integration.md](backend-integration.md)
 
 2. ~~Report page has zero dynamic content.~~ **Done.** The report page is now wired to a real rule-based diagnosis engine (`medical-parameters/diagnosis/`), with a clickable TOC, collapsible regions, a responsive toolbar, and bilingual output. → [diagnostic-pipeline.md](diagnostic-pipeline.md), [clinical-rules-reference.md](clinical-rules-reference.md)
 
-3. **`xraysockets.store.ts` has a broken import.** `import { autoPolygons } from "../study/study.store"` points at a file that doesn't exist anywhere in the repo. Currently silent (dead code, nothing imports this store), but it will break the build the instant the commented-out integration code is re-enabled. → [backend-integration.md](backend-integration.md)
+3. ~~`xraysockets.store.ts` has a broken import.~~ **Done.** Rewritten to take plain callbacks instead of writing into the never-existent `autoPolygons`/`study.store.ts`. → [../../docs/autofill-integration.md](../../docs/autofill-integration.md)
 
-4. **No real authentication.** The `(authenticated)` route guard's redirect logic is fully commented out; the login form has no submit handler. Any visitor reaches PHI-bearing pages today. Should be fixed before any use with real patient data. → [security-privacy.md](security-privacy.md)
+4. ~~No real authentication.~~ **Partially done — re-scoped.** Login/logout are now wired to the backend's real session auth, and the `(authenticated)` route guard redirects client-side if no session cookie is present (necessarily client-side, since this is a static SPA — see [../../docs/doctor-profile.md](../../docs/doctor-profile.md)). **But this only gates the frontend's own routes, not the API.** Every backend endpoint (`Core`, `Dicom`, `DSL`) defaults to DRF's `AllowAny` — none set `permission_classes`, and there's no project-wide override. So PHI-bearing data (e.g. `DicomImage.reference_points` via `/api/dsl/select/`) remains fetchable by anyone who can reach the API directly, login or not. Closing that gap is a backend change (e.g. `permission_classes = [IsAuthenticated]` on the relevant viewsets/consumer) — not attempted here, out of this audit's scope, but now the clearly-identified remaining piece. → [security-privacy.md](security-privacy.md)
 
 ## P1 — significant functional gaps
 
-5. **Zero live backend wiring.** All API calls (`dicomParser.ts`) and the WebSocket hookup (`xraysockets.store.ts`) are commented out. The intended "AI auto-segments, doctor corrects" workflow doesn't happen — every vertebra polygon must be hand-drawn in `edit` today. → [backend-integration.md](backend-integration.md)
+5. ~~Zero live backend wiring.~~ **Done.** The autofill ("magic button") flow — DSL cache-check, upload, segmentation WebSocket, point-order normalization — is wired up and unit-tested (with mocked network calls; no live end-to-end run against a real backend stack in this environment). → [../../docs/autofill-integration.md](../../docs/autofill-integration.md)
 
 6. **PDF/DOCX export not implemented.** The report page's export buttons are present but disabled — generating real downloadable files was explicitly scoped out of the diagnosis-engine work and remains a separate follow-up.
 

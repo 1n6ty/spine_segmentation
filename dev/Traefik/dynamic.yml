@@ -1,0 +1,15 @@
+http:
+  routers:
+    app:
+      rule: "HostRegexp(`.+`)"
+      entryPoints:
+        - websecure
+      tls: {}
+      service: nginx-backend
+
+  services:
+    nginx-backend:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://nginx:80"

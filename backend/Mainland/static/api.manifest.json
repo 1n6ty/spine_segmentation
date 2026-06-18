@@ -4,7 +4,7 @@
         "default_language_code": "en-us",
         "time_zone": "UTC"
     },
-    "supported_languages": [ "en", "ru" ],
+    "supported_languages": [ "en-US", "ru-RU" ],
     "storage": {
         "static_url": "/static/",
         "media_url": "/media/"

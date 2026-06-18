@@ -1,4 +1,4 @@
-from common.schema.v1 import ApiResponse, Issue
+from common.schemas.v1.response import ApiResponse, Issue
 from DSL.datasets.schema import DatasetSpec
 
 from django.conf import settings

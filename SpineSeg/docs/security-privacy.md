@@ -1,6 +1,6 @@
 # Security & privacy
 
-This app handles patient DICOM imagery and demographics (PHI) entirely client-side today, with no backend wired up (see [backend-integration.md](backend-integration.md)). That makes the browser-side storage and access-control story the whole story, for now.
+This app handles patient DICOM imagery and demographics (PHI). The autofill flow now sends DICOM bytes to, and queries results from, a real backend (see [../../docs/autofill-integration.md](../../docs/autofill-integration.md)) — manual-only sessions still keep everything client-side. The browser-side storage story below still applies regardless; the access-control section has been updated to reflect both the new frontend login and a real backend-side gap it surfaced.
 
 ## PHI storage today
 
@@ -15,13 +15,17 @@ Neither storage mechanism encrypts at rest — both are plain browser storage, r
 
 ## Access control
 
-There is currently no real authentication. `(authenticated)/+layout.server.ts`'s session-check redirect is fully commented out and unconditionally returns a hardcoded user. The `login` page is UI-only (no submit handler). **Any visitor can reach `patient`, `edit`, `measure`, and `report` — all of which display PHI — without logging in.** This is the single highest-priority item to fix before any use with real patient data, let alone a clinical pilot.
+**Frontend-side, this is now real**, not a no-op: the `login` page submits to the backend's actual session auth, and `(authenticated)/+layout.svelte` redirects to `/login` client-side if no `sessionid` cookie is present (necessarily client-side — this is a static SPA with no server at request time; see [../../docs/doctor-profile.md](../../docs/doctor-profile.md)).
 
-## Network/transmission (forward-looking)
+**But this is a UX gate, not a security boundary, and most of the gap underneath it is still open.** Reading the backend directly: `REST_FRAMEWORK` has no `DEFAULT_PERMISSION_CLASSES` override, so every endpoint defaults to DRF's `AllowAny` unless a view overrides it — and as of the MinIO media-storage migration, exactly one does (`GET /api/dcm/<sop_uid>/file/`, the new authenticated DICOM-file endpoint — see [../../docs/backend-architecture.md](../../docs/backend-architecture.md)). The segmentation WebSocket is still wrapped in Channels' `AuthMiddlewareStack` without actually checking `is_authenticated` (`common/mixins/v1/ws_consumer.py`), and **`POST /api/dsl/select/` can still be called directly by anyone and will return `DicomImage.reference_points` and other fields without any login at all.** This remains the highest-priority item before any use with real patient data — it's a precisely-located backend change (add real `permission_classes`/`IsAuthenticated` checks to the remaining open endpoints and the WS consumer), and there's now a working example of exactly that pattern to copy. See [../../docs/backend-architecture.md](../../docs/backend-architecture.md) and [../../docs/doctor-profile.md](../../docs/doctor-profile.md) for the full detail.
 
-Once backend integration resumes (see [backend-integration.md](backend-integration.md)), PHI will cross the network for the first time. Two things to confirm before that happens, both backend-side and outside this audit's direct scope but worth flagging:
-- TLS is actually enforced end-to-end (not just configured as an option) for both the HTTP API and the WebSocket.
-- The CSRF token plumbing already built in `core/network/csrf.ts` is actually attached to the re-enabled requests in `dicomParser.ts`.
+## Network/transmission
+
+PHI now does cross the network, for the autofill flow (see [../../docs/autofill-integration.md](../../docs/autofill-integration.md)). Two things worth confirming, both backend/infra-side and outside this audit's direct scope:
+- TLS is actually enforced end-to-end (not just configured as an option) for both the HTTP API and the WebSocket — `SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE` are unconditionally `True` in `settings.py`, so over plain HTTP the session cookie silently never gets set/sent at all (login looks like it succeeds; nothing persists).
+- The access-control gap above (no `IsAuthenticated` anywhere) is closed before this matters for any real patient data.
+
+The CSRF token plumbing in `core/network/csrf.ts` is now actually used — every state-changing request added in this pass (`login`, `logout`, `/api/dcm/parse`, `/api/dsl/select/`) sends `X-CSRFToken` via it.
 
 ## What's already done right
 
@@ -30,7 +34,7 @@ The static `report` page (see [diagnostic-pipeline.md](diagnostic-pipeline.md)) 
 ## Recommendations before any clinical pilot
 
 1. Fix the `FileCache` orphan-on-TTL-expiry bug above.
-2. Implement real authentication and re-enable the `(authenticated)` route guard.
+2. Add real server-side authorization (`permission_classes`) to the backend's `Core`/`Dicom`/`DSL` viewsets and the segmentation WebSocket consumer — frontend login/route-guarding is done, but every API endpoint is currently `AllowAny` regardless.
 3. Define an explicit data-retention policy: how long PHI may live client-side at all, and whether any of it should ever be allowed to outlive the browser session.
 4. Confirm TLS is enforced end-to-end once backend transmission resumes.
 5. Consider encrypting at rest if PHI is going to persist client-side beyond a single working session, given there is no current encryption layer.

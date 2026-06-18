@@ -4,9 +4,12 @@
         "logout": "Logout"
     },
     "login": {
-        "email": "Email",
+        "username": "Username",
         "password": "Password",
-        "submit": "Sign In"
+        "remember_me": "Remember me",
+        "submit": "Sign In",
+        "submitting": "Signing in...",
+        "error": "Invalid username or password"
     },
     "main": {
         "DICOM_upload_card": {
@@ -35,6 +38,7 @@
         "header": "Image editor",
         "zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
         "autofill": "Autofill",
+        "autofill_confirm_overwrite": "This view already has vertebra polygons. Autofill will replace them with AI-generated ones. Continue?",
         "cancel": "Cancel",
         "instructions": {
             "header": "Instructions"
@@ -46,8 +50,11 @@
             "segmentation": {
                 "processing": "Segmentation in process..."
             },
+            "checking": "Checking for existing results...",
+            "uploading": "Uploading image...",
             "saving": "Saving in process...",
-            "done": "Done!"
+            "done": "Done!",
+            "error": "Autofill failed. You can try again."
         }
     },
     "icons_alt": {

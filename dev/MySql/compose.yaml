@@ -1,0 +1,40 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  mysql-init:
+    file: ./init.sh
+
+services:
+  mysql:
+    image: mysql:9.4.0
+    networks:
+      - spine-segmentation-net
+    configs:
+      - source: mysql-init
+        target: /docker-entrypoint-initdb.d/01-init.sh
+    volumes:
+      - mysql-data:/var/lib/mysql/:rw
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_INIT_CHARSET=utf8mb4
+      - MYSQL_COLLATION=utf8mb4_unicode_ci
+      - DEFAULT_DB_NAME=${DEFAULT_DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command: >
+      mysqld
+      --server-id=1
+    restart: always
+
+volumes:
+  mysql-data:
+    external: false
+    name: ${PROJECT_NAME}-mysql-data

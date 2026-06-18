@@ -1,0 +1,23 @@
+api:
+  insecure: true
+
+ping: {}
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: false
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+
+log:
+  level: ERROR

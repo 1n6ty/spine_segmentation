@@ -1,0 +1,43 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  haproxy_cfg:
+    file: ./haproxy.template.cfg
+
+services:
+  redis-proxy:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM haproxy:3.0-alpine
+        USER root
+        RUN apk add --no-cache gettext
+        USER haproxy
+    networks:
+      - spine-segmentation-net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    configs:
+      - source: haproxy_cfg
+        target: /usr/local/etc/haproxy/haproxy.template.cfg
+    command: >
+      sh -c "
+      envsubst '$${REDIS_PASSWORD}' < /usr/local/etc/haproxy/haproxy.template.cfg > /tmp/haproxy.cfg &&
+      exec haproxy -f /tmp/haproxy.cfg
+      "
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8404/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      redis-session:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy

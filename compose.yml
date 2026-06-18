@@ -1,0 +1,24 @@
+services:
+  api:
+    image: ${REGISTRY_URL}/spine-seg-api:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./backend/Mainland/Dockerfile
+      target: production
+      args:
+        USER_ID: 1000
+        GROUP_ID: 1000
+        BUILDKIT_INLINE_CACHE: "1"
+      cache_from:
+        - ${REGISTRY_URL}/spine-seg-api:latest
+
+  nginx:
+    image: ${REGISTRY_URL}/spine-seg-nginx:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./backend/Nginx/Dockerfile
+      target: production
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+      cache_from:
+        - ${REGISTRY_URL}/spine-seg-nginx:latest

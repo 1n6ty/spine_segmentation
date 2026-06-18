@@ -1,5 +1,5 @@
-from common.schema.v1 import ApiResponse, Issue
-from common.viewsets.v1 import StdViewSet
+from common.schemas.v1.response import ApiResponse, Issue
+from common.mixins.v1.viewset import StdViewSet
 
 from rest_framework.decorators import action
 from rest_framework.response import Response

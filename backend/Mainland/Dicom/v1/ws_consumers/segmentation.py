@@ -1,5 +1,5 @@
-from common.schema.v1 import ApiResponse
-from common.ws_consumer import WSConsumer
+from common.schemas.v1.response import ApiResponse
+from common.mixins.v1.ws_consumer import WSConsumer
 
 import json
 

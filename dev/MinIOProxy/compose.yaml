@@ -1,0 +1,27 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  minio_proxy_config:
+    name: minio_proxy_config
+    file: ./nginx.conf
+
+services:
+  minio-proxy:
+    image: nginx:1.31.1-alpine
+    networks:
+      - spine-segmentation-net
+    configs:
+      - source: minio_proxy_config
+        target: /etc/nginx/nginx.conf
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    restart: always

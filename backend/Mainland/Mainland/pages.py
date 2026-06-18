@@ -1,4 +1,4 @@
-from common.schema.v1 import ApiResponse, Issue
+from common.schemas.v1.response import ApiResponse, Issue
 
 from django.http import HttpRequest, JsonResponse, HttpResponse, HttpResponseRedirect, HttpResponseNotFound
 from django.shortcuts import render, redirect

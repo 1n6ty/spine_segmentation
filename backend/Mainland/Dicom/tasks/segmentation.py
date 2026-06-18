@@ -22,7 +22,11 @@ def segment_vertebraes(sop_instance_uid: str):
 
         image_instance = DicomImage.objects.get(sop_instance_uid=sop_instance_uid)
         
-        dcm = pydicom.dcmread(image_instance.dicom_file.path)
+        # FieldFile.path is a local-filesystem-only API — S3Boto3Storage (used for
+        # the private MinIO bucket) doesn't implement it. Read through the file
+        # object instead, which works for any storage backend.
+        with image_instance.dicom_file.open('rb') as dicom_fp:
+            dcm = pydicom.dcmread(dicom_fp)
         pixel_array = dcm.pixel_array.astype(float)
         
         # Applying Rescale Slope/Intercept (standard DICOM procedure)

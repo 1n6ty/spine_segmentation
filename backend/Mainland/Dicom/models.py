@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.core.files.storage import storages
 
 class Patient(models.Model):
     patient_id = models.CharField(max_length=64, primary_key=True, default=uuid.uuid4)
@@ -58,7 +59,7 @@ class DicomImage(models.Model):
     is_signed = models.BooleanField(default=False)
     mm_per_pixel = models.FloatField(default=1.0)
 
-    dicom_file = models.FileField(upload_to='private/dicom_files/', null=True, blank=True)
+    dicom_file = models.FileField(upload_to='private/dicom_files/', storage=storages["private"], null=True, blank=True)
     file_hash = models.CharField(max_length=64, null=True, blank=True)
 
     def __str__(self):

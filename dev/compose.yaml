@@ -1,0 +1,8 @@
+include:
+  - ./MinIO/compose.yaml
+  - ./MinIOProxy/compose.yaml
+  - ./MySql/compose.yaml
+  - ./ProxySql/compose.yaml
+  - ./Redis/compose.yaml
+  - ./RedisProxy/compose.yaml
+  - ./Traefik/compose.yaml
