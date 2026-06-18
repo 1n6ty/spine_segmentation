@@ -1,6 +1,9 @@
 import type { Projection } from '$lib/features/dicom/types';
 import * as M from '$lib/shared/geometry/geometry';
+import type { Point } from '$lib/shared/geometry/geometry.type';
 import type { Vertebrae } from '../types';
+
+const UP: Point = { x: 0, y: -1 };
 
 export const  getSpineParams = (projection: Projection, vertebras: Vertebrae[], mmPerPixel: number) => {
     if (vertebras.length < 24) return {
@@ -12,7 +15,7 @@ export const  getSpineParams = (projection: Projection, vertebras: Vertebrae[], 
 
     const th1 = M.getPolygonCenter(vertebras[17]);
     const l5 = M.getPolygonCenter(vertebras[1]);
-    const angle = Math.atan2(th1.x - l5.x, th1.y - l5.y);
+    const angle = M.getSignedAngle(UP, M.vectorSub(th1, l5));
 
     return {
         name: "overall",

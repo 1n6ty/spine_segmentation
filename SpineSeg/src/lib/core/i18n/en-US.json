@@ -68,7 +68,10 @@
         "header_overall": "Overall Assessment",
         "filter_by": "Filter by Status:",
         "expand": "Expand all",
-        "collapse": "Collapse all"
+        "collapse": "Collapse all",
+        "toc": "Table of contents",
+        "insufficient_annotation": "Annotate all 24 vertebrae (C2-S1) in the editor to generate a diagnosis for this projection.",
+        "disclaimer": "This report is generated automatically from the annotated X-ray markup and is intended for educational and screening purposes only. All findings must be confirmed by a qualified radiologist or orthopedist. This tool does not replace professional medical diagnosis."
     },
     "footer": {
         "p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",

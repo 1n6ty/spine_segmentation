@@ -36,13 +36,24 @@
 
         if (!targetData) return [];
 
+        // Values must be ordered the same way the headers are grouped below (linear columns
+        // first, then angular), using `head`'s own type declarations as the single source of
+        // truth for that order — otherwise a parameter's value lands under the wrong header's
+        // column the moment the type sequence isn't already a contiguous linear-then-angular
+        // run (true for `gaps` and `overall`, not `vertebras`/`segments`).
+        const orderedKeys = [
+            ...Object.entries(head).filter(([, h]) => h.type === "linear").map(([k]) => k),
+            ...Object.entries(head).filter(([, h]) => h.type === "angular").map(([k]) => k)
+        ];
+
         return targetData.map(e => {
-            const roundedValues = Object.values(e.params).map(pv => {
-                if (pv.val === null) return '';
+            const roundedValues = orderedKeys.map(key => {
+                const pv = (e.params as Record<string, { val: number | string | null; type: string }>)[key];
+                if (!pv || pv.val === null) return '';
                 const valStr = typeof pv.val === 'number' ? Number(pv.val.toFixed(2)) : pv.val;
                 return `${valStr} ${$t('units.' + pv.type)}`;
             });
-            
+
             return [e.name, ...roundedValues];
         }).reverse();
     });

@@ -1,6 +1,6 @@
 # SpineSeg
 
-SvelteKit frontend for a vertebra-segmentation and spine-deformity diagnostics tool: upload a spine DICOM X-ray, get (eventually AI-assisted) vertebra outlines, correct them interactively, and view computed geometric/clinical parameters intended to support a doctor's first-pass diagnosis.
+SvelteKit frontend for a vertebra-segmentation and spine-deformity diagnostics tool: upload a spine DICOM X-ray, get (eventually AI-assisted) vertebra outlines, correct them interactively, view computed geometric/clinical parameters, and get a rule-based first-pass text diagnosis intended to support — not replace — a doctor's review.
 
 ## Developing
 
@@ -19,8 +19,8 @@ npm test           # vitest unit + playwright e2e
 
 - [Architecture](docs/architecture.md) — tech stack, routing, state management, local storage, folder layout.
 - [Diagnostic pipeline](docs/diagnostic-pipeline.md) — the 5-screen user journey, file-by-file, and exactly what the medical-parameter calculators compute.
-- [Clinical rules reference](docs/clinical-rules-reference.md) — the threshold tables behind a rule-based "first diagnosis," and how they map onto parameters already computed in code.
+- [Clinical rules reference](docs/clinical-rules-reference.md) — the threshold tables behind the report page's rule-based diagnosis engine, what's implemented vs. deliberately deferred, and how it all maps onto parameters already computed in code.
 - [Backend integration](docs/backend-integration.md) — what the frontend expects from the backend, what currently exists, and why none of it is wired up yet.
 - [Gaps & recommendations](docs/gaps-and-recommendations.md) — prioritized list of what's missing or broken.
 - [Security & privacy](docs/security-privacy.md) — PHI handling concerns given DICOM data lives entirely client-side today.
-- [Testing strategy](docs/testing-strategy.md) — current (near-zero) coverage and where to invest first.
+- [Testing strategy](docs/testing-strategy.md) — current coverage (the diagnosis rule engine now has unit tests; the calculator layer below it still doesn't) and where to invest next.
