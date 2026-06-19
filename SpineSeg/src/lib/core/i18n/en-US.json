@@ -77,7 +77,8 @@
         "expand": "Expand all",
         "collapse": "Collapse all",
         "toc": "Table of contents",
-        "insufficient_annotation": "Annotate all 24 vertebrae (C2-S1) in the editor to generate a diagnosis for this projection.",
+        "no_anomalies": "Physiological shape is not disrupted",
+        "insufficient_annotation": "Annotate at least one full anatomical region (cervical, thoracic, or lumbar) in the editor to generate a diagnosis for this projection.",
         "disclaimer": "This report is generated automatically from the annotated X-ray markup and is intended for educational and screening purposes only. All findings must be confirmed by a qualified radiologist or orthopedist. This tool does not replace professional medical diagnosis."
     },
     "footer": {

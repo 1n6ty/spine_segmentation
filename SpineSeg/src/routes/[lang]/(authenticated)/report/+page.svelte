@@ -16,6 +16,7 @@
 
     let projection = $state<Projection>("side");
     let expandedRegions = $state<Set<string>>(new Set());
+    let expandedItems = $state<Set<string>>(new Set());
 
     const lang = $derived<LocaleKey>($locale === "ru-RU" ? "ru-RU" : "en-US");
     const currentDiagnosis = $derived(projection === "side" ? diagnosis.side : diagnosis.frontal);
@@ -35,12 +36,35 @@
         expandedRegions = next;
     }
 
+    function isItemExpanded(itemKey: string): boolean {
+        return expandedItems.has(itemKey);
+    }
+
+    function toggleItem(itemKey: string) {
+        const next = new Set(expandedItems);
+        if (next.has(itemKey)) next.delete(itemKey);
+        else next.add(itemKey);
+        expandedItems = next;
+    }
+
+    function allItemKeys(): string[] {
+        const keys: string[] = [];
+        for (const region of currentDiagnosis.regions) {
+            for (const row of interleave(region)) {
+                keys.push(row.kind === "vertebra" ? `v-${row.data.id}` : `g-${row.data.id}`);
+            }
+        }
+        return keys;
+    }
+
     function expandAll() {
         expandedRegions = new Set(currentDiagnosis.regions.map((r) => r.id));
+        expandedItems = new Set(allItemKeys());
     }
 
     function collapseAll() {
         expandedRegions = new Set();
+        expandedItems = new Set();
     }
 
     function scrollToId(anchorId: string) {
@@ -52,6 +76,11 @@
     function goToSection(regionId: string, anchorId: string) {
         if (!expandedRegions.has(regionId)) {
             expandedRegions = new Set(expandedRegions).add(regionId);
+        }
+        // anchorId is the region's own id when navigating to the region heading itself
+        // (no matching vertebra/gap item key to also expand in that case).
+        if (anchorId !== regionId && !expandedItems.has(anchorId)) {
+            expandedItems = new Set(expandedItems).add(anchorId);
         }
         scrollToId(anchorId);
     }
@@ -76,12 +105,15 @@
     type RowItem = { kind: "vertebra"; data: VertebraDiagnosis } | { kind: "gap"; data: GapDiagnosis };
 
     function interleave(region: RegionDiagnosis): RowItem[] {
+        // region.vertebras/.gaps are bottom-up (inferior->superior) — that order feeds the
+        // calculators (sign conventions for angles assume it) and must stay untouched there.
+        // Reversed here, display-only, so rows read top-to-bottom (e.g. cervical: C2...C7).
         const rows: RowItem[] = [];
         region.vertebras.forEach((v, i) => {
             rows.push({ kind: "vertebra", data: v });
             if (i < region.gaps.length) rows.push({ kind: "gap", data: region.gaps[i] });
         });
-        return rows;
+        return rows.reverse();
     }
 </script>
 
@@ -180,32 +212,61 @@
                                 </button>
 
                                 {#if isExpanded(region.id)}
-                                    <div class="ml-8 space-y-4 mb-4">
-                                        {#each region.findings as finding (finding.id)}
-                                            <div class="border-l-4 rounded p-3 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
-                                        {/each}
+                                    <div class="ml-8 mb-4">
+                                        <p class="text-sm leading-relaxed mb-3">{ localize(region.narrative) }</p>
+                                        <div class="space-y-2">
+                                            {#if region.findings.length > 0}
+                                                {#each region.findings as finding (finding.id)}
+                                                    <div class="border-l-4 rounded p-3 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
+                                                {/each}
+                                            {:else}
+                                                <div class="border-l-4 rounded p-3 text-sm {severityClasses('normal')}">{ $t('report.no_anomalies') }</div>
+                                            {/if}
+                                        </div>
                                     </div>
-                                    <div class="ml-8 space-y-6">
+                                    <div class="ml-8 space-y-4">
                                         {#each interleave(region) as row}
                                             {#if row.kind === 'vertebra'}
-                                                <div id={`v-${row.data.id}`} class="scroll-mt-20">
-                                                    <h4 class="font-medium mb-2">{ $t('vertebras.head') } { row.data.id }</h4>
-                                                    {#if row.data.findings.length > 0}
-                                                        <div class="ml-6 space-y-2">
-                                                            {#each row.data.findings as finding (finding.id)}
-                                                                <div class="border-l-4 rounded p-2 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
-                                                            {/each}
+                                                {@const itemKey = `v-${row.data.id}`}
+                                                <div id={itemKey} class="scroll-mt-20">
+                                                    <button class="w-full flex items-center gap-2 mb-2 group" onclick={() => toggleItem(itemKey)}>
+                                                        <img src={ downSVG } alt="Expand/Collapse" class="w-3.5 h-3.5 transition-transform {isItemExpanded(itemKey) ? '' : '-rotate-90'}" />
+                                                        <h4 class="font-medium">{ $t('vertebras.head') } { row.data.id }</h4>
+                                                    </button>
+                                                    {#if isItemExpanded(itemKey)}
+                                                        <div class="ml-6">
+                                                            <p class="text-sm leading-relaxed mb-2">{ localize(row.data.narrative) }</p>
+                                                            <div class="space-y-2">
+                                                                {#if row.data.findings.length > 0}
+                                                                    {#each row.data.findings as finding (finding.id)}
+                                                                        <div class="border-l-4 rounded p-2 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
+                                                                    {/each}
+                                                                {:else}
+                                                                    <div class="border-l-4 rounded p-2 text-sm {severityClasses('normal')}">{ $t('report.no_anomalies') }</div>
+                                                                {/if}
+                                                            </div>
                                                         </div>
                                                     {/if}
                                                 </div>
                                             {:else}
-                                                <div id={`g-${row.data.id}`} class="scroll-mt-20">
-                                                    <h4 class="font-medium mb-2">{ $t('gaps.head') } { row.data.id }</h4>
-                                                    {#if row.data.findings.length > 0}
-                                                        <div class="ml-6 space-y-2">
-                                                            {#each row.data.findings as finding (finding.id)}
-                                                                <div class="border-l-4 rounded p-2 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
-                                                            {/each}
+                                                {@const itemKey = `g-${row.data.id}`}
+                                                <div id={itemKey} class="scroll-mt-20">
+                                                    <button class="w-full flex items-center gap-2 mb-2 group" onclick={() => toggleItem(itemKey)}>
+                                                        <img src={ downSVG } alt="Expand/Collapse" class="w-3.5 h-3.5 transition-transform {isItemExpanded(itemKey) ? '' : '-rotate-90'}" />
+                                                        <h4 class="font-medium">{ $t('gaps.head') } { row.data.id }</h4>
+                                                    </button>
+                                                    {#if isItemExpanded(itemKey)}
+                                                        <div class="ml-6">
+                                                            <p class="text-sm leading-relaxed mb-2">{ localize(row.data.narrative) }</p>
+                                                            <div class="space-y-2">
+                                                                {#if row.data.findings.length > 0}
+                                                                    {#each row.data.findings as finding (finding.id)}
+                                                                        <div class="border-l-4 rounded p-2 text-sm {severityClasses(finding.severity)}">{ localize(finding.text) }</div>
+                                                                    {/each}
+                                                                {:else}
+                                                                    <div class="border-l-4 rounded p-2 text-sm {severityClasses('normal')}">{ $t('report.no_anomalies') }</div>
+                                                                {/if}
+                                                            </div>
                                                         </div>
                                                     {/if}
                                                 </div>

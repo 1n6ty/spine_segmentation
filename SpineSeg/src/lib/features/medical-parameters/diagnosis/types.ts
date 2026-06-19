@@ -13,11 +13,16 @@ export type Finding = {
 export type VertebraDiagnosis = {
     id: string;
     findings: Finding[];
+    /** Precomputed human-readable sentence listing every geometric parameter
+     * for this vertebra — see diagnosis/narrative.ts. The verdict is conveyed
+     * separately, by `findings`' own cards. */
+    narrative: Localized;
 };
 
 export type GapDiagnosis = {
     id: string;
     findings: Finding[];
+    narrative: Localized;
 };
 
 export type RegionDiagnosis = {
@@ -27,6 +32,7 @@ export type RegionDiagnosis = {
     vertebras: VertebraDiagnosis[];
     gaps: GapDiagnosis[];
     findings: Finding[];
+    narrative: Localized;
 };
 
 export type ProjectionDiagnosis = {

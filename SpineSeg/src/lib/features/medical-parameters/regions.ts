@@ -1,43 +1,39 @@
 import type { Localized } from "./locale";
 
 /**
- * Fixed anatomical regions, sliced against the vertebra ordering guaranteed by
- * `features/editor/logic/orderer.ts` (orderAndName): polygons[0] is always S1,
- * ascending to polygons[23] = C2, whenever all 24 vertebrae are annotated.
- *
- * Shared between the `measure` page's hardcoded "segments" tab and the
- * `diagnosis` rule engine (`diagnosis/store.svelte.ts`) — anatomical regions
- * aren't a diagnosis-specific concept.
+ * Fixed anatomical regions, matched by vertebra id — not by array position —
+ * so a region becomes available as soon as its own vertebrae are annotated,
+ * independently of the other regions or the full 24-vertebra spine. Same
+ * gating principle as the `measure` page's segments tab
+ * (`medical-parameters/store.svelte.ts`'s `SEGMENT_ID_LISTS`), and the same
+ * id lists (lumbar here is L1-S1, the clinically-standard "global lumbar
+ * lordosis" range that includes the sacrum, matching the measure tab — not
+ * L1-L5).
  */
 export type RegionDef = {
     id: "cervical" | "thoracic" | "lumbar";
-    slice: [number, number];
+    ids: string[];
     label: Localized;
     vertebraeLabel: string;
 };
 
-export const TOTAL_VERTEBRAE = 24;
-
 export const REGIONS: RegionDef[] = [
     {
         id: "cervical",
-        slice: [18, 24],
+        ids: ["C7", "C6", "C5", "C4", "C3", "C2"],
         label: { "ru-RU": "Шейный отдел", "en-US": "Cervical region" },
         vertebraeLabel: "C2-C7"
     },
     {
         id: "thoracic",
-        slice: [6, 18],
+        ids: ["Th12", "Th11", "Th10", "Th9", "Th8", "Th7", "Th6", "Th5", "Th4", "Th3", "Th2", "Th1"],
         label: { "ru-RU": "Грудной отдел", "en-US": "Thoracic region" },
         vertebraeLabel: "Th1-Th12"
     },
     {
         id: "lumbar",
-        slice: [1, 6],
+        ids: ["S1", "L5", "L4", "L3", "L2", "L1"],
         label: { "ru-RU": "Поясничный отдел", "en-US": "Lumbar region" },
-        vertebraeLabel: "L1-L5"
+        vertebraeLabel: "L1-S1"
     }
 ];
-
-/** Index of S1, the sacrum, handled separately from the three regions above (sacral slope, L5-S1 angle). */
-export const S1_INDEX = 0;

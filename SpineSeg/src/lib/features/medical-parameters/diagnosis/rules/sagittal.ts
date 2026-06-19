@@ -38,10 +38,10 @@ export function gradeRegionSagittal(regionId: "cervical" | "thoracic" | "lumbar"
         if (a <= -1) return { id: "", severity: "grade2", text: { "ru-RU": "Лордозирование грудного отдела 2 ст", "en-US": "Thoracic lordosis-flattening grade 2" } };
         if (a <= 39) return { id: "", severity: "grade1", text: { "ru-RU": "Лордозирование грудного отдела 1 ст", "en-US": "Thoracic lordosis-flattening grade 1" } };
         if (a <= 65) return { id: "", severity: "normal", text: { "ru-RU": "Грудной кифоз не изменён", "en-US": "Thoracic kyphosis unchanged" } };
-        if (a <= 70) return { id: "", severity: "grade1", text: { "ru-RU": "Грудной кифоз усилен 1 ст", "en-US": "Thoracic kyphosis increased grade 1" } };
-        if (a <= 80) return { id: "", severity: "grade2", text: { "ru-RU": "Грудной кифоз усилен 2 ст", "en-US": "Thoracic kyphosis increased grade 2" } };
-        if (a <= 90) return { id: "", severity: "grade3", text: { "ru-RU": "Грудной кифоз усилен 3 ст", "en-US": "Thoracic kyphosis increased grade 3" } };
-        return { id: "", severity: "grade4", text: { "ru-RU": "Грудной кифоз усилен 4 ст", "en-US": "Thoracic kyphosis increased grade 4" } };
+        if (a <= 70) return { id: "", severity: "grade1", text: { "ru-RU": "Усиление грудного кифоза 1 ст", "en-US": "Thoracic kyphosis increased grade 1" } };
+        if (a <= 80) return { id: "", severity: "grade2", text: { "ru-RU": "Усиление грудного кифоза 2 ст", "en-US": "Thoracic kyphosis increased grade 2" } };
+        if (a <= 90) return { id: "", severity: "grade3", text: { "ru-RU": "Усиление грудного кифоза 3 ст", "en-US": "Thoracic kyphosis increased grade 3" } };
+        return { id: "", severity: "grade4", text: { "ru-RU": "Усиление грудного кифоза 4 ст", "en-US": "Thoracic kyphosis increased grade 4" } };
     }
     // lumbar
     if (a <= -71) return { id: "", severity: "grade2", text: { "ru-RU": "Гиперлордоз поясничного отдела 2 ст", "en-US": "Lumbar hyperlordosis grade 2" } };
@@ -67,13 +67,13 @@ export function gradeSacralSlope(angleDeg: number): Finding {
 /** "Наклон L5 позвонка к оси Z" (graded variant) — TABLREHTG.docx.pdf row 7, applied to L5's superior-endplate inclination as the available proxy. */
 export function gradeL5Inclination(angleDeg: number): Finding {
     const a = angleDeg;
-    if (a < -3) return { id: "", severity: "grade1", text: { "ru-RU": "Тело L5 позвонка отклонено кзади", "en-US": "L5 vertebral body tilted posteriorly" } };
+    if (a < -3) return { id: "", severity: "grade1", text: { "ru-RU": "Отклонение тела L5 позвонка кзади", "en-US": "L5 vertebral body tilted posteriorly" } };
     if (a <= 18) return { id: "", severity: "normal", text: { "ru-RU": "Наклон L5 позвонка не изменён", "en-US": "L5 inclination unchanged" } };
-    if (a <= 22) return { id: "", severity: "grade1", text: { "ru-RU": "Тело L5 позвонка отклонено кпереди 1 ст", "en-US": "L5 vertebral body tilted anteriorly grade 1" } };
-    if (a <= 36) return { id: "", severity: "grade2", text: { "ru-RU": "Тело L5 позвонка отклонено кпереди 2 ст", "en-US": "L5 vertebral body tilted anteriorly grade 2" } };
-    if (a <= 60) return { id: "", severity: "grade3", text: { "ru-RU": "Тело L5 позвонка отклонено кпереди 3 ст", "en-US": "L5 vertebral body tilted anteriorly grade 3" } };
-    if (a <= 80) return { id: "", severity: "grade4", text: { "ru-RU": "Тело L5 позвонка отклонено кпереди 4 ст", "en-US": "L5 vertebral body tilted anteriorly grade 4" } };
-    return { id: "", severity: "grade5", text: { "ru-RU": "Тело L5 позвонка отклонено кпереди 5 ст", "en-US": "L5 vertebral body tilted anteriorly grade 5" } };
+    if (a <= 22) return { id: "", severity: "grade1", text: { "ru-RU": "Отклонение тела L5 позвонка кпереди 1 ст", "en-US": "L5 vertebral body tilted anteriorly grade 1" } };
+    if (a <= 36) return { id: "", severity: "grade2", text: { "ru-RU": "Отклонение тела L5 позвонка кпереди 2 ст", "en-US": "L5 vertebral body tilted anteriorly grade 2" } };
+    if (a <= 60) return { id: "", severity: "grade3", text: { "ru-RU": "Отклонение тела L5 позвонка кпереди 3 ст", "en-US": "L5 vertebral body tilted anteriorly grade 3" } };
+    if (a <= 80) return { id: "", severity: "grade4", text: { "ru-RU": "Отклонение тела L5 позвонка кпереди 4 ст", "en-US": "L5 vertebral body tilted anteriorly grade 4" } };
+    return { id: "", severity: "grade5", text: { "ru-RU": "Отклонение тела L5 позвонка кпереди 5 ст", "en-US": "L5 vertebral body tilted anteriorly grade 5" } };
 }
 
 /**

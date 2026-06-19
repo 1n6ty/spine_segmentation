@@ -27,7 +27,7 @@
                 <div class="p-4 bg-(--muted) rounded-lg">
                     <p class="text-sm font-medium mb-0.5">{ config.name }</p>
                     <p class="text-lg font-semibold">
-                        { paramData.val } 
+                        { paramData.val.toFixed(2) } 
                         { $t(`units.${config.type}`) }
                     </p>
                 </div>
@@ -59,7 +59,7 @@
                 <div class="p-4 bg-(--muted) rounded-lg">
                     <p class="text-sm font-medium mb-0.5">{ config.name }</p>
                     <p class="text-lg font-semibold">
-                        { paramData.val } 
+                        { paramData.val.toFixed(2) } 
                         { $t(`units.${config.type}`) }
                     </p>
                 </div>
