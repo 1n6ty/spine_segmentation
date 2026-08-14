@@ -24,25 +24,6 @@ server {
 
     resolver 127.0.0.11 ipv6=off valid=5s;
 
-    location /ws/ {
-        set $backend_upstream "http://${API_HOST}:8080";
-        proxy_pass $backend_upstream;
-
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-
-        proxy_redirect off;
-        proxy_set_header Host                $host;
-        proxy_set_header X-Real-IP           $remote_addr;
-        proxy_set_header X-Forwarded-For     $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto   $proxy_x_forwarded_proto;
-        proxy_set_header X-Forwarded-Port    $proxy_x_forwarded_port;
-
-        # Segmentation can take a while on CPU — keep the websocket alive.
-        proxy_read_timeout 3600s;
-    }
-
     location / {
         set $backend_upstream "http://${API_HOST}:8080";
         proxy_pass $backend_upstream;
@@ -59,8 +40,26 @@ server {
         alias /usr/share/nginx/static/;
     }
 
-    location /media/public/ {
-        set $minio_upstream "http://${MINIO_PROXY_HOST}:9000/media-public";
+    location /ws/ {
+        set $backend_upstream "http://${API_HOST}:8080";
+        proxy_pass $backend_upstream;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_redirect off;
+        proxy_set_header Host                $host;
+        proxy_set_header X-Real-IP           $remote_addr;
+        proxy_set_header X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto   $proxy_x_forwarded_proto;
+        proxy_set_header X-Forwarded-Port    $proxy_x_forwarded_port;
+
+        proxy_read_timeout 3600s;
+    }
+
+    location ~ ^/media/public/(?<object_key>.+)$ {
+        set $minio_upstream "http://${MINIO_PROXY_HOST}:9000/media-public/$object_key";
         proxy_pass $minio_upstream;
 
         proxy_redirect off;
@@ -74,9 +73,19 @@ server {
         expires 1d;
     }
 
-    location /internal/media-private/ {
+    location ~ ^/internal/private/(?<object_key>.+)$ {
         internal;
-        set $minio_upstream "http://${MINIO_PROXY_HOST}:9000/media-private";
+        set $minio_upstream "http://${MINIO_PROXY_HOST}:9000/media-private/$object_key";
         proxy_pass $minio_upstream;
+    }
+}
+
+# Internal metrics
+server {
+    listen 8081;
+    server_name localhost;
+
+    location /stub_status {
+        stub_status;
     }
 }

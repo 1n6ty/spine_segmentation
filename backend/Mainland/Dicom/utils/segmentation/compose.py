@@ -1,15 +1,14 @@
 import numpy as np
 from copy import deepcopy
-from ultralytics.models import YOLO
 from logging import getLogger
 
 from Dicom.utils.segmentation.elements import Vertebrae
-from Dicom.utils.segmentation.instances import _two_pass_instances
+from Dicom.utils.segmentation.instances import get_instances
 from Dicom.utils.segmentation.utils import compute_spine_central_path, set_central_path_to_vertebraes, set_vertebraes_names
 from Dicom.utils.segmentation.heal.unstick import unstick
 from Dicom.utils.segmentation.heal.reveal import reveal
 
-_logger = getLogger('Dicom.utils.segmentation.compose')
+_logger = getLogger('segmentation.compose')
 
 def _TSP_solve(central_points: np.ndarray[np.float32], prefix: np.ndarray[np.int32]) -> np.ndarray[np.int32]:
     """Solves TSP problem in gready way.
@@ -62,12 +61,9 @@ def _order_vertebraes_reference_points(vertebraes: list[Vertebrae]) -> list[Vert
 
     return new_vertebraes
 
-def segment_spine_from_S1_to_C2(pixel_array: np.ndarray[np.uint8], model: YOLO, conf: float = 0.5) -> list[Vertebrae]:
-    _logger.debug("Instances extraction...")
-    instances = _two_pass_instances(pixel_array, model, conf_threshold=conf)
-
+def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32]) -> list[Vertebrae]:
     _logger.debug("Starting vertebraes building...")
-    vertebraes: list[Vertebrae] = [Vertebrae(mask_xy=vm["polygon"].astype(np.int32)) for vm in instances]
+    vertebraes: list[Vertebrae] = [Vertebrae(mask_xy=vm) for vm in polygons]
     _logger.debug(f"Built {len(vertebraes)} vertebraes.")
 
     _logger.debug(f"Ordering vertebraes and their reference points...")
@@ -86,3 +82,10 @@ def segment_spine_from_S1_to_C2(pixel_array: np.ndarray[np.uint8], model: YOLO, 
     vertebraes = set_vertebraes_names(vertebraes)
 
     return vertebraes
+
+
+def segment_spine_from_S1_to_C2(pixel_array: np.ndarray, detection_model) -> list[Vertebrae]:
+    _logger.debug("Instances extraction...")
+    instances = get_instances(pixel_array, detection_model=detection_model)[:24]
+
+    return segment_spine_from_S1_to_C2_masks([vm["polygon"].astype(np.int32) for vm in instances])

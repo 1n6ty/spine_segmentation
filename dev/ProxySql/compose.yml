@@ -1,0 +1,39 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  proxysql_base:
+    name: ${RESOURCE_PREFIX:-}proxysql_base
+    file: ./proxysql.template.cnf
+
+services:
+  proxysql:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM proxysql/proxysql:3.0.8
+        RUN apt-get update && \
+            apt-get install -y --no-install-recommends gettext-base && \
+            rm -rf /var/lib/apt/lists/*
+    networks:
+      - spine-segmentation-net
+    configs:
+      - source: proxysql_base
+        target: /etc/proxysql.template.cnf
+    environment:
+      - DB_PASSWORD=${DB_PASSWORD:-spine_segmentation}
+    command: >
+      sh -c "
+      envsubst '$${DB_PASSWORD}' < /etc/proxysql.template.cnf > /etc/proxysql.cnf &&
+      exec proxysql -f -c /etc/proxysql.cnf
+      "
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "6032", "-u", "admin", "-padminpassword"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      mysql:
+        condition: service_healthy

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 from rest_framework.response import Response
-
-from django.http.response import JsonResponse
 from django.conf import settings
-
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Literal, Self, Any, List, Dict
 from datetime import datetime
 
 class Issue(BaseModel):
-    status: Literal["info", "warning", "error"] = "info"
-    code: int = 200
-    message: str = Field(..., max_length=256)
-    field: Optional[str] = Field(None, max_length=256)
-    hint: Optional[str] = Field(None, max_length=256)
+    status: Literal["info", "warning", "error"] = Field(
+        "info", description="Severity of this issue.", examples=["error"],
+    )
+    code: int = Field(200, description="HTTP status code this issue corresponds to.", examples=[400])
+    message: str = Field(..., max_length=256, description="Human-readable issue description.", examples=["This field is required."])
+    field: Optional[str] = Field(None, max_length=256, description="Name of the request field this issue applies to, if any.", examples=["email"])
+    hint: Optional[str] = Field(None, max_length=256, description="Optional suggestion for resolving the issue.", examples=["Check the field format."])
 
     @field_validator("code")
     def validate_http_code(cls, value):
@@ -28,17 +27,21 @@ class Issue(BaseModel):
             raise ValueError("Error status requires HTTP code >= 400")
         return self
 
-class Details(BaseModel):
-    issues: List[Issue] = Field(default_factory=list)
 
 class ApiResponse(BaseModel):
-    version: str = "v1.0"
-    status: Literal["ok", "error"] = "ok"
-    code: int = 200
-    message: Optional[str] = Field(None, max_length=256)
-    data: Optional[Dict[str, Any]] = None
-    details: Optional[Details] = None
-    timestamp: str = Field(default_factory=lambda: datetime.now().strftime(settings.DATETIME_FORMAT))
+    version: str = Field("v1.0", description="API response envelope version.", examples=["v1.0"])
+    status: Literal["ok", "error"] = Field("ok", description="Overall outcome of the request.", examples=["ok"])
+    code: int = Field(200, description="HTTP status code of the response.", examples=[200])
+    message: Optional[str] = Field(None, max_length=256, description="Optional human-readable summary message.", examples=["Request completed successfully."])
+    data: Optional[Dict[str, Any]] = Field(None, description="Endpoint-specific response payload.")
+
+    details: Optional[List[Issue]] = Field(None, description="Per-field or general issues, present on validation errors.")
+
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now().strftime(settings.DATETIME_FORMAT),
+        description="Server time the response was generated.",
+        examples=["26.06.2026T14:30"],
+    )
 
     @field_validator("code")
     def validate_http_code(cls, value):
@@ -53,7 +56,6 @@ class ApiResponse(BaseModel):
         return self
 
     def set_status(self: Self, status: Literal["ok", "error"], code: int = 200) -> Self:
-        """Sets status of the response."""
         self.code = self.validate_http_code(code)
         if status == "error" and code < 400:
             raise ValueError("Error status requires HTTP code >= 400")
@@ -61,17 +63,18 @@ class ApiResponse(BaseModel):
         return self
 
     def merge(self, obj: ApiResponse) -> Self:
-        """Merges `ApiResponse` object with another object's issues and data (error propagation included)."""
+        """Merges another ApiResponse object's data and flattened issues."""
         if obj.data is not None:
             if self.data is None:
                 self.data = obj.data.copy()
             else:
                 self.data.update(obj.data)
-        if obj.details is not None and obj.details.issues:
+
+        if obj.details:
             if self.details is None:
-                self.details = Details(issues=obj.details.issues.copy())
+                self.details = obj.details.copy()
             else:
-                self.details.issues.extend(obj.details.issues)
+                self.details.extend(obj.details)
 
         if obj.status == "error":
             self.status = "error"
@@ -82,29 +85,25 @@ class ApiResponse(BaseModel):
         return self
 
     def set_message(self: Self, message: str) -> Self:
-        """Sets message in the response."""
         self.message = message
         return self
 
     def update_data(self: Self, d: dict[str, Any]) -> Self:
-        """Updates data in the response."""
         if self.data is None:
             self.data = dict()
-
         self.data.update(d)
         return self
 
     def add_issue(self: Self, issue: Issue) -> Self:
-        """Adds an issue to the response."""
+        """Appends an issue directly to the flat array list."""
         if self.details is None:
-            self.details = Details()
+            self.details = []
 
-        self.details.issues.append(issue)
+        self.details.append(issue)
         return self
 
     @property
     def drf_response(self: Self) -> Response:
-        """Returns `rest_framework.response.Response` object."""
         return Response(
             data=self.model_dump(exclude={"code"}, exclude_none=True),
             status=self.code
@@ -112,18 +111,8 @@ class ApiResponse(BaseModel):
 
     @property
     def dict_response(self: Self) -> dict[str, Any]:
-        """Returns `dict` object."""
         return self.model_dump(exclude={"code"}, exclude_none=True)
 
-    @property
-    def json_response(self: Self) -> JsonResponse:
-        """Returns `django.http.response.JsonResponse` object."""
-        return JsonResponse(
-            data=self.model_dump(exclude={"code"}, exclude_none=True),
-            status=self.code
-        )
 
-class ApiResponse_Exception(Exception):
-    def __init__(self, response: ApiResponse) -> None:
-        self.response = response
-        super().__init__(response)
+class OkResponse(ApiResponse):
+    status: Literal["ok"] = Field("ok", description="Overall outcome of the request.", examples=["ok"])

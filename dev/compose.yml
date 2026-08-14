@@ -1,0 +1,10 @@
+include:
+  - ./ElasticSearch/compose.yml
+  - ./ElasticSearchProxy/compose.yml
+  - ./MinIO/compose.yml
+  - ./MinIOProxy/compose.yml
+  - ./MySql/compose.yml
+  - ./ProxySql/compose.yml
+  - ./Redis/compose.yml
+  - ./RedisProxy/compose.yml
+  - ./Traefik/compose.yml

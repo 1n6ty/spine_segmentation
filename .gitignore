@@ -1,8 +1,14 @@
-.venv
-*__pycache__*
+.env
+/.playwright-mcp
+/docs/superpowers
+.vscode
+.factory/*
+.claude/*
+
+# Local browser/runtime artifacts
+/frontend/.playwright-mcp/
+/frontend/purchases-runtime-*.png
+/purchases-*.png
+/purchase-card.svg
 
 Data/*
-weights*
-*.xlsx
-.env
-.vscode

@@ -1,0 +1,20 @@
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Virtual environments
+.venv/
+backend/Mainland/.venv/
+
+# Node dependencies
+frontend/node_modules/
+
+# Infrastructure / dev tooling (not part of any app build)
+dev/
+.git/
+.claude/
+.gitignore
+*.md
+.env
+.env.*

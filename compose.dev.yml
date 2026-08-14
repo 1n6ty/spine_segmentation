@@ -1,8 +1,9 @@
 include:
-  - ./dev/compose.yaml
+  - ./dev/compose.yml
 
 networks:
   spine-segmentation-net:
+    name: ${NETWORK_NAME:-spine-segmentation-net}
     external: true
 
 x-django-base: &django-base
@@ -20,33 +21,33 @@ x-django-base: &django-base
   # ----------------Admin-Panel-----------
     - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
     - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin}
-    - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@mail.com}
+    - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@galaktek.com}
   #-----------------DataBase--------------
     - PROXYSQL_HOST=proxysql
-    - DEFAULT_DB_NAME=${DEFAULT_DB_NAME:-db}
-    - DB_USER=${DB_USER:-mainland_user}
-    - DB_PASSWORD=${DB_PASSWORD:-mainland}
-    - LOGS_DB_NAME=${LOGS_DB_NAME:-logs}
+    - DB_PASSWORD=${DB_PASSWORD:-spine_segmentation}
   # ---------------Redis------------------
     - REDIS_HOST=redis-proxy
     - REDIS_PASSWORD=${REDIS_PASSWORD}
-    - CACHE_REDIS_PORT=6379
-    - SESSION_REDIS_PORT=6380
-    - CELERY_REDIS_PORT=6381
+  # ---------------ElasticSearch----------
+    - ES_PROXY_HOST=es-proxy
+    - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
   # ---------------MinIO------------------
     - MINIO_PROXY_HOST=minio-proxy
-    - MINIO_USER=root
-    - MINIO_PASSWORD=rootpassword123
-    - MINIO_PUBLIC_MEDIA_BUCKET=media-public
-    - MINIO_PRIVATE_MEDIA_BUCKET=media-private
+    - MINIO_PASSWORD=${MINIO_PASSWORD}
   depends_on:
     redis-proxy:
       condition: service_healthy
     proxysql:
       condition: service_healthy
+    es-proxy:
+      condition: service_healthy
+    minio-proxy:
+      condition: service_healthy
     migration:
       condition: service_completed_successfully
     minio-init:
+      condition: service_completed_successfully
+    es-init:
       condition: service_completed_successfully
   develop:
     watch:
@@ -62,7 +63,7 @@ x-django-base: &django-base
           - "*/__pycache__/*"
           - "*req*.txt"
       - action: rebuild
-        path: ./SpineSeg
+        path: ./frontend
         ignore:
           - "*/node_modules/*"
 
@@ -77,7 +78,7 @@ services:
         echo '-> Running pending Django database migrations...' &&
         .venv/bin/python3 manage.py migrate --noinput &&
         echo '-> Ensuring default administrative superuser exists...' &&
-        .venv/bin/python3 manage.py create_superuser_if_not_exists
+        .venv/bin/python3 manage.py init_spine_segmentation
       "
     depends_on:
       proxysql:
@@ -95,9 +96,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # An unset override keeps hot reload for normal development. test-e2e
+    # explicitly sets it to an empty string for a stable, restart-free API.
     command: >
-      bash -ec ".venv/bin/uvicorn Mainland.asgi:application --host 0.0.0.0 --port 8080 --reload"
-  
+      bash -ec ".venv/bin/uvicorn Mainland.asgi:application --host 0.0.0.0 --port 8080 ${UVICORN_RELOAD_ARG---reload}"
+
   api-celery:
     <<: *django-base
     networks:
@@ -109,7 +112,7 @@ services:
       retries: 3
       start_period: 30s
     command: >
-      bash -ec ".venv/bin/python3 -m celery -A Mainland worker -Q ws,db,segmentation --concurrency=1 --loglevel=info"
+      bash -ec ".venv/bin/python3 -m celery -A Mainland worker -Q ws,db --concurrency=1 --max-tasks-per-child=200 --loglevel=info"
     develop:
       watch:
         - action: rebuild
@@ -124,23 +127,18 @@ services:
             - "*/__pycache__/*"
             - "*req*.txt"
   
-  api-cron:
+  api-celery-beat:
     <<: *django-base
-    networks: 
+    networks:
       - spine-segmentation-net
     healthcheck:
-      test: ["CMD-SHELL", "pgrep supercronic || exit 1"]
+      test: ["CMD-SHELL", ".venv/bin/celery -A Mainland inspect ping || exit 1"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
-    command: |
-      bash -ec "
-      echo '-> Compiling settings...'
-      .venv/bin/python3 ./compile-cron.py
-      echo '-> Handing execution schedules over to Supercronic engine...'
-      exec /usr/local/bin/supercronic /tmp/crontab.txt
-      "
+      start_period: 30s
+    command: >
+      bash -ec ".venv/bin/python3 -m celery -A Mainland beat -l info -S Mainland.beat_scheduler:CloseConnectionsScheduler"
     develop:
       watch:
         - action: rebuild
@@ -168,7 +166,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/api/health/ || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health/ || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 3
@@ -176,7 +174,7 @@ services:
     develop:
       watch:
         - action: rebuild
-          path: ./SpineSeg
+          path: ./frontend
           ignore:
             - "*/node_modules/*"
         - action: rebuild

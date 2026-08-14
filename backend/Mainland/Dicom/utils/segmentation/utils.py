@@ -9,7 +9,7 @@ from Dicom.utils.segmentation.interpolation.path import CentralPath
 if TYPE_CHECKING:
     from Dicom.utils.segmentation.elements import Vertebrae
 
-_logger = getLogger('Dicom.utils.segmentation.utils')
+_logger = getLogger('segmentation.utils')
 
 _NAMES = ['S1', 'L5', 'L4', 'L3', 'L2', 'L1', 'Th12', 'Th11', 'Th10', 'Th9', 'Th8', 'Th7', 'Th6', 'Th5', 'Th4', 'Th3', 'Th2', 'Th1', 'C7', 'C6', 'C5', 'C4', 'C3', 'C2']
 
@@ -53,7 +53,8 @@ def compute_spine_central_path(
 def set_vertebraes_names(vertebraes: list[Vertebrae]) -> None:
     new_vertebraes = deepcopy(vertebraes)
     for i, v in enumerate(new_vertebraes):
-        v.set_name(_NAMES[i])
+        if i < len(_NAMES):
+            v.set_name(_NAMES[i])
     
     return new_vertebraes
 

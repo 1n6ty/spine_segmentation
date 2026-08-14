@@ -1,0 +1,167 @@
+{
+	"parameterNames": {
+		"side": {
+			"vertebrae": {
+				"p1": "Sagittal size of the superior endplate",
+				"p2": "Sagittal size of the inferior endplate",
+				"p3": "Vertical size of the vertebral body along the anterior contour",
+				"p4": "Vertical size of the vertebral body along the posterior contour",
+				"p5": "Vertebral body wedging angle",
+				"p6": "Inclination angle of the anterior contour of the vertebral body to the Z axis",
+				"p7": "Inclination angle of the superior endplate of the vertebral body to the Z axis",
+				"p8": "Inclination angle of the inferior endplate of the vertebral body to the Z axis",
+				"p9": "Inclination angle of the S1 vertebra endplate to the X axis"
+			},
+			"gaps": {
+				"p1": "Intervertebral angle",
+				"p2": "Anterior disc height",
+				"p3": "Posterior disc height",
+				"p4": "Disc wedging angle",
+				"p5": "Linear displacement of the upper vertebra in the disc plane",
+				"p6": "Angular displacement of the upper vertebra in the disc plane",
+				"p7": "Angle between L5 anterior contour and S1 endplate"
+			},
+			"segments": {
+				"p1": "Arc radius",
+				"p2": "Arc chord length",
+				"p3": "Arc central angle",
+				"p4": "Arc chord inclination angle"
+			},
+			"overall": {
+				"p1": "Th1-L5 trunk axis inclination angle",
+				"p2": "Th1-L5 trunk axis length",
+				"p3": "GCoM projection (General Center of Mass)"
+			}
+		},
+		"frontal": {
+			"vertebrae": {
+				"p1": "Frontal size of the superior endplate",
+				"p2": "Frontal size of the inferior endplate",
+				"p3": "Vertebral body height along the right contour",
+				"p4": "Vertebral body height along the left contour",
+				"p5": "Vertebral body height in the center",
+				"p6": "Frontal wedging angle of the vertebral body",
+				"p7": "Inclination angle of the vertebral central line to the Z axis",
+				"p8": "Inclination angle of the superior endplate of the vertebral body to the Z axis",
+				"p9": "Inclination angle of the inferior endplate of the vertebral body to the Z axis"
+			},
+			"gaps": {
+				"p1": "Intervertebral angle",
+				"p2": "Right disc height",
+				"p3": "Left disc height",
+				"p4": "Disc wedging angle",
+				"p5": "Linear displacement of the upper vertebra in the disc plane",
+				"p6": "Angular displacement of the upper vertebra in the disc plane",
+				"p7": "Angle between L5 anterior contour and S1 endplate"
+			},
+			"segments": {
+				"p1": "Arc radius",
+				"p2": "Arc chord length",
+				"p3": "Arc central angle",
+				"p4": "Arc chord inclination angle"
+			},
+			"overall": {
+				"p1": "Th1-L5 trunk axis inclination angle",
+				"p2": "Th1-L5 trunk axis length",
+				"p3": "GCoM projection (General Center of Mass)"
+			}
+		}
+	},
+	"regions": {
+		"cervical": "Cervical region",
+		"thoracic": "Thoracic region",
+		"lumbar": "Lumbar region"
+	},
+	"narrative": {
+		"vertebraLabel": "Vertebra {id}",
+		"gapLabel": "Disc {id}",
+		"clause": "{label} is {value}{unit}",
+		"sentence": "{identity}: {clauses}.",
+		"labeledText": "{label}: {text}",
+		"regionIdentity": "Segment from {start} to {end}",
+		"noFindings": "No reliable signs of spinal shape/orientation abnormality detected"
+	},
+	"rules": {
+		"sagittal": {
+			"regional": {
+				"cervical": {
+					"lordosisGrade2": "Cervical lordosis-flattening grade 2",
+					"lordosisGrade1": "Cervical lordosis-flattening grade 1",
+					"normal": "Cervical lordosis unchanged",
+					"kyphosisGrade1": "Cervical kyphotic deformity grade 1",
+					"kyphosisGrade2": "Cervical kyphotic deformity grade 2",
+					"kyphosisGrade3": "Cervical kyphotic deformity grade 3",
+					"kyphosisGrade4": "Cervical kyphotic deformity grade 4"
+				},
+				"thoracic": {
+					"lordosisGrade2": "Thoracic lordosis-flattening grade 2",
+					"lordosisGrade1": "Thoracic lordosis-flattening grade 1",
+					"normal": "Thoracic kyphosis unchanged",
+					"kyphosisGrade1": "Thoracic kyphosis increased grade 1",
+					"kyphosisGrade2": "Thoracic kyphosis increased grade 2",
+					"kyphosisGrade3": "Thoracic kyphosis increased grade 3",
+					"kyphosisGrade4": "Thoracic kyphosis increased grade 4"
+				},
+				"lumbar": {
+					"lordosisGrade2": "Lumbar hyperlordosis grade 2",
+					"lordosisGrade1": "Lumbar hyperlordosis grade 1",
+					"normal": "Lumbar lordosis unchanged",
+					"kyphosisGrade1": "Lumbar kyphotic deformity grade 1",
+					"kyphosisGrade2": "Lumbar kyphotic deformity grade 2",
+					"kyphosisGrade3": "Lumbar kyphotic deformity grade 3",
+					"kyphosisGrade4": "Lumbar kyphotic deformity grade 4"
+				}
+			},
+			"sacralSlope": {
+				"towardVertical": "Sacral position tends toward vertical",
+				"towardHorizontal": "Sacral position tends toward horizontal",
+				"normal": "Sacral inclination to the Z axis unchanged"
+			},
+			"l5Inclination": {
+				"posterior": "L5 vertebral body tilted posteriorly",
+				"normal": "L5 inclination unchanged",
+				"anteriorGrade1": "L5 vertebral body tilted anteriorly grade 1",
+				"anteriorGrade2": "L5 vertebral body tilted anteriorly grade 2",
+				"anteriorGrade3": "L5 vertebral body tilted anteriorly grade 3",
+				"anteriorGrade4": "L5 vertebral body tilted anteriorly grade 4",
+				"anteriorGrade5": "L5 vertebral body tilted anteriorly grade 5"
+			},
+			"l5Spondylolisthesis": {
+				"normal": "No signs of L5 spondylolisthesis",
+				"grade1": "L5 spondylolisthesis grade 1",
+				"grade2": "L5 spondylolisthesis grade 2",
+				"grade3": "L5 spondylolisthesis grade 3",
+				"grade4": "L5 spondylolisthesis grade 4-5 / spondyloptosis"
+			},
+			"scheuermann": "Scheuermann's disease grade {grade}",
+			"vertebralFracture": "Possible vertebral body fracture (wedging angle {angle}°)"
+		},
+		"frontal": {
+			"side": {
+				"left": "left-sided",
+				"right": "right-sided"
+			},
+			"direction": {
+				"left": "to the left",
+				"right": "to the right"
+			},
+			"regional": {
+				"normal": "Frontal-plane shape of the region unchanged",
+				"scoliosis": "Scoliotic deformity ({side}) Chaklin grade {grade}, central angle {angle}°"
+			},
+			"wedging": {
+				"normal": "No vertebral body wedging detected",
+				"right": "Vertebral body wedge-deformed, base right, angle {angle}°",
+				"left": "Vertebral body wedge-deformed, base left, angle {angle}°"
+			},
+			"lateralDisplacement": {
+				"normal": "No lateral vertebral body displacement detected",
+				"displaced": "Lateral vertebral displacement {mm}mm {direction}"
+			},
+			"gcom": {
+				"normal": "GCoM position within normal range, {mm}mm",
+				"shifted": "GCoM position significantly shifted {direction}, {mm}mm"
+			}
+		}
+	}
+}

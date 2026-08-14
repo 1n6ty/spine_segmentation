@@ -1,16 +1,15 @@
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {name} | {message}',
-            'style': '{'
+    "formatters": {
+        "json": {
+            "()": "common.utils.logging.JsonFormatter",
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "verbose"
+            "formatter": "json",
         },
     },
     "root": {

@@ -1,6 +1,6 @@
 services:
   api:
-    image: ${REGISTRY_URL}/spine-seg-api:${IMAGE_TAG:-latest}
+    image: ${REGISTRY_URL}/spine_segmentation-api:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./backend/Mainland/Dockerfile
@@ -10,10 +10,10 @@ services:
         GROUP_ID: 1000
         BUILDKIT_INLINE_CACHE: "1"
       cache_from:
-        - ${REGISTRY_URL}/spine-seg-api:latest
+        - ${REGISTRY_URL}/spine_segmentation-api:${CACHE_TAG:-latest}
 
   nginx:
-    image: ${REGISTRY_URL}/spine-seg-nginx:${IMAGE_TAG:-latest}
+    image: ${REGISTRY_URL}/spine_segmentation-nginx:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ./backend/Nginx/Dockerfile
@@ -21,4 +21,4 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: "1"
       cache_from:
-        - ${REGISTRY_URL}/spine-seg-nginx:latest
+        - ${REGISTRY_URL}/spine_segmentation-nginx:${CACHE_TAG:-latest}

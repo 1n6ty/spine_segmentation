@@ -1,6 +1,6 @@
 import pydicom, numpy as np
+from pydicom.pixels import apply_voi_lut
 from celery import shared_task
-from ultralytics.models import YOLO
 from asgiref.sync import async_to_sync
 from logging import getLogger
 _logger = getLogger('Dicom.tasks.segmentation')
@@ -8,67 +8,60 @@ _logger = getLogger('Dicom.tasks.segmentation')
 from django.conf import settings
 from channels.layers import get_channel_layer
 
+from Dicom.utils.constants import SEGMENTATION_GROUP, SEGMENTATION_MODEL_WEIGHTS, SEGMENTATION_STATUS_WIRE
 from Dicom.utils.segmentation.compose import segment_spine_from_S1_to_C2
 
-SAGITTAL_SPINE_MODEL = YOLO(settings.BASE_DIR / 'Dicom/tasks/weights/yolo26m-seg-sag.pt')
-FRONTAL_SPINE_MODEL = YOLO(settings.BASE_DIR / 'Dicom/tasks/weights/yolo26m-seg-fro.pt')
+_models: dict = {}
 
-@shared_task(queue='segmentation', ignore_result=True)
+def _get_model(projection: str):
+    if projection not in _models:
+        from sahi import AutoDetectionModel
+        path = SEGMENTATION_MODEL_WEIGHTS.get(projection, SEGMENTATION_MODEL_WEIGHTS["frontal"])
+        _models[projection] = AutoDetectionModel.from_pretrained(
+            model_type="ultralytics",
+            model_path=str(settings.BASE_DIR / path),
+            confidence_threshold=0.3,
+            device="cpu",
+        )
+    return _models[projection]
+
+def _advance_status(channel_layer, image_instance, slug, ref_points=None):
+    """Persists the DicomImage's segmentation_status (by SegmentationStatus.slug) and
+    broadcasts the matching wire status to the Channels group, in that order — the DB
+    write always lands before any listener can observe the event, so a client that
+    connects mid-broadcast still sees consistent state on its next DB read."""
+    from Dicom.models import SegmentationStatus
+    image_instance.segmentation_status = SegmentationStatus.objects.get(slug=slug)
+    image_instance.save(update_fields=['segmentation_status'])
+    async_to_sync(channel_layer.group_send)(
+        SEGMENTATION_GROUP.format(image_instance.sop_instance_uid),
+        {"type": "from_task_event", "data": {"status": SEGMENTATION_STATUS_WIRE[slug], "ref_points": ref_points}}
+    )
+
+@shared_task(queue='db', ignore_result=True)
 def segment_vertebraes(sop_instance_uid: str):
     from Dicom.models import DicomImage
 
-    try:
-        channel_layer = get_channel_layer()
+    channel_layer = get_channel_layer()
 
+    try:
         image_instance = DicomImage.objects.get(sop_instance_uid=sop_instance_uid)
-        
+
+        _advance_status(channel_layer, image_instance, 'processing')
         # FieldFile.path is a local-filesystem-only API — S3Boto3Storage (used for
         # the private MinIO bucket) doesn't implement it. Read through the file
         # object instead, which works for any storage backend.
-        with image_instance.dicom_file.open('rb') as dicom_fp:
+        with image_instance.xray_file.file.open('rb') as dicom_fp:
             dcm = pydicom.dcmread(dicom_fp)
-        pixel_array = dcm.pixel_array.astype(float)
-        
-        # Applying Rescale Slope/Intercept (standard DICOM procedure)
-        slope = float(getattr(dcm, 'RescaleSlope', 1))
-        intercept = float(getattr(dcm, 'RescaleIntercept', 0))
-        pixel_array = pixel_array * slope + intercept
+            pixel_array = apply_voi_lut(dcm.pixel_array, dcm).astype(np.float32)
 
-        # IMPROVEMENT: Use Windowing instead of simple Min-Max
-        window_center = getattr(dcm, 'WindowCenter', None)
-        window_width = getattr(dcm, 'WindowWidth', None)
-
-        if window_center is not None and window_width is not None:
-            # Handle cases where window tags are lists
-            if isinstance(window_center, pydicom.multival.MultiValue):
-                window_center = window_center[0]
-            if isinstance(window_width, pydicom.multival.MultiValue):
-                window_width = window_width[0]
-            
-            img_min = window_center - window_width // 2
-            img_max = window_center + window_width // 2
-            uint8_array = np.clip(pixel_array, img_min, img_max)
-            uint8_array = ((uint8_array - img_min) / window_width * 255).astype(np.uint8)
-        else:
-            # Fallback to Min-Max if no window info exists
-            arr_min, arr_max = pixel_array.min(), pixel_array.max()
-            uint8_array = (((pixel_array - arr_min) / (arr_max - arr_min)) * 255).astype(np.uint8)
-
-        async_to_sync(channel_layer.group_send)(
-            f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "segmentation.processing", "ref_points": None}}
-        )
         # 3. Run the YOLO segmentation
         vertebraes_list = segment_spine_from_S1_to_C2(
-            pixel_array=uint8_array, 
-            model=SAGITTAL_SPINE_MODEL if image_instance.projection == "sagittal" else FRONTAL_SPINE_MODEL, 
-            conf=0.5
+            pixel_array=pixel_array,
+            detection_model=_get_model(image_instance.projection.slug if image_instance.projection else "frontal")
         )
-        
-        async_to_sync(channel_layer.group_send)(
-            f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "saving", "ref_points": None}}
-        )
+
+        _advance_status(channel_layer, image_instance, 'saving')
 
         parsed_vertebraes = {"vertebraes": []}
         for v in vertebraes_list:
@@ -82,13 +75,17 @@ def segment_vertebraes(sop_instance_uid: str):
         image_instance.reference_points = parsed_vertebraes
         image_instance.save(update_fields=['reference_points'])
 
-        async_to_sync(channel_layer.group_send)(
-            f"Dicom.segment.{sop_instance_uid}",
-            {"type": "from_task_event", "data": {"status": "done", "ref_points": parsed_vertebraes}}
-        )
+        _advance_status(channel_layer, image_instance, 'done', ref_points=parsed_vertebraes)
 
     except DicomImage.DoesNotExist:
         _logger.error(f"Image with UID {sop_instance_uid} not found in DB.")
     except Exception as e:
         _logger.exception(f"Failed to segment {sop_instance_uid}")
+        try:
+            image_instance = DicomImage.objects.get(sop_instance_uid=sop_instance_uid)
+            image_instance.segmentation_error = str(e)
+            image_instance.save(update_fields=['segmentation_error'])
+            _advance_status(channel_layer, image_instance, 'error')
+        except DicomImage.DoesNotExist:
+            pass
         raise e

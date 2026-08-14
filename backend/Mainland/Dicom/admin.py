@@ -1,3 +1,5 @@
 from django.contrib import admin
 
-# Register your models here.
+from Dicom.models import DicomFile
+
+admin.site.register(DicomFile)

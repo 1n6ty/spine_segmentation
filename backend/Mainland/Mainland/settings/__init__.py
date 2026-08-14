@@ -6,6 +6,8 @@ env = os.getenv('DJANGO_ENV', 'prod')
 if env == 'prod':
     from .prod import *
 elif env == 'test':
-    from .test import *
+    from .test_mocked import *
+elif env == 'test_docker':
+    from .test_docker import *
 else:
     from .dev import *

@@ -34,6 +34,8 @@ class Vertebrae:
         """
         super().__init__()
 
+        self.name = ''
+
         if not (mask_xy is None):
             self.mask_xy: np.ndarray[np.int32] = mask_xy
 

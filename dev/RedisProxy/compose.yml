@@ -1,0 +1,34 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  redis_haproxy_cfg:
+    file: ./haproxy.cfg
+
+services:
+  redis-proxy:
+    image: haproxy:3.0-alpine
+    networks:
+      - spine-segmentation-net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    configs:
+      - source: redis_haproxy_cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8404/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      redis-session:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy

@@ -1,5 +1,6 @@
-from Dicom.ws_urls import websocket_urlpatterns as dicom_wb_patterns
+from django.urls import re_path
+from channels.routing import URLRouter
 
 websocket_urlpatterns = [
-    *dicom_wb_patterns,
+    
 ]

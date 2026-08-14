@@ -1,5 +1,5 @@
 from common.schemas.v1.response import ApiResponse
-from common.mixins.v1.viewset import StdViewSet
+from common.mixins.v1.viewset import StdViewSetMixin
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,7 +7,8 @@ from rest_framework.response import Response
 from django.http import HttpRequest
 from drf_spectacular.utils import extend_schema
 
-class HealthViewSet(StdViewSet):
+@extend_schema(tags=['Health Management'])
+class HealthViewSet(StdViewSetMixin):
 
     @extend_schema(
         summary="Health Check",

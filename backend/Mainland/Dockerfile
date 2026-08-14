@@ -1,90 +1,115 @@
 # ========================================================
-# Stage 1: Base (Environment setup)
+# Stage 1: Runtime base — only packages the running container needs
 # ========================================================
+# Debian slim, not Alpine: PyTorch (needed transitively via sahi/ultralytics
+# for the segmentation model) publishes no musllinux wheels at all, so it
+# cannot be installed on Alpine's musl libc under any version pin.
 FROM python:3.13-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-ARG USER_ID
-ARG GROUP_ID
+ARG USER_ID=1000
+ARG GROUP_ID=1000
 
 WORKDIR /home/Mainland
 
-# Supercronic runs CRONJOBS without needing an OS cron daemon/crontab binary
-# (neither is installed in this image) — see compile-cron.py and the
-# mainland-cron service in compose.yaml.
-ARG SUPERCRONIC_VERSION=v0.2.33
-
-# torch/torchvision/ultralytics (req.txt) ship no musllinux wheels, so this
-# stage can't be Alpine — glibc is required. libgl1/libglib2.0-0/libsm6/
-# libxext6/libxrender1 are runtime libs opencv-python-headless dynamically
-# links against despite being "headless" (confirmed via the actual
-# ImportError: libGL.so.1: cannot open shared object file).
+# libglib2.0-0/libsm6/libxext6/libxrender1/libgl1/libxcb1: opencv-python-headless
+# still links against these at the ELF level despite being the "headless"
+# variant -- Debian slim's minimal base doesn't ship them, so cv2 fails to
+# import (ImportError: libxcb.so.1) without them, and Dicom/tasks/segmentation.py's
+# module-level `import cv2` chain gets pulled in by Django's own URL/system
+# checks on every management command, not just at actual runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash curl libmagic1 default-libmysqlclient-dev libmariadb-dev pkg-config \
-        build-essential default-mysql-client redis-tools \
-        libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
+        bash curl default-mysql-client libmariadb3 \
+        libglib2.0-0 libsm6 libxext6 libxrender1 libgl1 libxcb1 \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL -o /usr/local/bin/supercronic \
-        "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64" \
-    && chmod +x /usr/local/bin/supercronic \
-    && groupadd -g ${GROUP_ID} Mainland && useradd -u ${USER_ID} -g Mainland -M -s /usr/sbin/nologin Mainland
+    && groupadd -g ${GROUP_ID} Mainland \
+    && useradd -M -s /usr/sbin/nologin -u ${USER_ID} -g Mainland Mainland \
+    # WORKDIR (above) creates /home/Mainland as root, before this user exists --
+    # COPY --chown in later stages only chowns what it copies IN, not this
+    # pre-existing directory itself, so without this the Mainland user can't
+    # create new files directly in the workdir root (e.g. coverage's .coverage
+    # SQLite file), only inside the specific chowned subdirectories.
+    && chown Mainland:Mainland /home/Mainland
 
 # ========================================================
-# Stage 2: Frontend Builder (Compile UI SpineSeg)
+# Stage 2: Frontend Builder (Compile UI Panel)
 # ========================================================
-FROM node:26-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
-WORKDIR /build
+WORKDIR /build/frontend
 
-COPY ./SpineSeg/package.json ./SpineSeg/package.json
-RUN cd SpineSeg && npm install
+COPY ./frontend/package.json ./frontend/package-lock.json ./
+RUN npm ci
 
-COPY ./SpineSeg ./SpineSeg
+COPY ./frontend .
 
-RUN cd SpineSeg && npm run build
+RUN npm run build
 
 # ========================================================
 # Stage 3: Builder (Install Python Dependencies)
+# Build tools are installed here and never reach the runtime stages.
 # ========================================================
 FROM base AS builder
 
-COPY backend/Mainland/req.txt .
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 
-ENV MYSQLCLIENT_CFLAGS="-I/usr/include/mariadb" \
-    MYSQLCLIENT_LDFLAGS="-L/usr/lib/x86_64-linux-gnu -lmariadb"
+# libmariadb-dev ships mariadb_config, which mysqlclient's setup.py
+# auto-detects -- no manual MYSQLCLIENT_CFLAGS/LDFLAGS needed (and hardcoding
+# them would be wrong here anyway: Debian installs to a multiarch lib path,
+# not Alpine's flat /usr/lib).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential libmariadb-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN uv venv .venv && uv pip install --python .venv --no-cache -r req.txt
+# req.nn.txt's --index-url points torch/torchvision at the CPU-only wheel
+# index (see req.nn.txt's header comment), but uv's default index-strategy
+# (first-index) doesn't reliably prefer it -- unsafe-best-match is required
+# for that pin to actually win over PyPI's default CUDA-enabled build.
+ENV UV_INDEX_STRATEGY=unsafe-best-match
+
+COPY backend/Mainland/req.static.txt backend/Mainland/req.nn.txt .
+RUN uv venv .venv && uv pip install --python .venv --no-cache -r req.static.txt -r req.nn.txt
 
 # ========================================================
 # Stage 4: Production Target
+# FROM base: compiler toolchain from builder never reaches this image.
 # ========================================================
-FROM builder AS production
+FROM base AS production
+
+COPY --from=builder /home/Mainland/.venv .venv
 
 COPY --chown=Mainland:Mainland ./backend/Mainland .
 
-RUN mkdir -p static templates /var/log/django && chown -R Mainland:Mainland static templates /var/log/django
+RUN mkdir -p static templates/frontend /var/log/django \
+    && chown -R Mainland:Mainland static templates /var/log/django
 
-# Mainland/pages.py's index() calls render(req, 'index.html'), which resolves
-# against TEMPLATES[0]['DIRS'] (templates/ directly) — not a subdirectory.
-COPY --from=frontend-builder --chown=Mainland:Mainland /build/SpineSeg/dist/*.html /home/Mainland/templates/
+# Mainland/pages.py's index() calls render(req, 'frontend/index.html'), which
+# resolves against TEMPLATES[0]['DIRS'] (templates/) -- the directory here
+# must match that literal.
+COPY --from=frontend-builder --chown=Mainland:Mainland /build/frontend/dist/*.html /home/Mainland/templates/frontend/
 
 USER Mainland
 
 # ========================================================
 # Stage 5: Development Target
+# req.dev.txt is installed before source copy so that source
+# changes don't bust the dev-deps cache layer.
 # ========================================================
 FROM builder AS development
 
-COPY --chown=Mainland:Mainland ./backend/Mainland .
+COPY backend/Mainland/req.dev.txt .
 RUN uv pip install --python .venv --no-cache -r req.dev.txt
 
-RUN mkdir -p static templates /var/log/django && chown -R Mainland:Mainland static templates /var/log/django
+COPY --chown=Mainland:Mainland ./backend/Mainland .
 
-# Mainland/pages.py's index() calls render(req, 'index.html'), which resolves
-# against TEMPLATES[0]['DIRS'] (templates/ directly) — not a subdirectory.
-COPY --from=frontend-builder --chown=Mainland:Mainland /build/SpineSeg/dist/*.html /home/Mainland/templates/
+RUN mkdir -p static templates/frontend /var/log/django \
+    && chown -R Mainland:Mainland static templates /var/log/django
+
+# Mainland/pages.py's index() calls render(req, 'frontend/index.html'), which
+# resolves against TEMPLATES[0]['DIRS'] (templates/) -- the directory here
+# must match that literal.
+COPY --from=frontend-builder --chown=Mainland:Mainland /build/frontend/dist/*.html /home/Mainland/templates/frontend/
 
 USER Mainland

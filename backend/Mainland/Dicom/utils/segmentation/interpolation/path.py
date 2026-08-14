@@ -1,4 +1,3 @@
-from copy import deepcopy
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.integrate import fixed_quad
@@ -71,7 +70,7 @@ class CentralPath(vPath):
                     args=(self._cs_2d, old_cs_2d),
                     n=4
                 )[0]
-            old_cs_2d = deepcopy(self._cs_2d)
+            old_cs_2d = self._cs_2d
 
     def get_vertebrae_parametrization(self, vind: int) -> Parametrization:
         t = self._t[self._shift + 2 * vind: self._shift + 2 * vind + 2]

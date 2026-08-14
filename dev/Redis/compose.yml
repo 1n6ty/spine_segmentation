@@ -1,0 +1,100 @@
+
+networks:
+  spine-segmentation-net:
+    external: true
+
+services:
+  redis-cache:
+    image: redis:8.8.0-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass "${REDIS_PASSWORD}" --masterauth "${REDIS_PASSWORD}"
+    environment:
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    configs:
+      - source: redis_config
+        target: /usr/local/etc/redis/redis.conf
+    volumes:
+      - cache-data:/data
+
+  redis-broker:
+    image: redis:8.8.0-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass "${REDIS_PASSWORD}" --masterauth "${REDIS_PASSWORD}"
+    environment:
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    configs:
+      - source: redis_config
+        target: /usr/local/etc/redis/redis.conf
+    volumes:
+      - broker-data:/data
+
+  redis-session:
+    image: redis:8.8.0-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass "${REDIS_PASSWORD}" --masterauth "${REDIS_PASSWORD}"
+    environment:
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    configs:
+      - source: redis_config
+        target: /usr/local/etc/redis/redis.conf
+    volumes:
+      - session-data:/data
+
+  redis-channels:
+    image: redis:8.8.0-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass "${REDIS_PASSWORD}" --masterauth "${REDIS_PASSWORD}"
+    environment:
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    networks:
+      - spine-segmentation-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    configs:
+      - source: redis_config
+        target: /usr/local/etc/redis/redis.conf
+    volumes:
+      - channels-data:/data
+
+volumes:
+  cache-data:
+    driver: local
+    name: ${PROJECT_NAME}-redis-cache
+  broker-data:
+    driver: local
+    name: ${PROJECT_NAME}-redis-broker
+  session-data:
+    driver: local
+    name: ${PROJECT_NAME}-redis-session
+  channels-data:
+    driver: local
+    name: ${PROJECT_NAME}-redis-channels
+
+configs:
+  redis_config:
+    name: ${RESOURCE_PREFIX:-}redis_conf
+    file: ./redis.conf

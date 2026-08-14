@@ -1,6 +1,7 @@
 import json, os
 from pathlib import Path
 
+# Base directory relative to this file
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 STATIC_ROOT = BASE_DIR / 'static'
@@ -17,29 +18,29 @@ else:
 STATIC_URL = API_MANIFEST["storage"]["static_url"]
 MEDIA_URL = API_MANIFEST["storage"]["media_url"]
 
+FILEBROWSER_DIRECTORY = ''
 DATA_UPLOAD_MAX_MEMORY_SIZE = API_MANIFEST["limits"]["data_upload_max_memory_size"]
 
 LANGUAGE_CODE = API_MANIFEST["localization"]["default_language_code"]
+TIME_ZONE = API_MANIFEST["localization"]["time_zone"]
 USE_I18N = True
 DATETIME_FORMAT = API_MANIFEST["localization"]["datetime_format"]
 L10N = False
 USE_TZ = True
-TIME_ZONE = "UTC"
 
-# MinIO (S3-compatible) object storage — see common/storages.py for the two
-# storage classes, and docs/backend-architecture.md for how media-public vs.
-# media-private are actually served (nginx proxy_pass / X-Accel-Redirect,
-# never direct or presigned MinIO URLs).
-AWS_ACCESS_KEY_ID = os.getenv("MINIO_USER")
+AWS_ACCESS_KEY_ID = "spine_segmentation_user"
 AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_PASSWORD")
-AWS_S3_ENDPOINT_URL = f'http://{os.getenv("MINIO_PROXY_HOST", "minio-proxy")}:9000'
+AWS_S3_ENDPOINT_URL = f'http://{os.getenv("MINIO_PROXY_HOST")}:9000'
+AWS_QUERYSTRING_AUTH = False
+
+AWS_S3_CUSTOM_DOMAIN = None
 
 STORAGES = {
-    # Default engine used for standard fields (public)
+    # Default engine used for standard fields (Public)
     "default": {
         "BACKEND": "common.storages.PublicMediaStorage",
     },
-    # Secondary engine specifically for confidential files (private, e.g. DICOM)
+    # Secondary engine specifically for confidential files (Private)
     "private": {
         "BACKEND": "common.storages.PrivateMediaStorage",
     },

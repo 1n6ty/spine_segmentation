@@ -1,0 +1,15 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch>=2.11.0
+torchvision>=0.22.0
+ultralytics>=8.4.0
+onnxruntime==1.28.0
+# Ultralytics' AutoBackend reads model metadata (names/stride/etc.) out of the
+# onnx graph via `onnx.load` when running .onnx weights through onnxruntime,
+# so the `onnx` package itself is a hard dependency too, not just onnxruntime.
+# Without it pinned here, AutoBackend's check_requirements() falls through to
+# a runtime `pip install` inside the celery worker on every task -- the
+# production image runs as a non-root user with no write access to .venv, so
+# that auto-install can never actually succeed there.
+onnx==1.22.0

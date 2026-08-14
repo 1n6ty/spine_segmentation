@@ -1,0 +1,26 @@
+networks:
+  spine-segmentation-net:
+    external: true
+
+configs:
+  es_haproxy_cfg:
+    file: ./haproxy.cfg
+
+services:
+  es-proxy:
+    image: haproxy:3.0-alpine
+    networks:
+      - spine-segmentation-net
+    configs:
+      - source: es_haproxy_cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8404/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      es:
+        condition: service_healthy

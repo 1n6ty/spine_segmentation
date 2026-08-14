@@ -1,0 +1,19 @@
+# Known Gotchas
+
+Non-obvious failures encountered in this project. Check here first when something breaks in an
+unexpected way.
+
+**Maintenance:** Add a row whenever a new non-obvious failure is found during development or code
+review. The goal is that the next agent or developer hits this table before they hit the bug.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A `Record<"en-US"\|"ru-RU", ...>` translation lookup only ever shows English | Dictionary keyed by `en`/`ru` (URL-facing short codes) instead of `$locale`'s actual values `en-US`/`ru-RU` — the lookup always misses and silently falls back | Key app-level locale dictionaries by full `en-US`/`ru-RU`; see `patterns/i18n.md` |
+| Visiting a bare path with no lang prefix (e.g. `/login`) shows the landing page instead of redirecting to `/en/login` | `[lang]` is a required dynamic segment that structurally captures ANY first path segment — root `+layout.ts`'s zero-segment check never fires | `[lang]/+layout.ts` validates `params.lang` itself and redirects to `/${lang}${url.pathname}${url.search}`, preserving the path; see `patterns/routing.md` |
+| Deleting/expiring the session cookie leaves the header showing profile data and protected pages still rendering | Auth state gated on a `hasSession` localStorage flag that was only ever cleared by explicit logout, never re-validated against the backend | `authService.verify()` calls `GET /api/profiles/me/`, the only thing allowed to grant access; see `patterns/auth.md` |
+| Logging in as a different account on the same browser shows the previous account's Researches list | `RegistryService`'s IndexedDB store had no concept of "whose session is this" | `SessionValue.accountId` + `registry.setAccountId()`, called by `authService`; see `patterns/storages.md` |
+| Autofill hangs/errors for real DICOM files, but the same code passes all tests | Tests use dot-free fake UIDs (`'SOP1'`, `'uid-1'`); real SOP Instance UIDs are dotted OID strings. Backend DRF router's default `lookup_value_regex` (`[^/.]+`) excludes `.`, so the SSE/file routes 404 before the view runs — a **backend routing bug**, not a frontend one. Frontend already sends `sop_instance_uid` correctly. | Backend: `DcmViewSet.lookup_value_regex = r'[^/]+'` (`backend/Mainland/Dicom/v1/views/dcmparse.py`). Also logged in `backend/docs/gotchas.md`. |
+| TS7053 index-signature error, or a `Record<"en-US"\|"ru-RU", string>` lookup silently resolves to English regardless of locale | Fallback key literal was `'en'` instead of `'en-US'` | Use `let currentLocale = $derived(($locale \|\| 'en-US') as LocaleKey)`, then index by `currentLocale` — see `Table.svelte`/`OverallSpine.svelte` for the reference pattern |
+| Dynamic `import(`./${lang}.json`)` for a locale file works in `npm run dev` but fails only during `npm run build`'s adapter-static prerender step with `ERR_MODULE_NOT_FOUND` | Vite's dynamic-import-vars analysis can't resolve a templated path when the importing module lives in the same directory as the files it imports | Static, literal per-locale `import()` calls in a `Record`, not a templated path — see `core/i18n/index.svelte.ts` |
+| Assigning directly to a `$derived` field throws / a filtered `$state` view stops updating after a refactor | `$derived` fields have no setter — the underlying source `$state` must be mutated instead, letting the derived view recompute | See `patterns/state.md`'s `$derived` section, `RegistryService.sessionValues` |
+| Browser-mode ("client" vitest project) or Playwright e2e tests fail to even launch in this sandbox | Playwright is unsupported on some sandbox OS versions (encountered on Ubuntu 26.04) | Run `npx vitest run --project=server` for everything that doesn't require an actual DOM/component mount; browser-mode coverage must be verified in CI or a supported local environment instead. See `testing.md`. |
