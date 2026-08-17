@@ -1,8 +1,9 @@
 from asgiref.sync import sync_to_async
 from rest_framework.pagination import NotFound, PageNumberPagination
 
+from common.schemas.v1.errors import NotFoundResponse
 from common.schemas.v1.pagination import Pagination_GET_Schema
-from common.schemas.v1.response import ApiResponse, Issue
+from common.schemas.v1.response import ApiResponse
 
 _PAGE_PARAM, _PAGE_SIZE_PARAM = Pagination_GET_Schema.model_fields.keys()
 
@@ -24,10 +25,9 @@ class BaseAsyncPagination(PageNumberPagination):
             return await sync_to_async(super().paginate_queryset)(queryset, request, view)
         except NotFound:
             page_number = request.query_params.get(self.page_query_param) or 1
-            self.custom_error = ApiResponse().add_issue(
-                Issue(status="error", code=404, field="page",
-                      message=f"Page {page_number} does not exist.")
-            ).set_status(status="error", code=404).drf_response
+            self.custom_error = NotFoundResponse.single(
+                field="page", message=f"Page {page_number} does not exist."
+            ).drf_response
             return None
 
     async def serialize_page(self, data) -> list:

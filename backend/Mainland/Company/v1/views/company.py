@@ -7,9 +7,7 @@ from rest_framework.response import Response
 
 from common.mixins.v1.viewset import StdViewSetMixin
 from common.permissions.base import HasPermCodename
-from common.schemas.v1.domain.company import Company_Item_Schema
 from common.schemas.v1.errors import BadRequestResponse, PermissionDeniedResponse, UnauthorizedResponse
-from common.schemas.v1.response import ApiResponse, Issue
 from Company.v1.utils.constants import COMPANY_ID_URL_KWARG, COMPANY_ID_URL_REGEX
 from Company.models import Company
 from Company.permissions import CompanyRetrievePermission
@@ -56,14 +54,7 @@ class CompanyViewSet(StdViewSetMixin):
         try:
             Company_GET_Schema(**request.query_params.dict())
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
 
         qs = Company.objects.prefetch_related('translations').order_by('id')
         filtered_qs = await sync_to_async(
@@ -91,12 +82,8 @@ class CompanyViewSet(StdViewSetMixin):
         try:
             company = await Company.objects.prefetch_related('translations').aget(pk=company_id)
         except Company.DoesNotExist:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=404, field="company_id", message=f"Company {company_id} does not exist.")
-            ).set_status(status="error", code=404).drf_response
+            return Company_NotFound_Response.from_pk(company_id).drf_response
 
         await sync_to_async(self.check_object_permissions)(request, company)
 
-        return ApiResponse().update_data(
-            Company_Item_Schema.from_model(company).model_dump()
-        ).set_status(status="ok", code=200).drf_response
+        return Company_RETRIEVE_Response_OK.from_model(company).drf_response

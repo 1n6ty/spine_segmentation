@@ -54,6 +54,53 @@ For a computed value combining multiple other computed values, `$derived.by(() =
 better than a one-line `$derived(expr)` — see `SessionService.mergedPatient`/`mergedStudy` in
 `session.svelte.ts`.
 
+## Feature-Local State
+
+A `$state` singleton isn't by itself a signal that a module belongs in `core/`. `core/` is for
+**cross-page session/domain data** — one researcher, one active session, one registry — the kind
+of thing an unrelated page or feature might legitimately need to read. A feature can have its own
+piece of long-lived, module-level `$state` too, as long as what it holds is UI-local to that one
+feature: which of the feature's own tabs/panels is selected, a filter only that feature's own
+components apply. The test isn't "is it a singleton" — it's "if another, unrelated feature imported
+this, would that even make sense". If yes, it's session/domain data and belongs in `core/`. If the
+state only means something to this one feature's own UI, a singleton inside `features/` is fine:
+
+```ts
+// features/image-gallery/gallery-view-store.svelte.ts
+import { project } from '$lib/core/project.svelte';
+
+// `activeFilter` is this feature's own UI selection -- nothing outside
+// image-gallery's own components has a reason to read or set it. `items`
+// is derived from real domain data (`project.session`), which is exactly
+// why this still belongs under features/ and not shared/: it needs
+// core/session state as input.
+export const galleryView = $state({
+	activeFilter: 'all' as 'all' | 'favorites',
+
+	get items() {
+		const all = project.session.gallery.items;
+		return this.activeFilter === 'favorites' ? all.filter((i) => i.favorite) : all;
+	}
+});
+```
+
+Compare with an actual `core/` singleton, where the state itself — not just its consumers — is the
+cross-page domain concept:
+
+```ts
+// core/session/researcher.svelte.ts
+class ResearcherService {
+	email = $state<string | null>(null);
+	fullName = $state<string | null>(null);
+}
+export const researcherService = new ResearcherService();
+```
+
+`researcherService` describes *who is logged in* — every page and feature in the app potentially
+cares. `galleryView.activeFilter` describes *what one panel is currently showing* — only
+`image-gallery`'s own components ever will. Same shape (module-level `$state` export), different
+placement, because the question is what the state *is*, not how it's declared.
+
 ## Why Not Svelte Stores / Context
 
 Stores add `$`-prefixed subscription boilerplate runes already replace; context is per-component-

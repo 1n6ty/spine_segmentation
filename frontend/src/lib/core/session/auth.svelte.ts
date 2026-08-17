@@ -39,7 +39,7 @@ class AuthService {
 			researcherService.email = me.email;
 			researcherService.fullName = [me.first_name, me.last_name].filter(Boolean).join(' ') || me.email;
 			researcherService.duty = me.role?.name ?? null;
-			registry.setAccountId(String(me.id));
+			registry.refresh();
 
 			return true;
 		} catch {
@@ -55,7 +55,7 @@ class AuthService {
 		researcherService.fullName = null;
 		researcherService.email = null;
 		researcherService.duty = null;
-		registry.setAccountId(null);
+		registry.clear();
 	}
 }
 

@@ -40,3 +40,35 @@ export async function post(
 		body: is_json ? JSON.stringify(init!.json) : init?.form
 	});
 }
+
+/** Always expects a JSON response body; throws on non-2xx. */
+export async function patch_json<T>(path: string, payload: unknown): Promise<T> {
+	const res = await fetch(path, {
+		method: 'PATCH',
+		headers: with_csrf({ 'Content-Type': 'application/json' }),
+		body: JSON.stringify(payload)
+	});
+	if (!res.ok) throw new Error(`PATCH ${path} failed with ${res.status}`);
+	return res.json() as Promise<T>;
+}
+
+/**
+ * Returns the raw `Response` — for callers that only check `.ok` (thumbnail
+ * multipart PATCH).
+ */
+export async function patch(
+	path: string,
+	init?: { json?: unknown; form?: FormData }
+): Promise<Response> {
+	const is_json = init?.json !== undefined;
+	return fetch(path, {
+		method: 'PATCH',
+		headers: with_csrf(is_json ? { 'Content-Type': 'application/json' } : undefined),
+		body: is_json ? JSON.stringify(init!.json) : init?.form
+	});
+}
+
+/** Returns the raw `Response` — for callers that only check `.ok`. */
+export async function del(path: string): Promise<Response> {
+	return fetch(path, { method: 'DELETE', headers: with_csrf() });
+}

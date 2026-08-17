@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from common.schemas.v1.domain.user import User_Item_Schema
 from common.schemas.v1.errors import _UnauthorizedIssue, UnauthorizedResponse
-from common.schemas.v1.response import ApiResponse, OkResponse
+from common.schemas.v1.response import OkResponse
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
@@ -25,8 +25,7 @@ class Login_Request(BaseModel):
         return cleaned_value
 
 
-class Login_Response_OK(ApiResponse):
-    status: Literal['ok'] = Field('ok', description="Overall outcome of the request.", examples=['ok'])
+class Login_Response_OK(OkResponse):
     code: Literal[200] = Field(200, description="HTTP status code of the response.", examples=[200])
 
 
@@ -41,8 +40,7 @@ class Login_InvalidCredentials_Response(UnauthorizedResponse):
     )
 
 
-class Logout_Response_OK(ApiResponse):
-    status: Literal['ok'] = Field('ok', description="Overall outcome of the request.", examples=['ok'])
+class Logout_Response_OK(OkResponse):
     code: Literal[200] = Field(200, description="HTTP status code of the response.", examples=[200])
 
 

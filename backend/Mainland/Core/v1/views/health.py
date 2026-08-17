@@ -1,4 +1,4 @@
-from common.schemas.v1.response import ApiResponse
+from common.schemas.v1.response import OkResponse
 from common.mixins.v1.viewset import StdViewSetMixin
 
 from rest_framework.decorators import action
@@ -13,11 +13,8 @@ class HealthViewSet(StdViewSetMixin):
     @extend_schema(
         summary="Health Check",
         description="Check if the service is up and running.",
-        responses={200: ApiResponse},
+        responses={200: OkResponse},
     )
     @action(detail=False, methods=["get"], url_path="health", url_name="view")
     async def health(self, request: HttpRequest) -> Response:
-        return ApiResponse().set_status(
-            status="ok",
-            code=200
-        ).drf_response
+        return OkResponse().drf_response

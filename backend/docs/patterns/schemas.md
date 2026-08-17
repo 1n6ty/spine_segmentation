@@ -20,8 +20,52 @@ class Login_Request(BaseModel):
 
 **Response schemas** — Pydantic `BaseModel` subclasses that are both the drf-spectacular type hint
 *and* the serializer: a `from_model(cls, obj, ...) -> Schema` classmethod builds the instance
-directly from the ORM object, and the view/pagination call site does `.model_dump()` on the result
-to get the response dict. See `serialization.md` for the convention.
+directly from the ORM object. See `serialization.md` for that inner-schema convention.
+
+**The envelope class (`X_..._Response_OK`/`X_NotFound_Response`/etc.) owns its own construction
+too — a view never hand-assembles `ApiResponse()/Issue()` inline.** The same class declared in
+`@extend_schema(responses={...})` is what the view actually returns, so the documented shape and
+the wire response can't drift apart. Pick the constructor that matches the case:
+
+- **Success, no data** — instantiate directly:
+  ```python
+  return OkResponse().drf_response
+  ```
+- **Success, with data tied to an ORM object** — the envelope gets its own `.from_model(obj, ...)`
+  classmethod, which wraps the inner data schema's own `from_model` and returns `cls(data=...)`:
+  ```python
+  class Company_RETRIEVE_Response_OK(OkResponse):
+      code: Literal[200] = Field(200, ...)
+      data: Company_Item_Schema
+
+      @classmethod
+      def from_model(cls, company) -> "Company_RETRIEVE_Response_OK":
+          return cls(data=Company_Item_Schema.from_model(company))
+  ```
+  Call site: `return Company_RETRIEVE_Response_OK.from_model(company).drf_response`.
+- **Error keyed to an id that doesn't exist** — the envelope gets a `.from_pk(pk)` classmethod:
+  ```python
+  class Company_NotFound_Response(NotFoundResponse):
+      @classmethod
+      def from_pk(cls, company_id) -> "Company_NotFound_Response":
+          return cls(details=[_CompanyNotFoundIssue(message=f"Company {company_id} does not exist.")])
+  ```
+  Call site: `return Company_NotFound_Response.from_pk(company_id).drf_response`.
+- **Error, hand-raised single issue** (a business-rule check, not pydantic validation):
+  `BadRequestResponse.single(field="email", message="A user with this email already exists.")` /
+  `PermissionDeniedResponse.single(field=..., message=...)` / `NotFoundResponse.single(...)`
+  (`field` is optional on the latter two — not every permission/not-found failure is field-scoped).
+- **Error, from a pydantic `ValidationError`**:
+  `except ValidationError as e: return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response`.
+- **Error, from an `Issue` already built by internal (non-pydantic) logic** (e.g. a helper function
+  that returns an `Issue` instead of raising): `BadRequestResponse.from_issue(issue)`.
+
+`ApiResponse.dict_response`/`.drf_response` dump the envelope's own fields with `exclude_none=True`,
+but dump a `data` field that's itself a nested `BaseModel` *without* `exclude_none`
+(`common/schemas/v1/response.py`) — pydantic v2's `exclude_none` otherwise recurses into nested
+models and silently drops their own None-valued fields (e.g. a client expecting `"role": null` to
+stay present as a key would see the key vanish instead). This is handled once, centrally — never
+work around it by hand-flattening a schema to a dict before assigning it to `data`.
 
 **Domain schemas — two patterns, not one.** Shared identity/value concepts (Company, User, Role)
 live in `common/schemas/v1/domain/`, one file per concept, both `Ref` and `Item` together. A
@@ -117,7 +161,10 @@ adding or overriding a field.
   for per-endpoint `X_..._Response_OK`/`X_..._Response_Created` envelopes
 - `Issue` carries error detail: `status`, `code`, `message`, `field`, `hint`
 - Pre-built error responses in `common/schemas/v1/errors.py`: `UnauthorizedResponse`,
-  `PermissionDeniedResponse`, `BadRequestResponse`, `NotFoundResponse`
+  `PermissionDeniedResponse`, `BadRequestResponse`, `NotFoundResponse` — `UnauthorizedResponse`/
+  `MethodNotAllowedResponse` are invariant (instantiate directly); `BadRequestResponse` has
+  `.from_pydantic_errors(errors)`/`.single(field=, message=)`/`.from_issue(issue)`;
+  `PermissionDeniedResponse`/`NotFoundResponse` have `.single(field=, message=)` (`field` optional)
 
 **OpenAPI query params for GET-schema/pagination fields are auto-derived, not hand-declared
 twice.** `params_from_schema(schema_cls, overrides=...)`/`params_from_pagination(pagination_cls,

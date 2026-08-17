@@ -8,7 +8,6 @@
 	import { project } from '$lib/core/project.svelte';
 	import type { SessionValue } from '$lib/core/session/types';
 	import { t } from 'svelte-i18n';
-	import { SessionService } from '$lib/core/session/session.svelte';
 
 	let sessions = $state<SessionValue[]>([]);
 	$effect(() => {
@@ -41,16 +40,13 @@
 	function handleCreate(e: MouseEvent) {
 		e.preventDefault();
 
-		project.session.destroy();
-		project.session = new SessionService(null);
+		project.resetSession();
 	}
 
 	function handleDeleteAll(e: MouseEvent) {
 		e.preventDefault();
 
-		project.session.destroy();
-		project.session = new SessionService(null);
-
+		project.resetSession();
 		project.registry.clearAll();
 	}
 </script>

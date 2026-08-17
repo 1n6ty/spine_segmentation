@@ -87,8 +87,8 @@ resyncs every field back to canonical, undoing manual DB drift.
 
 **Call order:** `init_spine_segmentation` runs every seeder in `commands_to_run` in dependency
 order — superuser → Profile roles (admin, doctor, viewer) → Dicom statuses/projections →
-Dicom's `DICOM_XRAY_FRONTAL`/`DICOM_XRAY_SAGITTAL` `FileRole`s (each capped at `max_count=1` per
-Study). Admin and Doctor's seeders own their group's `.permissions.set(...)` (kept resynced to
+Dicom's `DICOM_XRAY_FRONTAL`/`DICOM_XRAY_SAGITTAL` `FileRole`s. Admin and Doctor's seeders own 
+their group's `.permissions.set(...)` (kept resynced to
 every Permission in the system on every bootstrap, via `_ALWAYS_RESYNC`); Viewer is intentionally
 granted none. The X-ray `FileRole`s are create-once like Viewer (`max_count` doesn't grow over
 time the way the permission set does).

@@ -1,7 +1,10 @@
-import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get } = vi.hoisted(() => ({
+	// Sane default for registry.svelte's eager, constructor-time refresh()
+	// (fired the moment that module is first imported below).
+	get: vi.fn().mockResolvedValue({ ok: false })
+}));
 vi.mock('$lib/core/network/client', () => ({ get }));
 
 import { authService } from './auth.svelte';
@@ -26,6 +29,7 @@ function mock_me_response(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
 	get.mockReset();
+	registry.sessionValues = {};
 });
 
 afterEach(() => {
@@ -76,15 +80,18 @@ describe('authService.verify', () => {
 		expect(researcherService.fullName).toBe('doctor@example.com');
 	});
 
-	it('namespaces the session registry to the verified account id', async () => {
+	it('refreshes the recent-studies registry on a confirmed login', async () => {
 		mock_me_response({ id: 42 });
+		const refresh_spy = vi.spyOn(registry, 'refresh');
 
 		await authService.verify();
 
-		expect(registry.accountId).toBe('42');
+		expect(refresh_spy).toHaveBeenCalled();
+		refresh_spy.mockRestore();
 	});
 
-	it('rejects (401/non-ok) clears identity and returns false', async () => {
+	it('rejects (401/non-ok) clears identity and the registry', async () => {
+		registry.sessionValues = { '1': {} as any };
 		get.mockResolvedValue({ ok: false });
 
 		const ok = await authService.verify();
@@ -92,7 +99,7 @@ describe('authService.verify', () => {
 		expect(ok).toBe(false);
 		expect(authService.status).toBe('unauthenticated');
 		expect(researcherService.email).toBeNull();
-		expect(registry.accountId).toBeNull();
+		expect(registry.sessionValues).toEqual({});
 	});
 
 	it('treats a network error the same as an unauthenticated response', async () => {
@@ -106,7 +113,7 @@ describe('authService.verify', () => {
 });
 
 describe('authService.reject', () => {
-	it('clears status, researcher identity, and the registry account scope', async () => {
+	it('clears status, researcher identity, and the registry', async () => {
 		mock_me_response();
 		await authService.verify();
 
@@ -116,6 +123,6 @@ describe('authService.reject', () => {
 		expect(researcherService.fullName).toBeNull();
 		expect(researcherService.email).toBeNull();
 		expect(researcherService.duty).toBeNull();
-		expect(registry.accountId).toBeNull();
+		expect(registry.sessionValues).toEqual({});
 	});
 });

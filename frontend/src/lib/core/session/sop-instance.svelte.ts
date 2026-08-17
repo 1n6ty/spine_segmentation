@@ -18,6 +18,13 @@ export class SopInstanceService {
 
 	bitmap = $state<ImageBitmap | null>(null);
 
+	/** Resolves once `bitmap` is actually populated -- `bitmap` itself is set
+	 * asynchronously (create_dicom_bitmap decodes off the main thread), so
+	 * code that needs the bitmap (e.g. building a thumbnail) should await this
+	 * instead of reading `.bitmap` synchronously right after construction,
+	 * which races the decode and silently gets `null`. */
+	bitmapReady: Promise<ImageBitmap>;
+
 	constructor(series: SeriesService, dataSet: DataSet) {
 		this.series = series;
 
@@ -33,8 +40,9 @@ export class SopInstanceService {
 		this.isSigned = metadata.isSigned;
 		this.mmPerPixel = metadata.mmPerPixel;
 
-		create_dicom_bitmap(pixel_data, metadata).then((image: ImageBitmap) => {
+		this.bitmapReady = create_dicom_bitmap(pixel_data, metadata).then((image: ImageBitmap) => {
 			this.bitmap = image;
+			return image;
 		});
 	}
 

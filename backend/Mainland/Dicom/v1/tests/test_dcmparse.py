@@ -2,14 +2,18 @@ import asyncio
 import warnings
 from unittest.mock import patch
 
+import numpy as np
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from pydicom.dataset import Dataset
+from pydicom.dataset import Dataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian
 from rest_framework.test import APIClient, APITestCase, APITransactionTestCase
 
 from common.schemas.v1.response import Issue
-from Dicom.models import DicomFile, DicomImage, Patient, Projection, Series, SegmentationStatus, Study
+from Dicom.models import (
+    DicomFile, DicomImage, DicomThumbnail, Patient, Projection, Series, SegmentationStatus, Study,
+)
 from Dicom.utils.parse import parse_and_store_dicom
 from FileManager.models import CasFile
 
@@ -20,8 +24,19 @@ async def _drain(async_iterable) -> bytes:
 
 class DcmParseTests(APITestCase):
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username='doctor', password='pw')
+
     def setUp(self):
         self.client = APIClient()
+        self.client.force_login(self.user)
+
+    def test_unauthenticated_returns_401(self):
+        self.client.logout()
+        upload = _fake_upload("scan.dcm", b"dummy dicom bytes")
+        response = self.client.post('/api/dcm/parse/', {'file': upload}, format='multipart')
+        self.assertEqual(response.status_code, 401)
 
     def test_parse_rejects_non_dicom_file(self):
         upload = _fake_upload("scan.txt", b"not a dicom file")
@@ -64,7 +79,7 @@ class DcmFileTests(APITestCase):
         # through it -- the `file` action only ever reads `.xray_file.file.name` to
         # build the X-Accel-Redirect header, so no actual storage I/O is needed
         # here, and this avoids requiring a reachable S3/MinIO endpoint in tests.
-        cls.file_record = DicomFile(image=cls.image, study=study, name='SOP1.dcm', size=0, hash='0' * 128)
+        cls.file_record = DicomFile(image=cls.image, series=series, name='SOP1.dcm', size=0, hash='0' * 128)
         cls.file_record.file.name = 'private/dicom_files/SOP1.dcm'
         cls.file_record.save()
 
@@ -99,7 +114,7 @@ class DcmFileTests(APITestCase):
         study = Study.objects.create(study_instance_uid='S2', patient=patient)
         series = Series.objects.create(series_instance_uid='SE2', study=study)
         image = DicomImage.objects.create(sop_instance_uid=dotted_uid, series=series)
-        file_record = DicomFile(image=image, study=study, name=f'{dotted_uid}.dcm', size=0, hash='1' * 128)
+        file_record = DicomFile(image=image, series=series, name=f'{dotted_uid}.dcm', size=0, hash='1' * 128)
         file_record.file.name = f'private/dicom_files/{dotted_uid}.dcm'
         file_record.save()
 
@@ -257,17 +272,92 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         # Content unchanged -- no redundant segmentation re-run.
         self.assertEqual(self.mock_delay.call_count, 1)
 
-    def test_second_frontal_upload_same_study_returns_400_issue(self):
+    def test_reuses_completed_segmentation_for_identical_content_under_a_different_sop_uid(self):
+        # Simulates a physical image re-exported under a new SOPInstanceUID --
+        # byte-identical content (same hash), genuinely different image
+        # identity (own SOP UID, own Study). The AI's output is a pure
+        # function of the pixel bytes, so this must reuse the completed
+        # result instead of re-running the model.
+        self._upload(self._dataset('SOP-REUSE-1', 'STUDY-REUSE-1'), b'shared-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        done = SegmentationStatus.objects.create(slug='done')
+        original = DicomImage.objects.get(sop_instance_uid='SOP-REUSE-1')
+        original.segmentation_status = done
+        original.reference_points = {
+            'vertebraes': [{'name': 'L5', 'points': [[0, 0], [0, 1], [1, 1], [1, 0]]}]
+        }
+        original.save()
+
+        self._upload(self._dataset('SOP-REUSE-2', 'STUDY-REUSE-2'), b'shared-bytes')
+
+        # No second AI run -- the existing done result was reused instead.
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        reused = DicomImage.objects.get(sop_instance_uid='SOP-REUSE-2')
+        self.assertEqual(reused.segmentation_status_id, done.pk)
+        self.assertEqual(reused.reference_points, original.reference_points)
+
+    def test_does_not_reuse_a_not_yet_completed_segmentation(self):
+        # The matching-hash image's segmentation is still in progress (no
+        # 'done' status yet) -- borrowing that state would leave the new
+        # image stuck, since only the *other* SOP instance's own Celery task
+        # ever advances it further. Must fall through to a real, independent
+        # segmentation run instead.
+        self._upload(self._dataset('SOP-PENDING-1', 'STUDY-PENDING-1'), b'still-processing-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._upload(self._dataset('SOP-PENDING-2', 'STUDY-PENDING-2'), b'still-processing-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def test_second_distinct_frontal_upload_same_series_is_rejected(self):
+        # FileRole.max_count=1 for the seeded X-ray roles (see
+        # create_xray_file_roles_if_not_exists.py), scoped per Series (not
+        # Study) -- a Series can hold at most one frontal-role file, so a
+        # second, genuinely different frontal image landing in the *same*
+        # Series is correctly rejected.
         study_uid = 'STUDY-D'
-        self._upload(self._dataset('SOP-D1', study_uid), b'first', file_role_slug='DICOM_XRAY_FRONTAL')
+        series_uid = 'STUDY-D-SE1'
+        self._upload(
+            self._dataset('SOP-D1', study_uid, series_uid=series_uid), b'first',
+            file_role_slug='DICOM_XRAY_FRONTAL',
+        )
 
         result = self._upload(
-            self._dataset('SOP-D2', study_uid), b'second', file_role_slug='DICOM_XRAY_FRONTAL'
+            self._dataset('SOP-D2', study_uid, series_uid=series_uid), b'second',
+            file_role_slug='DICOM_XRAY_FRONTAL',
         )
 
         self.assertIsInstance(result, Issue)
         self.assertEqual(result.code, 400)
         self.assertFalse(DicomImage.objects.filter(sop_instance_uid='SOP-D2').exists())
+
+    def test_second_distinct_frontal_upload_same_study_different_series_is_allowed(self):
+        # The cap is per (series, role), not per (study, role) -- Study is
+        # shared content-addressed infra any number of UserRecentStudies
+        # sessions (same user or different users) can reference, so a second,
+        # genuinely different frontal image sharing a real DICOM
+        # StudyInstanceUID but landing in a *different* Series (not unusual
+        # with templated/synthetic test data) must not be rejected.
+        study_uid = 'STUDY-DS'
+        self._upload(
+            self._dataset('SOP-DS1', study_uid, series_uid='STUDY-DS-SE1'), b'first',
+            file_role_slug='DICOM_XRAY_FRONTAL',
+        )
+
+        result = self._upload(
+            self._dataset('SOP-DS2', study_uid, series_uid='STUDY-DS-SE2'), b'second',
+            file_role_slug='DICOM_XRAY_FRONTAL',
+        )
+
+        self.assertNotIsInstance(result, Issue)
+        self.assertTrue(DicomImage.objects.filter(sop_instance_uid='SOP-DS2').exists())
+        self.assertEqual(
+            DicomFile.objects.filter(
+                series__study__study_instance_uid=study_uid, role__slug='DICOM_XRAY_FRONTAL',
+            ).count(), 2,
+        )
 
     def test_second_sagittal_upload_same_study_is_allowed(self):
         # Second upload omits file_role_slug entirely -- exercises the
@@ -302,6 +392,88 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
 
         self.assertFalse(CasFile.objects.filter(path=cas_path).exists())
         self.mock_delete.assert_called_once_with(cas_path)
+
+    def test_second_upload_of_identical_bytes_skips_ai_and_sse_serves_existing_result(self):
+        """Ties together two mechanisms to prove the actual user-visible
+        property: re-uploading byte-identical content -- by the same or a
+        different user/session, e.g. Dicom.v1.views.user_recent_studies's
+        `projection` action attaching a second UserRecentStudies row to an
+        already-processed DicomImage -- never re-runs AI segmentation, and the
+        already-computed result is served immediately over the same SSE
+        endpoint a fresh upload would use, with no new Celery run needed."""
+        ds = self._dataset('SOP-DEDUP', 'STUDY-DEDUP')
+        self._upload(ds, b'identical-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        # Simulate the Celery task having completed for the first upload --
+        # segment_vertebraes itself is mocked away in this test entirely.
+        done = SegmentationStatus.objects.create(slug='done')
+        image = DicomImage.objects.get(sop_instance_uid='SOP-DEDUP')
+        image.segmentation_status = done
+        image.reference_points = {
+            'vertebraes': [{'name': 'L5', 'points': [[0, 0], [0, 1], [1, 1], [1, 0]]}]
+        }
+        image.save()
+
+        # A second "upload" of the byte-identical file -- same SOP Instance UID,
+        # since it's embedded in the bytes themselves -- must not re-trigger AI.
+        self._upload(self._dataset('SOP-DEDUP', 'STUDY-DEDUP'), b'identical-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        # And the SSE endpoint -- what a second session's frontend watches --
+        # immediately self-hydrates the already-computed result.
+        user = User.objects.create_user(username='doctor-dedup', password='pw')
+        client = APIClient()
+        client.force_login(user)
+        response = client.get('/api/dcm/SOP-DEDUP/segment/events/')
+        self.assertEqual(response.status_code, 200)
+        body = asyncio.run(_drain(response.streaming_content)).decode()
+        self.assertIn('"status": "done"', body)
+        self.assertIn('"L5"', body)
+
+    @staticmethod
+    def _dataset_with_pixels(sop_uid, study_uid, seed=0):
+        # A bare Dataset() (what _dataset() builds) has no PixelData, which is
+        # fine for every other test here -- thumbnail generation is wholly
+        # best-effort (wrapped in try/except in parse_and_store_dicom) and
+        # simply no-ops without it. This variant adds the minimum real,
+        # decodable pixel content pydicom's own .pixel_array/apply_voi_lut
+        # need, to actually exercise Dicom.utils.thumbnail's render+CAS path.
+        ds = DcmParseDedupAndRoleTests._dataset(sop_uid, study_uid)
+        ds.file_meta = FileMetaDataset()
+        ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = 'MONOCHROME2'
+        ds.BitsAllocated = 16
+        ds.BitsStored = 16
+        ds.HighBit = 15
+        ds.PixelRepresentation = 0
+        ds.is_little_endian = True
+        ds.is_implicit_VR = False
+        ds.PixelData = (np.arange(16, dtype=np.uint16) + seed).reshape(4, 4).tobytes()
+        return ds
+
+    def test_generates_and_cas_dedupes_thumbnail_for_identical_pixel_content(self):
+        self._upload(self._dataset_with_pixels('SOP-THUMB-1', 'STUDY-THUMB-1'), b'thumb-bytes-1')
+        thumb_1 = DicomThumbnail.objects.get(image_id='SOP-THUMB-1')
+
+        # A different SOP Instance UID, different Study -- but the exact same
+        # pixel content -- must render a byte-identical JPEG and therefore
+        # CAS-dedupe to the same physical file, same as DicomFile's own dedup.
+        self._upload(self._dataset_with_pixels('SOP-THUMB-2', 'STUDY-THUMB-2'), b'thumb-bytes-2')
+        thumb_2 = DicomThumbnail.objects.get(image_id='SOP-THUMB-2')
+
+        self.assertEqual(thumb_1.hash, thumb_2.hash)
+        self.assertEqual(thumb_1.file.name, thumb_2.file.name)
+        self.assertEqual(CasFile.objects.filter(path=thumb_1.file.name).get().ref_count, 2)
+
+    def test_no_thumbnail_row_when_dataset_has_no_pixel_data(self):
+        # _dataset() (used by every other test in this class) has no
+        # PixelData -- generate_and_store_thumbnail's failure there must be
+        # swallowed (best-effort), never surfaced as a failed upload.
+        result = self._upload(self._dataset('SOP-NOPIX', 'STUDY-NOPIX'), b'no-pixel-data')
+        self.assertNotIsInstance(result, Issue)
+        self.assertFalse(DicomThumbnail.objects.filter(image_id='SOP-NOPIX').exists())
 
 
 def _fake_upload(name: str, content: bytes):

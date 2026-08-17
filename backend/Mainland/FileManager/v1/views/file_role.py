@@ -7,7 +7,6 @@ from rest_framework.response import Response
 
 from common.mixins.v1.viewset import StdViewSetMixin
 from common.schemas.v1.errors import BadRequestResponse, UnauthorizedResponse
-from common.schemas.v1.response import ApiResponse, Issue
 from FileManager.models import FileRole
 from FileManager.v1.filters.file_role import FileRoleFilterSet
 from FileManager.v1.paginations.file_role import FileRole_Pagination
@@ -34,14 +33,7 @@ class FileRoleViewSet(StdViewSetMixin):
         try:
             FileRole_GET_Schema(**request.query_params.dict())
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
 
         qs = FileRole.objects.prefetch_related('translations')
         filtered_qs = await sync_to_async(

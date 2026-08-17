@@ -61,10 +61,16 @@ class _Profile_DESTROY_NotFoundIssue(_NotFoundIssue):
 
 
 class Profile_DESTROY_NotFound_Response(NotFoundResponse):
+    """Doubles as the actual runtime response builder -- call
+    .from_pk(user_id).drf_response at the call site."""
     details: List[_Profile_DESTROY_NotFoundIssue] = Field(
         default_factory=lambda: [_Profile_DESTROY_NotFoundIssue()],
         description="The single user-not-found issue.",
     )
+
+    @classmethod
+    def from_pk(cls, user_id) -> "Profile_DESTROY_NotFound_Response":
+        return cls(details=[_Profile_DESTROY_NotFoundIssue(message=f"No company user with id {user_id} exists.")])
 
 
 class Profiles_LIST_Data_Schema(BaseModel):
@@ -99,5 +105,11 @@ class Profile_PATCH_Request(BaseModel):
 
 
 class Profiles_PATCH_Response_OK(OkResponse):
+    """Doubles as the actual runtime response builder -- call
+    .from_model(user, extend=...).drf_response at the call site."""
     code: Literal[200] = Field(200, description="HTTP status code of the response.", examples=[200])
     data: User_Item_Schema
+
+    @classmethod
+    def from_model(cls, user, *, extend: frozenset = frozenset()) -> "Profiles_PATCH_Response_OK":
+        return cls(data=User_Item_Schema.from_model(user, extend=extend))

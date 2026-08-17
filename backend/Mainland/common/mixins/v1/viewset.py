@@ -1,4 +1,4 @@
-from common.schemas.v1.response import ApiResponse, Issue
+from common.schemas.v1.errors import PermissionDeniedResponse, UnauthorizedResponse, MethodNotAllowedResponse
 from common.exceptions.permission import PermissionDenied
 from common.exceptions.http import MethodNotAllowed
 
@@ -15,8 +15,9 @@ class StdViewSetMixin(ViewSet):
 
         Args:
             request (Request): The DRF request object.
-            message (str, optional): Custom error message. Defaults to None.
-            code (int, optional): Custom HTTP status code. Defaults to None.
+            message (str, optional): Unused -- the response is always the fixed
+                UnauthorizedResponse/PermissionDeniedResponse shape.
+            code (int, optional): Unused -- always derived from request.user.is_authenticated.
 
         Returns:
             Response: This method always raises an exception, so it doesn't return a response.
@@ -24,21 +25,11 @@ class StdViewSetMixin(ViewSet):
         Raises:
             PermissionDenied: If the user is unauthenticated (401) or lacks permissions (403).
         """
-        code = 403 if request.user.is_authenticated else 401
-        msg = "Presented user has not enough permissions." if request.user.is_authenticated else "User wasn't authenticated."
-        raise PermissionDenied(
-            data=ApiResponse().add_issue(
-                Issue(
-                    status="error",
-                    code=code,
-                    message=msg
-                )
-            ).set_status(
-                status="error",
-                code=code
-            ).dict_response,
-            code=code
-        )
+        if request.user.is_authenticated:
+            code, data = 403, PermissionDeniedResponse().dict_response
+        else:
+            code, data = 401, UnauthorizedResponse().dict_response
+        raise PermissionDenied(data=data, code=code)
 
     def http_method_not_allowed(self, request: Request, *args, **kwargs) -> Response:
         """Raises a MethodNotAllowed exception with a formatted ApiResponse.
@@ -55,16 +46,7 @@ class StdViewSetMixin(ViewSet):
             MethodNotAllowed: When a non-supported HTTP method is used (405).
         """
         raise MethodNotAllowed(
-            data=ApiResponse().add_issue(
-                Issue(
-                    status="error",
-                    code=405,
-                    message="Non-operable HTTP method was received."
-                )
-            ).set_status(
-                status="error",
-                code=405
-            ).dict_response,
+            data=MethodNotAllowedResponse().dict_response,
             code=405,
-            method=request.method
+            method=request.method,
         )

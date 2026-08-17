@@ -1,14 +1,6 @@
 .env
-/.playwright-mcp
-/docs/superpowers
-.vscode
-.factory/*
+.venv
+.vscode/*
 .claude/*
-
-# Local browser/runtime artifacts
-/frontend/.playwright-mcp/
-/frontend/purchases-runtime-*.png
-/purchases-*.png
-/purchase-card.svg
 
 Data/*

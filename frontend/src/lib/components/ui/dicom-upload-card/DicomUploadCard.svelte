@@ -10,30 +10,39 @@
 	import { goto } from '$app/navigation';
 	import { supportedLocales } from '$lib/core/i18n/index.svelte';
 	import { project } from '$lib/core/project.svelte';
+	import { research_url } from '$lib/shared/utils/routing';
 	import type { Projection } from '$lib/features/dicom/types';
-	import { SessionService } from '$lib/core/session/session.svelte';
 
 	let fileInput: HTMLInputElement;
 	let currentProjection: 'frontal' | 'side';
+	let uploadError = $state<string | null>(null);
 
 	const handleFileChange = async (event: Event) => {
 		const input = event.target as HTMLInputElement;
 		const file = input.files?.[0];
+		// Reset so a later successful upload can pick the same file again --
+		// browsers don't fire `change` a second time for an unchanged selection.
+		input.value = '';
 		if (!file) return;
 
-		project.session.uploadFile(file, currentProjection).then(() => {
-			const currentPath = page.url.pathname;
+		uploadError = null;
 
-			// Check if path is exactly the locale (e.g., "/en" or "/en/")
-			const isAtLocaleRoot =
-				currentPath === `/${page.params.lang}` || currentPath === `/${page.params.lang}/`;
+		try {
+			await project.session.uploadFile(file, currentProjection);
+		} catch (err) {
+			// Previously unhandled -- a rejected upload (e.g. an invalid file)
+			// silently did nothing visible at all, with no indication anything
+			// had even been attempted.
+			uploadError = err instanceof Error ? err.message : String(err);
+			return;
+		}
 
-			if (isAtLocaleRoot) {
-				goto(`/${page.params.lang}/patient`);
-			} else {
-				console.log('Not at locale root, skipping navigation');
-			}
-		});
+		// Always navigate to this research's URL -- tracks it into the
+		// browser history, whether this was the session's first upload
+		// (from the bare landing page) or a second projection uploaded
+		// while already viewing/editing it. Preserves whichever tab is
+		// currently open.
+		goto(research_url(page.params.lang!, project.session.sessionUID, page.url.pathname));
 	};
 
 	const openFileDialog = (projection: Projection) => {
@@ -106,10 +115,9 @@
 	function handleClear(e: MouseEvent) {
 		e.preventDefault();
 
+		uploadError = null;
 		project.registry.delete(project.session.sessionUID);
-
-		project.session.destroy();
-		project.session = new SessionService(null);
+		project.resetSession();
 	}
 </script>
 
@@ -126,7 +134,7 @@
 >
 	<div class="mb-4 flex items-center justify-between">
 		<h2 class="text-2xl font-bold">{$t('main.DICOM_upload_card.h2')}</h2>
-		{#if project.session.projections.side.hash || project.session.projections.frontal.hash}
+		{#if project.session.projections.side.sopInstanceUid || project.session.projections.frontal.sopInstanceUid}
 			<div class="flex items-end gap-2">
 				<button
 					onclick={handleClear}
@@ -142,11 +150,19 @@
 			</div>
 		{/if}
 	</div>
+	{#if uploadError}
+		<div
+			class="mb-4 flex items-center gap-2 rounded-lg border border-(--destructive)/30 bg-(--destructive)/10 p-3 text-sm text-(--destructive)"
+		>
+			<span class="font-medium">{$t('main.DICOM_upload_card.upload_failed')}:</span>
+			<span>{uploadError}</span>
+		</div>
+	{/if}
 	<div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 		{#each upload_projections[$locale as (typeof supportedLocales)[number]] as up}
 			<div>
 				<label class="mb-2 block text-sm font-medium" for="side-dicom">{up.label}</label>
-				{#if project.session.projections[up.projection].hash}
+				{#if project.session.projections[up.projection].sopInstanceUid}
 					<div class="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3">
 						<img
 							class="h-5 w-5 shrink-0"
@@ -191,7 +207,7 @@
 	</div>
 	<div class="border-t border-(--border) pt-4">
 		<p class="mt-2 text-center text-xs text-(--muted-foreground)">
-			{#if project.session.projections.side.hash && project.session.projections.frontal.hash}
+			{#if project.session.projections.side.sopInstanceUid && project.session.projections.frontal.sopInstanceUid}
 				<img
 					class="inline h-5 w-5 shrink-0"
 					src={acceptedSVG}

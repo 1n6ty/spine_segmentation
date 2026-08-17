@@ -18,7 +18,8 @@
 			"h2": "DICOM File Upload",
 			"p_under_button": "Upload files in DICOM format by clicking one of the buttons above.",
 			"p_under_button_accepted": "All files uploaded. Clear or create a new session to upload new files.",
-			"clear_session": "Clear Session"
+			"clear_session": "Clear Session",
+			"upload_failed": "Upload failed"
 		},
 		"welcome_h2": "Welcome to Spine Segmentation project",
 		"p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
@@ -40,8 +41,11 @@
 		"header": "Image editor",
 		"zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
 		"autofill": "Autofill",
-		"autofill_confirm_overwrite": "This view already has vertebra polygons. Autofill will replace them with AI-generated ones. Continue?",
+		"autofill_confirm_overwrite": "This view already has vertebra polygons. Autofill will replace them with AI-generated ones.",
+		"clear_all": "Clear all",
+		"clear_all_confirm": "This will remove all vertebra polygons from this view.",
 		"cancel": "Cancel",
+		"continue": "Continue",
 		"instructions": {
 			"header": "Instructions"
 		},

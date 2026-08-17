@@ -1,58 +1,63 @@
 # Storages
 
-Three separate client-side stores, different purposes — don't conflate them. This data never
-lives on the backend; DICOM files and their annotations stay in the browser by design.
+DICOM files and their annotations no longer live only in the browser. The backend's
+`UserRecentStudies` model (`backend/Mainland/Dicom/models.py`) is the single source of truth for
+a user's recent studies — persistent across devices/browsers, scoped to the logged-in account by
+`owner=request.user` on every endpoint under `/api/dcm/recent-studies/`, not by anything
+client-side. This was a deliberate change from the old "stays in the browser by design" stance —
+see `backend/docs/patterns/media-serving.md` for the general private-media convention the backend
+side of this reuses (private bucket, X-Accel-Redirect, never presigned URLs).
 
-| Store | What | Keyed by |
+The frontend deliberately does **not** keep a durable local copy of DICOM bytes or polygons
+(no IndexedDB, no Cache Storage) — both were removed. PHI sitting in browser storage on a shared
+clinical workstation, or as a standing target for any future XSS bug, wasn't worth the perf win of
+a local cache once the backend became authoritative. Reopening a session always re-fetches from
+the backend.
+
+| Store | What | Notes |
 |---|---|---|
-| IndexedDB (`RegistryService`) | Per-session metadata: patient brief, polygons, thumbnail | `sessionUID`, scoped to `accountId` |
-| Cache Storage (`FileCache`) | Raw DICOM file bytes | SHA-256 content hash — shared across accounts by design, it's just a blob store |
-| `localStorage` | Nothing authoritative | — |
+| In-memory (`SessionService`, `core/session/session.svelte.ts`) | Current tab's DICOM bytes, parsed patient/study/series, polygons, the current session id | Lives only for the tab's lifetime — refetched from the backend on every load/reopen, never persisted |
+| `localStorage` | Nothing | See below — there's no id to remember client-side at all |
 
-## `RegistryService` (`core/session/registry.svelte.ts`) — Per-Session Metadata
+## `SessionService` (`core/session/session.svelte.ts`)
 
-IndexedDB (`idb`), one `DicomDB` database, one `sessions` object store keyed by `sessionUID`.
-Each `SessionValue` (`core/session/types.ts`) holds `brief` (patient name/UID/birthdate),
-`thumbnail`, and per-projection `{ hash, polygons }` — not the raw DICOM bytes themselves (those
-live in `FileCache`, keyed by `hash`).
+Backed entirely by the backend now:
 
-**Account-scoped.** `SessionValue.accountId` and `RegistryService.accountId` (`$state`) together
-gate what `sessionValues` (the reactive, UI-facing view) exposes:
+- `uploadFile()` — parses the file client-side (still needed to render the bitmap — the backend
+  never sends pixel data back), then persists it: creates a `UserRecentStudies` row if none exists
+  yet (`POST /api/dcm/recent-studies/`), uploads via the existing `POST /api/dcm/parse/` (which
+  also kicks off AI segmentation server-side, unconditionally — see `patterns/auth.md`-adjacent
+  note below), then attaches the resulting image
+  (`PATCH /api/dcm/recent-studies/{id}/projections/{slug}/`). Every upload goes through this now —
+  there's no local-only mode left.
+- `requestSave()` — same 500ms-debounce trigger as before, but PATCHes the changed projection's
+  polygons and the regenerated thumbnail to the backend instead of writing to IndexedDB.
+- `restoreFromServer()` — takes `SessionUIDArg = string | 'latest' | null`. A real id fetches
+  `GET /api/dcm/recent-studies/{id}/` (used when reactivating a specific session from the
+  recent-studies list, e.g. `Card.svelte`'s `makeActive`); `'latest'` fetches
+  `GET /api/dcm/recent-studies/latest/` instead — the requesting user's most-recently-accessed row,
+  with no id needed at all — used on app load (`project.svelte.ts`). Either way, once the detail
+  response comes back, `GET /api/dcm/{sop}/file/` (unchanged, X-Accel-Redirect-served) per populated
+  slot gets the raw bytes, parsed client-side exactly as before. A `'latest'` 404 (no recent studies
+  yet — the ordinary first-visit case) or any other failure just starts an empty session rather than
+  surfacing an error; an explicit known id that 404s does throw, since that's an unexpected state
+  worth surfacing.
 
-```ts
-sessionValues = $derived(
-	Object.fromEntries(Object.entries(this.allSessions).filter(([, v]) => v.accountId === this.accountId))
-);
-```
-
-`allSessions` (private) holds every account's rows loaded from IndexedDB — TTL cleanup
-(`cleanupOldSessions`, 7-day default) runs across all of them regardless of account. Only the
-exposed `sessionValues` view is filtered. `setAccountId(id)` is called exclusively by
-`authService` (`patterns/auth.md`) on verify/reject — never call it directly from a component.
-
-**Why:** without this, logging in as a different account on the same browser showed the previous
-account's "Researches" list — the registry had no concept of "whose session is this" at all. New
-sessions are stamped with whichever account is active at `upsert()` time
-(`data.accountId ?? this.accountId` — an explicit incoming `accountId` wins, so a caller can still
-write cross-account if it ever needs to, but the normal `session.svelte.ts` call path never passes
-one and gets the current account by default).
-
-`clearAll()` ("Clear all" in the Researches UI) is scoped to the *current* account only — it must
-never delete another account's cached sessions.
-
-## `FileCache` (`core/storage/file-cache.ts`) — Raw File Bytes
-
-Cache Storage API (`caches.open('dicom-storage-v1')`), keyed by the file's own SHA-256 hex hash
-(`shared/utils/hash.ts`), not by session or account. `save()` dedupes automatically — if the hash
-already exists, it returns the existing hash without rewriting.
-
-**Deliberately not account-scoped.** It's a content-addressed blob store; two accounts uploading
-byte-identical files sharing one cached blob leaks nothing (an account can only ever discover a
-hash via its own `RegistryService`-scoped session list, which *is* account-scoped). Don't add
-account-namespacing here — it would just waste storage on duplicate blobs for no isolation
-benefit.
+**AI segmentation now runs automatically on every upload**, not just on an explicit "Autofill"
+click — `parse_and_store_dicom` (backend) always triggers it when content changes, and every
+upload goes through that path now. The "Autofill" button (`components/ui/editor/EditorCanvas.svelte`)
+is repurposed accordingly: it no longer uploads or re-triggers segmentation, it only watches the
+already-running pipeline's status (`features/autofill/autofill.ts`'s `watchAutofillStatus`, reusing
+the existing SSE endpoint) and, once done, lets the user explicitly load the AI's points — a manual
+edit made while segmentation was still running is never silently overwritten.
 
 ## `localStorage`
 
-Holds nothing authoritative. See `patterns/auth.md` for the flag that used to live here and why
-it was removed.
+Holds nothing at all — not even a session id. Resuming "wherever I left off" on reload goes through
+`GET /api/dcm/recent-studies/latest/` (`Dicom/v1/views/user_recent_studies.py`'s `latest` action)
+instead of reading a remembered id: ownership (`owner=request.user`, via the auth session cookie) is
+what identifies "my" session, so there's nothing left to store client-side once the backend can
+answer "what's my most recent one" directly. An earlier version of this design kept one opaque id
+(`lastActiveSessionUID`) in `localStorage` for the same purpose — removed once it became clear the
+backend could serve the same answer without it. See `patterns/auth.md` for the unrelated flag that
+used to live in `localStorage` and why it was removed even earlier.
