@@ -114,7 +114,7 @@
 					icon: documentSVG,
 					alt: 'document icon',
 					title: { 'en-US': 'Available Views', 'ru-RU': 'Доступные для исследования проекции' },
-					comment: `${project.session.projections.side.hash ? 'LATERAL' : ''} / ${project.session.projections.frontal.hash ? 'FRONTAL' : ''}`
+					comment: `${project.session.projections.side.sopInstanceUid ? 'LATERAL' : ''} / ${project.session.projections.frontal.sopInstanceUid ? 'FRONTAL' : ''}`
 				}
 			]
 		},

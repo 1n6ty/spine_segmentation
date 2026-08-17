@@ -2,26 +2,28 @@ import type { Projection } from '$lib/features/dicom/types';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
 
 export type SessionProjection = {
-	hash: string;
+	sopInstanceUid: string;
 	polygons: Polygon[];
 };
 
+// Mirrors backend/Mainland/Dicom/v1/schemas/user_recent_studies.py's
+// UserRecentStudies_Ref_Schema -- the slim shape returned by the recent-studies
+// list endpoint. No accountId/TTL bookkeeping here anymore: the backend already
+// scopes every row to the logged-in user, so there's nothing left to filter
+// client-side (see registry.svelte.ts).
 export type SessionValue = {
 	sessionUID: string;
 
-	// Which locally-authenticated account this session belongs to — sessions
-	// are scoped to `RegistryService.accountId` so switching accounts on the
-	// same browser doesn't surface another account's research history.
-	accountId: string | null;
+	thumbnail: string | null; // data URI, or null if none was saved yet
 
-	thumbnail: Blob | null;
 	brief: {
 		patientName: string | null;
 		patientBirthdate: Date | null;
 		patientUID: string | null;
 	};
 
-	projections: Record<Projection, SessionProjection>;
+	sidePresent: boolean;
+	frontalPresent: boolean;
 
 	lastAccessed: number;
 };

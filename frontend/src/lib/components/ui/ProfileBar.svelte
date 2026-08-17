@@ -9,11 +9,10 @@
 
 	import { project } from '$lib/core/project.svelte';
 	import { post } from '$lib/core/network/client';
-	import { authService } from '$lib/core/session/auth.svelte';
 
-	// `authService.status` is a shared singleton: the enclosing page/layout
+	// `project.auth.status` is a shared singleton: the enclosing page/layout
 	// (landing page or the (authenticated) guard) is what actually calls
-	// `authService.verify()` against the backend -- this component only
+	// `project.auth.verify()` against the backend -- this component only
 	// reads the result, so it never shows profile data that hasn't been
 	// backend-confirmed.
 
@@ -25,13 +24,14 @@
 			// user back to login — the client-side guard will re-check on next visit.
 		}
 
-		authService.reject();
+		project.auth.reject();
+		project.resetSession();
 
 		await goto(`/${page.params.lang}/login`);
 	}
 </script>
 
-{#if authService.status === 'authenticated'}
+{#if project.auth.status === 'authenticated'}
 	<div class="flex min-w-0 items-center gap-4">
 		<div
 			class="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-(--border) px-4 py-2"

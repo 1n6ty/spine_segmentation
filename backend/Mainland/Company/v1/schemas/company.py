@@ -25,10 +25,16 @@ class _CompanyNotFoundIssue(_NotFoundIssue):
 
 
 class Company_NotFound_Response(NotFoundResponse):
+    """Doubles as the actual runtime response builder -- call
+    .from_pk(company_id).drf_response at the call site."""
     details: List[_CompanyNotFoundIssue] = Field(
         default_factory=lambda: [_CompanyNotFoundIssue()],
         description="The single company-not-found issue.",
     )
+
+    @classmethod
+    def from_pk(cls, company_id) -> "Company_NotFound_Response":
+        return cls(details=[_CompanyNotFoundIssue(message=f"Company {company_id} does not exist.")])
 
 
 class Company_LIST_Data_Schema(BaseModel):
@@ -44,5 +50,11 @@ class Company_LIST_Response_OK(OkResponse):
 
 @extend_schema_serializer(many=False)
 class Company_RETRIEVE_Response_OK(OkResponse):
+    """Doubles as the actual runtime response builder -- call
+    .from_model(company).drf_response at the call site."""
     code: Literal[200] = Field(200, description="HTTP status code of the response.", examples=[200])
     data: Company_Item_Schema
+
+    @classmethod
+    def from_model(cls, company) -> "Company_RETRIEVE_Response_OK":
+        return cls(data=Company_Item_Schema.from_model(company))

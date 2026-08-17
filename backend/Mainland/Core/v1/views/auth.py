@@ -1,4 +1,3 @@
-from common.schemas.v1.response import ApiResponse, Issue
 from common.schemas.v1.errors import BadRequestResponse, UnauthorizedResponse
 from common.mixins.v1.viewset import StdViewSetMixin
 from common.utils.user import aget_current_user
@@ -44,47 +43,22 @@ class AuthViewSet(StdViewSetMixin):
     )
     @action(detail=False, methods=["post"], url_path="login", url_name="login")
     async def login(self, request: Request) -> Response:
-        response: ApiResponse = ApiResponse()
         try:
             login_data = Login_Request(**request.data)
         except ValidationError as e:
-            for err in e.errors():
-                response.add_issue(
-                    Issue(
-                        status="error",
-                        code=400,
-                        message=err['msg'],
-                        field=str(err['loc'][-1]) if err['loc'] else None
-                    )
-                )
-            return response.set_status(
-                status="error",
-                code=400
-            ).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
 
         user = await sync_to_async(authenticate)(request, email=login_data.email, password=login_data.password)
 
         if user is None:
-            return ApiResponse().add_issue(
-                Issue(
-                    status="error",
-                    code=401,
-                    message="Invalid credentials."
-                )
-            ).set_status(
-                status="error",
-                code=401
-            ).drf_response
+            return Login_InvalidCredentials_Response().drf_response
 
         await sync_to_async(login)(request, user)
 
         if login_data.remember_me:
             request.session.set_expiry(settings.API_MANIFEST["session"]["extended_expiration_time"])
 
-        return ApiResponse().set_status(
-            status="ok",
-            code=200
-        ).drf_response
+        return Login_Response_OK().drf_response
 
     @extend_schema(
         summary="User Logout",
@@ -99,10 +73,7 @@ class AuthViewSet(StdViewSetMixin):
 
         await sync_to_async(logout)(request)
 
-        return ApiResponse().set_status(
-            status="ok",
-            code=200
-        ).drf_response
+        return Logout_Response_OK().drf_response
 
     @extend_schema(
         summary="Get the current authenticated user",
@@ -115,9 +86,4 @@ class AuthViewSet(StdViewSetMixin):
     )
     @action(detail=False, methods=["get"], url_path="me", url_name="me")
     async def me(self, request: Request) -> Response:
-        return ApiResponse().update_data(
-            (await aget_current_user(request)).model_dump()
-        ).set_status(
-            status="ok",
-            code=200
-        ).drf_response
+        return Me_Response_OK(data=await aget_current_user(request)).drf_response

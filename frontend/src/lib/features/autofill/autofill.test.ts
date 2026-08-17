@@ -2,14 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SegmentationRefPoints } from '$lib/core/network/types';
 import type { SegmentationEvent } from '$lib/core/network/segmentation-events';
 
-const { post, stream_segmentation_events } = vi.hoisted(() => ({
-	post: vi.fn(),
+const { stream_segmentation_events } = vi.hoisted(() => ({
 	stream_segmentation_events: vi.fn()
 }));
-vi.mock('$lib/core/network/client', () => ({ post }));
 vi.mock('$lib/core/network/segmentation-events', () => ({ stream_segmentation_events }));
 
-import { runAutofill } from './autofill';
+import { watchAutofillStatus } from './autofill';
 
 async function* events_from(list: SegmentationEvent[]) {
 	for (const event of list) yield event;
@@ -41,76 +39,42 @@ function ref_points(): SegmentationRefPoints {
 }
 
 beforeEach(() => {
-	post.mockReset();
 	stream_segmentation_events.mockReset();
-	post.mockResolvedValue({ ok: true });
 });
 
-describe('runAutofill success', () => {
-	it("uploads the DICOM and resolves via the segmentation stream's done event", async () => {
-		// The stream connects after upload_and_stream already emitted
-		// "segmentation.processing" manually (for immediate UI feedback before
-		// the SSE connection is even open), so the fixture starts one step later.
+describe('watchAutofillStatus success', () => {
+	it("resolves via the segmentation stream's done event, without uploading anything", async () => {
+		// watchAutofillStatus only watches -- the upload already happened
+		// elsewhere (SessionService.uploadFile), so no /api/dcm/parse/ call here.
 		stream_segmentation_events.mockReturnValue(
 			events_from([
+				{ status: 'segmentation.processing', ref_points: null },
 				{ status: 'saving', ref_points: null },
 				{ status: 'done', ref_points: ref_points() }
 			])
 		);
 
 		const statuses: string[] = [];
-		const polygons = await runAutofill('1.2.3', new ArrayBuffer(0), 'frontal', (s) =>
-			statuses.push(s)
-		);
+		const polygons = await watchAutofillStatus('1.2.3', (s) => statuses.push(s));
 
-		expect(post).toHaveBeenCalledWith('/api/dcm/parse/', { form: expect.any(FormData) });
-		const form_data = post.mock.calls[0][1].form as FormData;
-		expect(form_data.get('file_role_slug')).toBe('DICOM_XRAY_FRONTAL');
-		expect(statuses).toEqual(['uploading', 'segmentation.processing', 'saving']);
+		expect(stream_segmentation_events).toHaveBeenCalledWith('1.2.3');
+		expect(statuses).toEqual(['segmentation.processing', 'saving', 'done']);
 		expect(polygons).toHaveLength(2);
 	});
 
-	it("maps the 'side' projection to the DICOM_XRAY_SAGITTAL role slug", async () => {
+	it('reflects an already-terminal status immediately (self-hydration), no reconnect needed', async () => {
 		stream_segmentation_events.mockReturnValue(
 			events_from([{ status: 'done', ref_points: ref_points() }])
 		);
 
-		await runAutofill('1.2.3', new ArrayBuffer(0), 'side', () => {});
+		const statuses: string[] = [];
+		await watchAutofillStatus('1.2.3', (s) => statuses.push(s));
 
-		const form_data = post.mock.calls[0][1].form as FormData;
-		expect(form_data.get('file_role_slug')).toBe('DICOM_XRAY_SAGITTAL');
+		expect(statuses).toEqual(['done']);
 	});
 });
 
-describe('runAutofill failure paths', () => {
-	it('throws without consuming the stream when the upload response is not ok', async () => {
-		post.mockResolvedValue({ ok: false, json: async () => ({}) });
-
-		await expect(runAutofill('1.2.3', new ArrayBuffer(0), 'side', () => {})).rejects.toThrow(
-			'DICOM upload failed'
-		);
-		expect(stream_segmentation_events).not.toHaveBeenCalled();
-	});
-
-	it('surfaces the backend issue message for a max_count=1-per-Study rejection', async () => {
-		post.mockResolvedValue({
-			ok: false,
-			json: async () => ({
-				details: [
-					{
-						field: 'file_role_slug',
-						message:
-							"Role 'DICOM_XRAY_FRONTAL' allows at most 1 file(s) per record. 1 already attached."
-					}
-				]
-			})
-		});
-
-		await expect(runAutofill('1.2.3', new ArrayBuffer(0), 'frontal', () => {})).rejects.toThrow(
-			'allows at most 1 file'
-		);
-	});
-
+describe('watchAutofillStatus failure paths', () => {
 	it('rejects when the stream reports an error status', async () => {
 		stream_segmentation_events.mockReturnValue(
 			events_from([
@@ -119,19 +83,17 @@ describe('runAutofill failure paths', () => {
 			])
 		);
 
-		await expect(runAutofill('1.2.3', new ArrayBuffer(0), 'side', () => {})).rejects.toThrow();
+		await expect(watchAutofillStatus('1.2.3', () => {})).rejects.toThrow();
 	});
 
 	it('rejects when the stream ends without a done or error event', async () => {
-		stream_segmentation_events.mockReturnValue(
-			events_from([{ status: 'saving', ref_points: null }])
-		);
+		stream_segmentation_events.mockReturnValue(events_from([{ status: 'saving', ref_points: null }]));
 
-		await expect(runAutofill('1.2.3', new ArrayBuffer(0), 'side', () => {})).rejects.toThrow();
+		await expect(watchAutofillStatus('1.2.3', () => {})).rejects.toThrow();
 	});
 });
 
-describe('runAutofill point-order safety net', () => {
+describe('watchAutofillStatus point-order safety net', () => {
 	it("normalizes to the same canonical point order regardless of the backend's raw point order", async () => {
 		const base_vertebraes = [
 			{
@@ -168,7 +130,7 @@ describe('runAutofill point-order safety net', () => {
 			stream_segmentation_events.mockReturnValue(
 				events_from([{ status: 'done', ref_points: shifted_ref_points }])
 			);
-			return runAutofill('1.2.3', new ArrayBuffer(0), 'side', () => {});
+			return watchAutofillStatus('1.2.3', () => {});
 		}
 
 		const unshifted = await run_with_shift(0);

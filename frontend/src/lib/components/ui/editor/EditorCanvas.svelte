@@ -5,12 +5,13 @@
 	import loaderSVG from '$lib/assets/icons/loader.svg';
 
 	import Button from '$lib/components/ui/button/Button.svelte';
+	import ConfirmCard from '$lib/components/ui/ConfirmCard.svelte';
 
 	import { InstanceContainer } from '$lib/features/editor/core/instance-container.svelte';
 	import { project } from '$lib/core/project.svelte';
 	import { drawMain } from '$lib/features/editor/rendering/main-draw';
 	import { drawMinimap } from '$lib/features/editor/rendering/minimap-draw';
-	import { runAutofill, type AutofillStatus } from '$lib/features/autofill/autofill';
+	import { watchAutofillStatus, type AutofillStatus } from '$lib/features/autofill/autofill';
 
 	let {
 		projection = 'side'
@@ -18,38 +19,72 @@
 		projection: 'side' | 'frontal';
 	} = $props();
 
+	// AI segmentation now runs automatically on every upload (see
+	// SessionService.uploadFile) -- this button no longer re-uploads or
+	// re-triggers it. It only watches the pipeline's current/live status.
+	// Points get applied the moment the result arrives -- no separate
+	// "Done!"/confirm-to-load step. The only confirmation asked for is
+	// up front, before watching even starts, and only when there's
+	// something to actually lose (existing points on this projection).
 	let magicStatus = $state<AutofillStatus>('idle');
 	let magicError = $state<string | null>(null);
 
-	async function handleMagicClick() {
+	// Which (if any) in-app confirm card is currently showing. Both the
+	// Autofill overwrite warning and the "Clear all" action route through the
+	// same ConfirmCard component instead of the native browser confirm().
+	let activeConfirm = $state<'overwrite-ai' | 'clear-all' | null>(null);
+
+	function handleMagicClick() {
 		const proj = project.session.projections[projection];
-		const sopInstanceUID = proj.patient?.study.series.sopInstance.sopInstanceUID;
-		const arrayBuffer = proj.arrayBuffer;
+		if (!proj.patient?.study.series.sopInstance.sopInstanceUID) return;
 
-		if (!sopInstanceUID || !arrayBuffer) return;
-
-		if (proj.polygons.length > 0 && !confirm($t('editor.autofill_confirm_overwrite'))) {
+		if (proj.polygons.length > 0) {
+			activeConfirm = 'overwrite-ai';
 			return;
 		}
 
+		runAutofillWatch();
+	}
+
+	async function runAutofillWatch() {
+		const proj = project.session.projections[projection];
+		const sopInstanceUID = proj.patient?.study.series.sopInstance.sopInstanceUID;
+		if (!sopInstanceUID) return;
+
 		magicError = null;
+		magicStatus = 'checking';
 
 		try {
-			const polygons = await runAutofill(sopInstanceUID, arrayBuffer, projection, (status) => {
+			const result = await watchAutofillStatus(sopInstanceUID, (status) => {
 				magicStatus = status;
 			});
 
-			proj.polygons = polygons;
+			projectionContainer.edit.history?.push();
+			proj.polygons = result;
 			project.session.requestSave();
-
-			magicStatus = 'done';
-			setTimeout(() => {
-				magicStatus = 'idle';
-			}, 800);
+			magicStatus = 'idle';
 		} catch (err) {
 			magicStatus = 'error';
 			magicError = err instanceof Error ? err.message : String(err);
 		}
+	}
+
+	function closeMagic() {
+		magicStatus = 'idle';
+		magicError = null;
+	}
+
+	function handleClearAllClick() {
+		activeConfirm = 'clear-all';
+	}
+
+	function commitClearAll() {
+		const proj = project.session.projections[projection];
+		projectionContainer.edit.history?.push();
+		proj.polygons = [];
+		projectionContainer.edit.selectedPolygon = null;
+		project.session.requestSave();
+		activeConfirm = null;
 	}
 
 	const projection_h: Record<string, Record<string, string>> = {
@@ -67,6 +102,24 @@
 
 	onMount(() => {
 		projectionContainer.nav.zoomToFit();
+
+		// The canvas's backing-store size only gets re-synced as a side effect
+		// of the next redraw (drawBackground() in main-draw.ts sets
+		// canvas.width/height = canvas.clientWidth/clientHeight every draw),
+		// and zoomToFit() -- which recomputes the "contain" scale/offset for
+		// the current canvas size -- was never otherwise re-invoked on its
+		// own. Without this, resizing the viewport (e.g. opening devtools)
+		// left the view's scale/offset stale for the old canvas size, so the
+		// image visibly shrank/misaligned instead of staying correctly
+		// contained at its own aspect ratio.
+		const resizeObserver = new ResizeObserver(() => {
+			projectionContainer.nav.zoomToFit();
+		});
+		if (projectionContainer.mainCanvas) {
+			resizeObserver.observe(projectionContainer.mainCanvas);
+		}
+
+		return () => resizeObserver.disconnect();
 	});
 
 	$effect(() => {
@@ -168,9 +221,34 @@
 			callback={projectionContainer.edit.deleteSelected}
 			disabled={!projectionContainer.edit.selectedPolygon}
 		/>
+		<Button
+			type="delete"
+			callback={handleClearAllClick}
+			disabled={project.session.projections[projection].polygons.length === 0}
+			>{$t('editor.clear_all')}</Button
+		>
 	</div>
 	<div class="relative h-150 overflow-hidden rounded-lg border border-(--border)">
-		{#if magicStatus !== 'idle'}
+		{#if activeConfirm === 'overwrite-ai'}
+			<ConfirmCard
+				message={$t('editor.autofill_confirm_overwrite')}
+				continueLabel={$t('editor.continue')}
+				continueButtonType="magic"
+				onCancel={() => (activeConfirm = null)}
+				onContinue={() => {
+					activeConfirm = null;
+					runAutofillWatch();
+				}}
+			/>
+		{:else if activeConfirm === 'clear-all'}
+			<ConfirmCard
+				message={$t('editor.clear_all_confirm')}
+				continueLabel={$t('editor.continue')}
+				continueButtonType="delete"
+				onCancel={() => (activeConfirm = null)}
+				onContinue={commitClearAll}
+			/>
+		{:else if magicStatus !== 'idle'}
 			<div
 				class="absolute inset-0 z-50 flex items-center justify-center bg-(--background)/50 backdrop-blur-sm"
 			>
@@ -181,13 +259,7 @@
 						<span class="text-sm font-medium text-(--destructive)"
 							>{magicError ?? $t('editor.loading.error')}</span
 						>
-						<Button
-							type="cancel"
-							callback={() => {
-								magicStatus = 'idle';
-								magicError = null;
-							}}>{$t('editor.cancel')}</Button
-						>
+						<Button type="cancel" callback={closeMagic}>{$t('editor.cancel')}</Button>
 					{:else}
 						<img src={loaderSVG} alt="loader" class="h-12 w-12" />
 						<span class="text-sm font-medium">{$t('editor.loading.' + magicStatus)}</span>

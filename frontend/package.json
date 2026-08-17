@@ -36,7 +36,6 @@
 		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.14.0",
-		"fake-indexeddb": "^6.2.5",
 		"globals": "^17.1.0",
 		"playwright": "^1.58.0",
 		"postcss": "^8.5.6",
@@ -56,7 +55,6 @@
 		"@cornerstonejs/core": "^4.20.0",
 		"@cornerstonejs/dicom-image-loader": "^4.20.0",
 		"dicom-parser": "^1.8.21",
-		"idb": "^8.0.3",
 		"mathjs": "^15.1.1",
 		"svelte-i18n": "^4.0.1"
 	}

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { SessionService } from '$lib/core/session/session.svelte';
 	import { t, locale } from 'svelte-i18n';
 
 	import { page } from '$app/state';
@@ -9,23 +8,18 @@
 	import calendarSVG from '$lib/assets/icons/calendar.svg';
 	import deleteSVG from '$lib/assets/icons/delete.svg';
 	import { project } from '$lib/core/project.svelte';
+	import { research_url } from '$lib/shared/utils/routing';
 
 	let { active = false, sessionUID }: { active: boolean; sessionUID: string } = $props();
 
 	const session = $derived(project.registry.sessionValues[sessionUID]);
 
-	let thumbUrl = $derived.by(() => {
-		if (session?.thumbnail instanceof Blob) {
-			return URL.createObjectURL(session.thumbnail);
-		}
-		return null;
-	});
-
-	$effect(() => {
-		return () => {
-			if (thumbUrl) URL.revokeObjectURL(thumbUrl);
-		};
-	});
+	// Thumbnail arrives from the backend as a data URI already -- no
+	// Blob/createObjectURL lifecycle to manage anymore. Falls back to a
+	// purely-local, never-uploaded preview (registry.localThumbnails,
+	// set right after a client-side upload) only until the server's own
+	// generated thumbnail shows up here.
+	const thumbUrl = $derived(session?.thumbnail ?? project.registry.localThumbnails[sessionUID] ?? null);
 
 	const dateTimeOptions = {
 		year: 'numeric',
@@ -55,27 +49,13 @@
 	});
 
 	function makeActive(e: MouseEvent) {
-		console.log('Switching to session:', sessionUID);
-
-		// 2. Cleanup current session properly
-		if (project.session) {
-			project.session.destroy();
-		}
-
-		// 3. Assign new session - this will trigger the $effect in the NEW active card
-		project.session = new SessionService(sessionUID);
-
-		const currentPath = page.url.pathname;
-
-		// Check if path is exactly the locale (e.g., "/en" or "/en/")
-		const isAtLocaleRoot =
-			currentPath === `/${page.params.lang}` || currentPath === `/${page.params.lang}/`;
-
-		if (isAtLocaleRoot) {
-			goto(`/${page.params.lang}/patient`);
-		} else {
-			console.log('Not at locale root, skipping navigation');
-		}
+		project.resetSession(sessionUID);
+		// Always navigate -- switching research now always tracks into the
+		// URL/browser history (/researches/{id}/...), not just when starting
+		// from the bare landing page. Preserves whichever tab is currently
+		// open (defaults to 'patient' when there isn't one, e.g. coming from
+		// the landing page itself).
+		goto(research_url(page.params.lang!, sessionUID, page.url.pathname));
 	}
 
 	async function handleDelete(e: MouseEvent) {
@@ -83,8 +63,7 @@
 
 		// 1. Clear project global if it's the one we are deleting
 		if (active) {
-			project.session.destroy();
-			project.session = new SessionService(null);
+			project.resetSession();
 		}
 
 		// 2. Perform the registry delete
@@ -129,7 +108,7 @@
 					</div>
 					<div class="flex items-center text-[9px]">
 						<span class="flex items-center gap-0.5 text-(--muted-foreground)"
-							>{session.projections.side.hash ? 'LATERAL' : ''} / {session.projections.frontal.hash
+							>{session.sidePresent ? 'LATERAL' : ''} / {session.frontalPresent
 								? 'FRONTAL'
 								: ''}</span
 						>
@@ -192,7 +171,7 @@
 					</div>
 					<div class="flex items-center text-[9px]">
 						<span class="flex items-center gap-0.5 text-(--muted-foreground)"
-							>{session.projections.side.hash ? 'LATERAL' : ''} / {session.projections.frontal.hash
+							>{session.sidePresent ? 'LATERAL' : ''} / {session.frontalPresent
 								? 'FRONTAL'
 								: ''}</span
 						>

@@ -104,14 +104,23 @@ class ApiResponse(BaseModel):
 
     @property
     def drf_response(self: Self) -> Response:
-        return Response(
-            data=self.model_dump(exclude={"code"}, exclude_none=True),
-            status=self.code
-        )
+        return Response(data=self.dict_response, status=self.code)
 
     @property
     def dict_response(self: Self) -> dict[str, Any]:
-        return self.model_dump(exclude={"code"}, exclude_none=True)
+        # exclude_none=True on the envelope's own fields (message/details/etc)
+        # is intentional -- but pydantic v2 applies exclude_none *recursively*
+        # into any nested-BaseModel `data` (e.g. a subclass typing
+        # `data: SomeItemSchema` instead of the base `Dict[str, Any]`), which
+        # would silently drop that schema's own None-valued fields (a client
+        # expecting `"role": null` would instead see the key missing
+        # entirely). Dump `data` separately, without exclude_none, so its
+        # shape always matches SomeItemSchema.model_dump() exactly regardless
+        # of how the envelope itself is typed.
+        payload = self.model_dump(exclude={"code", "data"}, exclude_none=True)
+        if self.data is not None:
+            payload["data"] = self.data.model_dump() if isinstance(self.data, BaseModel) else self.data
+        return payload
 
 
 class OkResponse(ApiResponse):

@@ -11,20 +11,20 @@
 	import KeyFeatures from '$lib/components/sections/key-features/KeyFeatures.svelte';
 	import { project } from '$lib/core/project.svelte';
 	import Manager from '$lib/components/ui/sessions/Manager.svelte';
-	import { authService } from '$lib/core/session/auth.svelte';
 
 	// This landing page is reachable without logging in, so the Researches/
 	// DICOM upload cards must only render once the backend actually confirms
 	// a live session -- not from a locally-cached "was logged in" flag.
 	onMount(() => {
-		authService.verify();
+		project.auth.verify();
+		project.enterBareRoute();
 	});
 </script>
 
 <Header />
 <main class="container mx-auto px-4 py-6">
 	<div class="space-y-6">
-		{#if authService.status === 'authenticated'}
+		{#if project.auth.status === 'authenticated'}
 			<Manager />
 			<DicomUploadCard />
 		{/if}

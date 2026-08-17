@@ -2,17 +2,27 @@
 	import { page } from '$app/state';
 	import type { supportedLocales } from '$lib/core/i18n/index.svelte';
 	import { locale } from 'svelte-i18n';
+	import { project } from '$lib/core/project.svelte';
 
 	const menu: Record<(typeof supportedLocales)[number], string[]> = {
 		'en-US': ['Patient Info', 'X-Ray Editing', 'Measurements', 'Diagnostic report'],
 		'ru-RU': ['Информация о пациенте', 'X-Ray Редактирование', 'Измерения', 'Диагностический отчёт']
 	} as const;
 
+	// Research-scoped once there's an active session (tracks into
+	// /researches/{id}/...), falling back to the bare, id-less tabs when
+	// there isn't one yet (e.g. before any research has been created).
+	const base = $derived(
+		project.session.sessionUID
+			? `/${page.params.lang}/researches/${project.session.sessionUID}`
+			: `/${page.params.lang}`
+	);
+
 	const links = $derived([
-		`/${page.params.lang}/patient`,
-		`/${page.params.lang}/edit`,
-		`/${page.params.lang}/measure`,
-		`/${page.params.lang}/report`
+		`${base}/patient`,
+		`${base}/edit`,
+		`${base}/measure`,
+		`${base}/report`
 	]);
 
 	let activeIndex = $derived(links.findIndex((link) => page.url.pathname.includes(link)));

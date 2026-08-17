@@ -39,6 +39,12 @@ def validate_file_for_role(uploaded_file, role: FileRole | None) -> Issue | None
 
 
 def check_role_max_count(role: FileRole, existing_count: int, adding_count: int) -> 'Issue | None':
+    """Produces a clean 400 in the common case, but this count-then-act check is racy by
+    itself -- two concurrent callers can both pass it before either writes. For
+    max_count=1 roles, pair this with a DB-level UniqueConstraint on the caller's model
+    (the real enforcement); a UniqueConstraint can't express max_count>1, which needs
+    select_for_update() on the parent row instead. See docs/patterns/media-serving.md's
+    "Enforcing FileRole.max_count" section."""
     if role.max_count is None:
         return None
     if existing_count + adding_count > role.max_count:

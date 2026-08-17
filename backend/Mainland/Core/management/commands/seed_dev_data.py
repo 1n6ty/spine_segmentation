@@ -11,13 +11,19 @@ from django.core.management.base import BaseCommand
 _DOCTOR_EMAIL = 'doctor@example.com'
 _DOCTOR_PASSWORD = 'Bx4-Radius-DoctorSeed-19'
 
+# A second account exists solely so e2e specs can prove cross-user isolation
+# of UserRecentStudies (owner=request.user scoping) against a real backend --
+# not used by the single-user autofill-workflow spec.
+_DOCTOR2_EMAIL = 'doctor2@example.com'
+_DOCTOR2_PASSWORD = 'Qz8-Vector-DoctorSeed-42'
+
 
 class Command(BaseCommand):
-    help = ('Populate the development database with a single login-capable '
-            'doctor account for manual testing / e2e runs against a real '
-            'backend. No Dicom rows are seeded here -- the e2e workflow '
-            'uploads its own DICOM fixture client-side and needs nothing '
-            'server-side beyond a real session.')
+    help = ('Populate the development database with login-capable doctor '
+            'accounts for manual testing / e2e runs against a real backend. '
+            'No Dicom rows are seeded here -- e2e workflows upload their own '
+            'DICOM fixtures client-side and need nothing server-side beyond '
+            'a real session.')
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -32,6 +38,7 @@ class Command(BaseCommand):
 
         self._seed_company()
         self._seed_doctor()
+        self._seed_doctor2()
 
         self._print_summary()
 
@@ -59,13 +66,19 @@ class Command(BaseCommand):
     # ── Doctor user + Profile ────────────────────────────────────────────────
 
     def _seed_doctor(self):
+        self.doctor = self._seed_doctor_account('doctor', _DOCTOR_PASSWORD, _DOCTOR_EMAIL)
+
+    def _seed_doctor2(self):
+        self.doctor2 = self._seed_doctor_account('doctor2', _DOCTOR2_PASSWORD, _DOCTOR2_EMAIL)
+
+    def _seed_doctor_account(self, username, password, email):
         from Profile.models import Profile, Role
 
-        self.doctor = self._upsert_user('doctor', _DOCTOR_PASSWORD, _DOCTOR_EMAIL)
+        user = self._upsert_user(username, password, email)
         doctor_role = Role.objects.get(slug='doctor')
 
         profile, created = Profile.objects.get_or_create(
-            user=self.doctor, defaults={'company': self.company, 'role': doctor_role},
+            user=user, defaults={'company': self.company, 'role': doctor_role},
         )
         update_fields = []
         if not created and profile.company_id != self.company.id:
@@ -76,7 +89,8 @@ class Command(BaseCommand):
             update_fields.append('role')
         if update_fields:
             profile.save(update_fields=update_fields)
-        self.doctor.groups.add(doctor_role.group)
+        user.groups.add(doctor_role.group)
+        return user
 
     def _upsert_user(self, username, password, email):
         """Create-only password assignment: an existing user's password is left
@@ -114,6 +128,7 @@ class Command(BaseCommand):
         manifest = {
             'company': {'slug': self.company.slug, 'name': str(self.company)},
             'doctor': {'email': _DOCTOR_EMAIL, 'password': _DOCTOR_PASSWORD, 'company': self.company.slug},
+            'doctor2': {'email': _DOCTOR2_EMAIL, 'password': _DOCTOR2_PASSWORD, 'company': self.company.slug},
         }
         with open(path, 'w') as f:
             json.dump(manifest, f, indent=2)
@@ -127,4 +142,5 @@ class Command(BaseCommand):
         self.stdout.write('')
         self.stdout.write('  Users:')
         self.stdout.write(f'    {_DOCTOR_EMAIL} / {_DOCTOR_PASSWORD} → {self.company} [doctor]')
+        self.stdout.write(f'    {_DOCTOR2_EMAIL} / {_DOCTOR2_PASSWORD} → {self.company} [doctor]')
         self.stdout.write('')

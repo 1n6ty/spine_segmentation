@@ -3,10 +3,8 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 
-from common.schemas.v1.response import ApiResponse, Issue
 from common.mixins.v1.viewset import StdViewSetMixin
 from common.permissions.base import HasPermCodename
-from common.schemas.v1.domain.user import User_Item_Schema
 from common.utils.user import aget_current_user
 
 from rest_framework.response import Response
@@ -76,14 +74,7 @@ class ProfilesViewSet(StdViewSetMixin):
         try:
             query = Profiles_GET_Schema(**request.query_params.dict())
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
         extend = query.extend_set()
 
         qs = User.objects.select_related(
@@ -97,14 +88,12 @@ class ProfilesViewSet(StdViewSetMixin):
                 lambda: ProfileFilterSet(request.query_params, queryset=qs, request=request).qs
             )()
         except PermissionError as e:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=403, field="company_slug", message=str(e))
-            ).set_status(status="error", code=403).drf_response
+            return PermissionDeniedResponse.single(field="company_slug", message=str(e)).drf_response
         except Company.DoesNotExist:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=400, field="company_slug",
-                      message=f"Company '{request.query_params.get('company_slug')}' does not exist.")
-            ).set_status(status="error", code=400).drf_response
+            return BadRequestResponse.single(
+                field="company_slug",
+                message=f"Company '{request.query_params.get('company_slug')}' does not exist.",
+            ).drf_response
 
         paginator = self.pagination_class()
         paginator.extend = extend
@@ -121,6 +110,7 @@ class ProfilesViewSet(StdViewSetMixin):
         examples=extend_examples(Profiles_GET_GetMe_Response),
         responses={
             200: Profiles_GET_GetMe_Response,
+            400: BadRequestResponse,
             401: UnauthorizedResponse,
         },
     )
@@ -129,22 +119,10 @@ class ProfilesViewSet(StdViewSetMixin):
         try:
             query = Profile_DETAIL_GET_Schema(**request.query_params.dict())
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
         extend = query.extend_set()
 
-        return ApiResponse().update_data(
-            (await aget_current_user(request, extend=extend)).model_dump()
-        ).set_status(
-            status="ok",
-            code=200
-        ).drf_response
+        return Profiles_GET_GetMe_Response(data=await aget_current_user(request, extend=extend)).drf_response
 
     @extend_schema(
         summary="Deactivate a company user",
@@ -162,9 +140,7 @@ class ProfilesViewSet(StdViewSetMixin):
         try:
             profile = await Profile.objects.select_related('user').aget(user_id=user_id)
         except Profile.DoesNotExist:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=404, field="user_id", message=f"No company user with id {user_id} exists.")
-            ).set_status(status="error", code=404).drf_response
+            return Profile_DESTROY_NotFound_Response.from_pk(user_id).drf_response
 
         profile.user.is_active = False
         await profile.user.asave(update_fields=['is_active'])
@@ -195,14 +171,7 @@ class ProfilesViewSet(StdViewSetMixin):
         try:
             query = Profile_DETAIL_GET_Schema(**request.query_params.dict())
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
         extend = query.extend_set()
 
         try:
@@ -210,21 +179,12 @@ class ProfilesViewSet(StdViewSetMixin):
                 'user', 'company', 'role', 'role__group'
             ).aget(user_id=user_id)
         except Profile.DoesNotExist:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=404, field="user_id", message=f"No company user with id {user_id} exists.")
-            ).set_status(status="error", code=404).drf_response
+            return Profile_DESTROY_NotFound_Response.from_pk(user_id).drf_response
 
         try:
             payload = Profile_PATCH_Request(**request.data)
         except ValidationError as e:
-            response = ApiResponse()
-            for err in e.errors():
-                response.add_issue(Issue(
-                    status="error", code=400,
-                    field=".".join(map(str, err["loc"])),
-                    message=err["msg"],
-                ))
-            return response.set_status(status="error", code=400).drf_response
+            return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
 
         has_sensitive_perm = await sync_to_async(request.user.has_perm)('Profile.change_sensitive_profile_data')
 
@@ -232,42 +192,35 @@ class ProfilesViewSet(StdViewSetMixin):
         company_slug_changing = payload.company_slug is not None and payload.company_slug != profile.company.slug
 
         if (role_slug_changing or company_slug_changing) and not has_sensitive_perm:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=403,
-                      field="role_slug" if role_slug_changing else "company_slug",
-                      message="Changing role or company requires the change_sensitive_profile_data permission.")
-            ).set_status(status="error", code=403).drf_response
+            return PermissionDeniedResponse.single(
+                field="role_slug" if role_slug_changing else "company_slug",
+                message="Changing role or company requires the change_sensitive_profile_data permission.",
+            ).drf_response
 
         if profile.user_id != request.user.pk and not has_sensitive_perm:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=403, message="You may only edit your own profile.")
-            ).set_status(status="error", code=403).drf_response
+            return PermissionDeniedResponse.single(message="You may only edit your own profile.").drf_response
 
         if payload.email is not None:
             if await User.objects.filter(email__iexact=payload.email).exclude(pk=profile.user_id).aexists():
-                return ApiResponse().add_issue(
-                    Issue(status="error", code=400, field="email", message="A user with this email already exists.")
-                ).set_status(status="error", code=400).drf_response
+                return BadRequestResponse.single(field="email", message="A user with this email already exists.").drf_response
 
         new_role = None
         if payload.role_slug is not None:
             try:
                 new_role = await Role.objects.select_related('group').aget(slug=payload.role_slug)
             except Role.DoesNotExist:
-                return ApiResponse().add_issue(
-                    Issue(status="error", code=400, field="role_slug",
-                          message=f"Role '{payload.role_slug}' does not exist.")
-                ).set_status(status="error", code=400).drf_response
+                return BadRequestResponse.single(
+                    field="role_slug", message=f"Role '{payload.role_slug}' does not exist.",
+                ).drf_response
 
         new_company = None
         if payload.company_slug is not None:
             try:
                 new_company = await Company.objects.aget(slug=payload.company_slug)
             except Company.DoesNotExist:
-                return ApiResponse().add_issue(
-                    Issue(status="error", code=400, field="company_slug",
-                          message=f"Company '{payload.company_slug}' does not exist.")
-                ).set_status(status="error", code=400).drf_response
+                return BadRequestResponse.single(
+                    field="company_slug", message=f"Company '{payload.company_slug}' does not exist.",
+                ).drf_response
 
         password_changed = False
 
@@ -302,9 +255,7 @@ class ProfilesViewSet(StdViewSetMixin):
         try:
             user = await sync_to_async(_update)()
         except IntegrityError:
-            return ApiResponse().add_issue(
-                Issue(status="error", code=400, field="email", message="A user with this email already exists.")
-            ).set_status(status="error", code=400).drf_response
+            return BadRequestResponse.single(field="email", message="A user with this email already exists.").drf_response
 
         if password_changed and profile.user_id == request.user.pk:
             await sync_to_async(update_session_auth_hash)(request, user)
@@ -315,6 +266,4 @@ class ProfilesViewSet(StdViewSetMixin):
             'profile__company__translations', 'profile__role__translations'
         ).aget(pk=user.pk)
 
-        return ApiResponse().update_data(
-            User_Item_Schema.from_model(user, extend=extend).model_dump()
-        ).set_status(status="ok", code=200).drf_response
+        return Profiles_PATCH_Response_OK.from_model(user, extend=extend).drf_response

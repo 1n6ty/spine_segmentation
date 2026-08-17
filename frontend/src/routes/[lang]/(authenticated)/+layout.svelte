@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 
-	import { authService } from '$lib/core/session/auth.svelte';
+	import { project } from '$lib/core/project.svelte';
 	import Header from '$lib/components/layout/Header.svelte';
 	import Footer from '$lib/components/layout/Footer.svelte';
 	import DicomUploadCard from '$lib/components/ui/dicom-upload-card/DicomUploadCard.svelte';
@@ -28,7 +28,7 @@
 	let checked = $state(false);
 
 	onMount(async () => {
-		const ok = await authService.verify();
+		const ok = await project.auth.verify();
 		checked = true;
 		if (!ok) {
 			goto(`/${page.params.lang}/login`);
@@ -36,7 +36,7 @@
 	});
 </script>
 
-{#if checked && authService.status === 'authenticated'}
+{#if checked && project.auth.status === 'authenticated'}
 	<Header />
 	<main class="container mx-auto px-4 py-6">
 		<div class="space-y-6">

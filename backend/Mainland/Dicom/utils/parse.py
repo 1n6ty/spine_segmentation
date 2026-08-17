@@ -1,13 +1,15 @@
 import pydicom, uuid, hashlib
 from asgiref.sync import sync_to_async
+from logging import getLogger
+_logger = getLogger('Dicom.utils.parse')
 
 from django.utils import timezone
-from channels.layers import get_channel_layer
 
 from common.schemas.v1.response import Issue
 from Dicom.models import Patient, Study, Series, DicomImage, DicomFile, Projection
 from Dicom.tasks.segmentation import segment_vertebraes
-from Dicom.utils.constants import SEGMENTATION_GROUP
+from Dicom.utils.constants import DICOM_XRAY_SAGITTAL_ROLE_SLUG
+from Dicom.utils.thumbnail import generate_and_store_thumbnail
 from FileManager.models import CasFile, FileRole
 from FileManager.utils import build_cas_path, check_role_max_count
 
@@ -32,7 +34,17 @@ def get_dcm_value(dcm, keyword, default=None):
     """Safely extracts a value from a pydicom dataset."""
     if keyword in dcm:
         val = dcm.data_element(keyword).value
-        # pydicom often returns MultiValue or PersonName objects; cast to standard types
+        # pydicom often returns MultiValue, PersonName, or UID objects; cast to
+        # standard types. UID (VR "UI" -- SOPInstanceUID/StudyInstanceUID/
+        # SeriesInstanceUID all use it) is a str *subclass*, not a plain str --
+        # passing it straight through to the ORM/CAS path/Celery task args
+        # worked in theory (isinstance(UID, str) is True) but not reliably in
+        # practice against a real DB driver, which is why every id derived
+        # from a UI-VR tag came back None-matching (image_id=sop_uid never hit
+        # an existing row, so nothing ever deduped). Normalize once here
+        # rather than at every call site.
+        if isinstance(val, pydicom.uid.UID):
+            return str(val)
         if isinstance(val, pydicom.valuerep.PersonName):
             return str(val)
         if isinstance(val, pydicom.multival.MultiValue):
@@ -81,7 +93,7 @@ def get_projection_orientation(ds):
 
     return None
 
-DEFAULT_FILE_ROLE_SLUG = 'DICOM_XRAY_SAGITTAL'
+DEFAULT_FILE_ROLE_SLUG = DICOM_XRAY_SAGITTAL_ROLE_SLUG
 
 async def parse_and_store_dicom(file_obj, file_role_slug=None):
     """
@@ -94,7 +106,7 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
 
     Returns (patient, study, series, image) on success, or an Issue if file_role_slug
     doesn't name an existing FileRole, or if the upload violates that role's
-    max_count=1-per-Study rule -- the caller (Dicom.v1.views.dcmparse.DcmViewSet.parse)
+    max_count=1-per-Series rule -- the caller (Dicom.v1.views.dcmparse.DcmViewSet.parse)
     is responsible for turning that Issue into a 400 response, matching how every other
     validation failure in this codebase surfaces (see Profile.v1.views.profiles for the
     same idiom).
@@ -142,31 +154,7 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
         defaults={k: v for k, v in study_defaults.items() if v is not None}
     )
 
-    # 3b. Resolve the caller-declared FileRole (defaulting to sagittal) and enforce its
-    # max_count=1-per-Study rule before writing Series/Image -- excluding this SOP
-    # Instance UID's own existing row (if any) from the count is what makes re-uploading
-    # the same image a no-op instead of tripping the limit against itself. `projection`
-    # (clinical metadata) is unrelated and always auto-detected from DICOM tags below,
-    # regardless of which role was requested.
-    projection_slug = get_projection_orientation(dcm)
-    projection = await Projection.objects.filter(slug=projection_slug).afirst() if projection_slug else None
-
-    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
-    role = await FileRole.objects.filter(slug=role_slug).afirst()
-    if role is None:
-        return Issue(
-            status="error", code=400, field="file_role_slug",
-            message=f"FileRole '{role_slug}' does not exist.",
-        )
-    if role.max_count is not None:
-        existing_count = await DicomFile.objects.filter(
-            study=study, role=role
-        ).exclude(image_id=sop_uid).acount()
-        issue = check_role_max_count(role, existing_count, 1)
-        if issue:
-            return issue
-
-    # 4. Extract and Store Series
+    # 3b. Extract and Store Series
     series_uid = get_dcm_value(dcm, 'SeriesInstanceUID')
     if not series_uid:
         raise ValueError("DICOM file missing SeriesInstanceUID")
@@ -181,7 +169,31 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
         defaults={k: v for k, v in series_defaults.items() if v is not None}
     )
 
-    # 5. Extract and Store Image
+    # 3c. Resolve the caller-declared FileRole (defaulting to sagittal) and enforce its
+    # max_count=1-per-Series rule before writing Image -- excluding this SOP Instance
+    # UID's own existing row (if any) from the count is what makes re-uploading the
+    # same image a no-op instead of tripping the limit against itself. `projection`
+    # (clinical metadata) is unrelated and always auto-detected from DICOM tags below,
+    # regardless of which role was requested.
+    projection_slug = get_projection_orientation(dcm)
+    projection = await Projection.objects.filter(slug=projection_slug).afirst() if projection_slug else None
+
+    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
+    role = await FileRole.objects.filter(slug=role_slug).afirst()
+    if role is None:
+        return Issue(
+            status="error", code=400, field="file_role_slug",
+            message=f"FileRole '{role_slug}' does not exist.",
+        )
+    if role.max_count is not None:
+        existing_count = await DicomFile.objects.filter(
+            series=series, role=role
+        ).exclude(image_id=sop_uid).acount()
+        issue = check_role_max_count(role, existing_count, 1)
+        if issue:
+            return issue
+
+    # 4. Extract and Store Image
     # Handle pixel spacing safely
     spacing = get_dcm_value(dcm, 'PixelSpacing') or get_dcm_value(dcm, 'ImagerPixelSpacing')
     mm_per_pixel = float(spacing[0]) if isinstance(spacing, pydicom.multival.MultiValue) else 1.0
@@ -222,7 +234,7 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
 
         path = build_cas_path(new_file_hash)
         file_record = DicomFile(
-            image=image, study=study, role=role,
+            image=image, series=series, role=role,
             name=f"{sop_uid}.dcm",
             content_type='application/dicom',
             size=getattr(file_obj, 'size', None) or 0,
@@ -235,16 +247,47 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
             file_obj.seek(0)
             await sync_to_async(file_record.file.save)(path, file_obj, save=True)
 
-        channel_layer = get_channel_layer()
-        await channel_layer.group_send(
-            SEGMENTATION_GROUP.format(sop_uid),
-            {
-                "type": "from_task_event",
-                "data": {
-                    "status": "image.processing"
-                },
-            }
-        )
-        segment_vertebraes.delay(sop_uid)
+        # Best-effort: a thumbnail is a nice-to-have preview, not something
+        # that should ever fail the upload itself (e.g. a DICOM file pydicom
+        # can parse metadata from but not decode pixel data for -- unusual,
+        # but not a reason to reject an otherwise-valid upload).
+        try:
+            await generate_and_store_thumbnail(image, dcm)
+        except Exception:
+            _logger.exception(f"Failed to generate thumbnail for {sop_uid}")
+
+        # Reuse an already-*completed* segmentation for this exact content
+        # (e.g. the same physical image re-exported under a different
+        # SOPInstanceUID) instead of re-running the YOLO model -- its output is
+        # a pure function of the pixel bytes, so a fresh run would just
+        # reproduce the same result at real CPU cost. Scoped to `done` only:
+        # borrowing an in-flight or errored run's state would leave this image
+        # stuck, since only the *other* SOP instance's own Celery task ever
+        # advances it further.
+        reused = await DicomFile.objects.filter(
+            hash=new_file_hash, image__segmentation_status__slug='done',
+        ).exclude(image_id=sop_uid).select_related('image__segmentation_status').afirst()
+
+        if reused is not None:
+            image.reference_points = reused.image.reference_points
+            image.segmentation_status = reused.image.segmentation_status
+            image.segmentation_error = None
+            await image.asave(update_fields=['reference_points', 'segmentation_status', 'segmentation_error'])
+            # No broadcast needed -- a client connecting to this SOP instance's
+            # SSE endpoint self-hydrates 'done' + reference_points straight
+            # from the DB row just written (Dicom.v1.views.dcmparse's
+            # _segmentation_event_stream), the same mechanism a real Celery
+            # run's own _advance_status() broadcasts rely on.
+        else:
+            # No separate "upload accepted" broadcast here either -- the
+            # Celery task's own first _advance_status(..., 'processing') call
+            # (Dicom.tasks.segmentation) is the sole, DB-write-then-broadcast
+            # source of truth for this image's status. A client connecting
+            # before the task picks up the job just waits on the live SSE tail
+            # for that event, which self-hydration handles correctly on its
+            # own -- an earlier version of this function also fired its own
+            # ad-hoc, DB-unbacked broadcast here, which could show a status the
+            # self-hydration path could never reproduce on reconnect.
+            segment_vertebraes.delay(sop_uid)
 
     return patient, study, series, image

@@ -365,14 +365,15 @@ COPY Data/spine-segmentation/dicom/side/2.dcm /app/Data/spine-segmentation/dicom
 DOCKERFILE
 
     echo "Running real-backend e2e suite..."
-    # https://traefik, not http://nginx: FileCache (frontend/src/lib/core/
-    # storage/file-cache.ts) uses the Cache Storage API, which browsers only
-    # expose in a secure context (HTTPS, or the literal hostname
-    # "localhost") -- plain http://nginx silently leaves `window.caches`
-    # undefined and the upload flow hangs with no visible error. Traefik's
-    # dev router matches any Host header (dev/Traefik/dynamic.yml), so this
-    # reaches the same stack over real (self-signed, hence ignoreHTTPSErrors
-    # in playwright.live.config.ts) TLS.
+    # https://traefik, not http://nginx: originally required because the old
+    # FileCache (frontend/src/lib/core/storage/file-cache.ts, removed -- DICOM
+    # bytes/polygons are no longer cached client-side at all, see
+    # frontend/docs/patterns/storages.md) used the Cache Storage API, which
+    # browsers only expose in a secure context. That constraint no longer
+    # applies, but this still routes through Traefik's dev router (matches any
+    # Host header, dev/Traefik/dynamic.yml) over real (self-signed, hence
+    # ignoreHTTPSErrors in playwright.live.config.ts) TLS -- kept as-is rather
+    # than switched to http://nginx without verifying that change live.
     #
     # --ipc=host: Chromium can crash under Docker's default 64MB /dev/shm
     # once a page holds enough tabs/large buffers -- standard Playwright

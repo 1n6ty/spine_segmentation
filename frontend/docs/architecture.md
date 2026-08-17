@@ -21,7 +21,6 @@ src/
 │   │   ├── i18n/                        # svelte-i18n setup + the url-lang bridge (patterns/i18n.md)
 │   │   ├── network/                      # fetch wrappers, CSRF, SSE (patterns/network.md)
 │   │   ├── session/                       # SessionService, RegistryService, AuthService, researcher and etc. (patterns/state.md, patterns/auth.md, patterns/storages.md)
-│   │   ├── storage/                        # FileCache — content-addressed Cache Storage wrapper
 │   │   └── project.svelte.ts                # single entry point aggregating the session singletons — `import { project } from '$lib/core/project.svelte'`
 │   ├── features/                       # state-dependent business logic — pure-ish but reads/shapes domain data, not UI
 │   └── shared/                         # pure, stateless utils — no svelte imports, no core/features dependency
@@ -44,6 +43,10 @@ src/
 - **`features/`** — logic that depends on or shapes session/domain state but isn't itself a
   long-lived singleton — e.g. `runAutofill(...)`, the diagnosis rule engine, geometry calculators
   keyed off polygon data. If it needs `core/session` state as input, it's a feature, not `shared`.
+  A feature may still export its own small `$state` singleton for state that's local to that
+  feature's own UI (an active tab, a selected filter) — singleton-ness alone doesn't route
+  something to `core/`; what does is whether the state *is* cross-page session/domain data. See
+  "Feature-Local State" in `patterns/state.md`.
 - **`shared/`** — pure functions only: no `$state`, no imports from `core/` or `features/`, no
   DOM/browser APIs beyond what's passed in as an argument. `shared/geometry`, `shared/utils/date.ts`,
   `shared/utils/hash.ts` are the reference examples.
@@ -64,7 +67,10 @@ the individual `core/session/*.svelte.ts` singletons directly outside `core/` it
 
 ## Local Persistence
 
-Three separate client-side stores (IndexedDB, Cache Storage, `localStorage`) — see
+The backend (`UserRecentStudies`) is the source of truth for a user's recent studies, not the
+browser. No IndexedDB, no Cache Storage, no `localStorage` either — DICOM bytes, polygons, and even
+the current session id live in memory for the current tab only. Reload continuity comes from
+`GET /api/dcm/recent-studies/latest/` (ownership alone identifies "mine"), not a remembered id. See
 `patterns/storages.md`.
 
 ## Backend Integration / API Contract
