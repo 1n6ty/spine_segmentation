@@ -14,6 +14,8 @@ x-django-base: &django-base
     args:
       USER_ID: 1000
       GROUP_ID: 1000
+    additional_contexts:
+      - frontend-builder=service:frontend-builder
   environment:
   # ----------------API-------------------
     - SECRET_KEY=${SECRET_KEY:-secret}
@@ -48,6 +50,8 @@ x-django-base: &django-base
     minio-init:
       condition: service_completed_successfully
     es-init:
+      condition: service_completed_successfully
+    frontend-builder:
       condition: service_completed_successfully
   develop:
     watch:
@@ -96,8 +100,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # An unset override keeps hot reload for normal development. test-e2e
-    # explicitly sets it to an empty string for a stable, restart-free API.
     command: >
       bash -ec ".venv/bin/uvicorn Mainland.asgi:application --host 0.0.0.0 --port 8080 ${UVICORN_RELOAD_ARG---reload}"
 
@@ -153,10 +155,18 @@ services:
             - "*/__pycache__/*"
             - "*req*.txt"
 
+  frontend-builder:
+    build:
+      context: ./frontend
+    networks:
+      - spine-segmentation-net
+
   nginx:
     build:
       context: .
       dockerfile: ./backend/Nginx/Dockerfile
+      additional_contexts:
+        - frontend-builder=service:frontend-builder
     networks:
       - spine-segmentation-net
     environment:
@@ -165,6 +175,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend-builder:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health/ || exit 1"]
       interval: 5s

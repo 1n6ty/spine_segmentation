@@ -1,16 +1,13 @@
 # ========================================================
-# Stage 1: Compile Frontend Assets
+# Stage 1: Frontend Source
 # ========================================================
-FROM node:24-alpine AS frontend-builder
-
-WORKDIR /build/frontend
-
-COPY ./frontend/package.json ./frontend/package-lock.json ./
-RUN npm ci
-
-COPY ./frontend .
-
-RUN npm run build
+# `frontend-builder` is a named build context, not an image reference --
+# every caller MUST supply one (Compose's `build.additional_contexts:
+# - frontend-builder=service:frontend-builder`, or a plain `docker build
+# --build-context frontend-builder=docker-image://<tag>`). See
+# frontend/Dockerfile's header comment for why this is a shared,
+# already-built image rather than an independent `npm run build` here.
+FROM frontend-builder AS frontend-source
 
 # ========================================================
 # Stage 2: Collect Django Static Files
@@ -57,8 +54,8 @@ COPY ./backend/Nginx/templates/ /etc/nginx/templates/
 # (not dist/ itself) here means the alias below only has to strip one /static/
 # prefix; copying dist/ wholesale would nest it as /static/static/immutable/...
 # and 404 every asset.
-COPY --from=frontend-builder --chown=nginx:nginx /build/frontend/dist/static/ /usr/share/nginx/static/
-COPY --from=backend-builder  --chown=nginx:nginx /build/backend/Mainland/static/ /usr/share/nginx/static/
+COPY --from=frontend-source --chown=nginx:nginx /dist/static/ /usr/share/nginx/static/
+COPY --from=backend-builder --chown=nginx:nginx /build/backend/Mainland/static/ /usr/share/nginx/static/
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

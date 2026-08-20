@@ -10,7 +10,9 @@ import {
 	get_arc_center,
 	get_midpoint,
 	screen_to_world,
-	is_point_in_polygon
+	is_point_in_polygon,
+	aabb_of_points,
+	aabb_overlaps
 } from './geometry';
 
 describe('centroid', () => {
@@ -120,5 +122,41 @@ describe('is_point_in_polygon', () => {
 
 	it('returns false for a point outside along both axes', () => {
 		expect(is_point_in_polygon({ x: -5, y: -5 }, square)).toBe(false);
+	});
+});
+
+describe('aabb_of_points', () => {
+	it('computes the bounding box of a single point (zero-area)', () => {
+		expect(aabb_of_points([{ x: 3, y: 4 }])).toEqual({ minX: 3, minY: 4, maxX: 3, maxY: 4 });
+	});
+
+	it('computes the bounding box of multiple points', () => {
+		expect(
+			aabb_of_points([
+				{ x: 0, y: 5 },
+				{ x: 10, y: -2 },
+				{ x: -3, y: 8 }
+			])
+		).toEqual({ minX: -3, minY: -2, maxX: 10, maxY: 8 });
+	});
+});
+
+describe('aabb_overlaps', () => {
+	const box = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+
+	it('is true for overlapping boxes', () => {
+		expect(aabb_overlaps(box, { minX: 5, minY: 5, maxX: 15, maxY: 15 })).toBe(true);
+	});
+
+	it('is true when boxes only touch at an edge (inclusive)', () => {
+		expect(aabb_overlaps(box, { minX: 10, minY: 0, maxX: 20, maxY: 10 })).toBe(true);
+	});
+
+	it('is false for disjoint boxes', () => {
+		expect(aabb_overlaps(box, { minX: 20, minY: 20, maxX: 30, maxY: 30 })).toBe(false);
+	});
+
+	it('is true when one box fully contains the other', () => {
+		expect(aabb_overlaps(box, { minX: 2, minY: 2, maxX: 8, maxY: 8 })).toBe(true);
 	});
 });

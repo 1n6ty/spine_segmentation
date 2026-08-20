@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { drawMain } from './main-draw';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
+import { computeCentralPath } from '../logic/central-path';
 
 function fake_ctx(clientWidth = 400, clientHeight = 300) {
 	const stroke_styles: string[] = [];
@@ -17,6 +18,8 @@ function fake_ctx(clientWidth = 400, clientHeight = 300) {
 		moveTo: vi.fn(),
 		lineTo: vi.fn(),
 		stroke: vi.fn(),
+		strokeRect: vi.fn(),
+		setLineDash: vi.fn(),
 		fill: vi.fn(),
 		arc: vi.fn(),
 		fillText: vi.fn(),
@@ -56,10 +59,12 @@ function square(id: string, cx: number, cy: number): Polygon {
 
 const bitmap = {} as ImageBitmap;
 
+const noneSelected = () => false;
+
 describe('drawMain', () => {
 	it('resizes the canvas backing store to its display size and clears it', () => {
 		const ctx = fake_ctx(640, 480);
-		drawMain(ctx, bitmap, [], null, [], { offset: { x: 0, y: 0 }, scale: 1 });
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 });
 
 		expect(ctx.canvas.width).toBe(640);
 		expect(ctx.canvas.height).toBe(480);
@@ -68,7 +73,7 @@ describe('drawMain', () => {
 
 	it('draws the background image translated/scaled by the view', () => {
 		const ctx = fake_ctx();
-		drawMain(ctx, bitmap, [], null, [], { offset: { x: 5, y: 7 }, scale: 2 });
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 5, y: 7 }, scale: 2 });
 
 		expect(ctx.translate).toHaveBeenCalledWith(5, 7);
 		expect(ctx.scale).toHaveBeenCalledWith(2, 2);
@@ -78,19 +83,22 @@ describe('drawMain', () => {
 	it('strokes each polygon, closing its path, and labels it with its id', () => {
 		const ctx = fake_ctx();
 		const poly = square('C2', 100, 100);
-		drawMain(ctx, bitmap, [poly], null, [], { offset: { x: 0, y: 0 }, scale: 1 });
+		drawMain(ctx, bitmap, [poly], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 });
 
 		expect(ctx.moveTo).toHaveBeenCalledWith(poly.points[0].x, poly.points[0].y);
 		expect(ctx.closePath).toHaveBeenCalled();
 		expect(ctx.fillText).toHaveBeenCalledWith('C2', expect.any(Number), expect.any(Number));
 	});
 
-	it('strokes the selected polygon in red and every other polygon in lime', () => {
+	it('strokes selected polygons in red and every other polygon in lime, keyed by uuid', () => {
 		const ctx = fake_ctx();
 		const selected = square('C2', 0, 0);
 		const other = square('C3', 100, 0);
 
-		drawMain(ctx, bitmap, [other, selected], selected, [], { offset: { x: 0, y: 0 }, scale: 1 });
+		drawMain(ctx, bitmap, [other, selected], (poly) => poly.uuid === selected.uuid, [], {
+			offset: { x: 0, y: 0 },
+			scale: 1
+		});
 
 		expect(ctx._strokeStyles).toContain('red');
 		expect(ctx._strokeStyles).toContain('lime');
@@ -98,10 +106,20 @@ describe('drawMain', () => {
 
 	it('draws in-progress draft points as an open cyan polyline when present', () => {
 		const ctx = fake_ctx();
-		drawMain(ctx, bitmap, [], null, [{ x: 1, y: 1 }, { x: 2, y: 2 }], {
-			offset: { x: 0, y: 0 },
-			scale: 1
-		});
+		drawMain(
+			ctx,
+			bitmap,
+			[],
+			noneSelected,
+			[
+				{ x: 1, y: 1 },
+				{ x: 2, y: 2 }
+			],
+			{
+				offset: { x: 0, y: 0 },
+				scale: 1
+			}
+		);
 
 		expect(ctx.moveTo).toHaveBeenCalledWith(1, 1);
 		expect(ctx.lineTo).toHaveBeenCalledWith(2, 2);
@@ -110,10 +128,64 @@ describe('drawMain', () => {
 
 	it('skips the draft-points draw entirely when there are none', () => {
 		const ctx = fake_ctx();
-		drawMain(ctx, bitmap, [], null, [], { offset: { x: 0, y: 0 }, scale: 1 });
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 });
 
 		// No polygons and no draft points -- beginPath (used by both drawPolygons'
 		// per-polygon loop and drawDraftPoints) is never reached.
 		expect(ctx.beginPath).not.toHaveBeenCalled();
+	});
+
+	it('draws a dashed selection box overlay when a box is provided', () => {
+		const ctx = fake_ctx();
+		drawMain(
+			ctx,
+			bitmap,
+			[],
+			noneSelected,
+			[],
+			{ offset: { x: 0, y: 0 }, scale: 1 },
+			{
+				start: { x: 0, y: 0 },
+				current: { x: 10, y: 10 }
+			}
+		);
+
+		expect(ctx.strokeRect).toHaveBeenCalledWith(0, 0, 10, 10);
+	});
+
+	it('skips the selection box overlay when none is provided', () => {
+		const ctx = fake_ctx();
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 }, null);
+
+		expect(ctx.strokeRect).not.toHaveBeenCalled();
+	});
+
+	it('draws the central-line curve and control points in orange when a central path is provided', () => {
+		const ctx = fake_ctx();
+		// A single vertebra has no interior control points (both its midpoints are
+		// spine-outermost and dropped) -- 2 are needed for a non-null central path.
+		const polys = [square('S1', 100, 140), square('L5', 100, 100)];
+		const centralPath = computeCentralPath(polys);
+
+		drawMain(
+			ctx,
+			bitmap,
+			polys,
+			noneSelected,
+			[],
+			{ offset: { x: 0, y: 0 }, scale: 1 },
+			null,
+			6,
+			centralPath
+		);
+
+		expect(ctx._strokeStyles).toContain('orange');
+	});
+
+	it('skips the central-line draw entirely when no central path is provided', () => {
+		const ctx = fake_ctx();
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 });
+
+		expect(ctx._strokeStyles).not.toContain('orange');
 	});
 });

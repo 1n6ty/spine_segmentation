@@ -147,10 +147,7 @@ fi
 JOB_PREFIX="${JOB_PREFIX:-$(basename "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")}"
 export JOB_PREFIX
 
-# test/test-compat/test-e2e each get their own isolated Compose project +
-# network -- a concurrently-running `up` dev stack (bare $JOB_PREFIX) is a
-# completely separate set of containers/volumes/network, so a test run's
-# --build --force-recreate or its teardown's `dc down -v` can never touch it.
+
 case "$ACTION" in
   test|test-compat|test-e2e)
     PROJECT_NAME="${JOB_PREFIX}-${ACTION}"
@@ -160,7 +157,6 @@ case "$ACTION" in
     ;;
 esac
 export PROJECT_NAME
-export COMPOSE_PROJECT_NAME="$PROJECT_NAME"
 export NETWORK_NAME="${PROJECT_NAME}-net"
 
 export DJANGO_ENV=$DJANGO_ENV
@@ -212,10 +208,17 @@ case "$ACTION" in
       if [[ "$RUN_MOCKED" == true ]]; then
         echo "Executing mocked-tier backend tests (single container, no external services)..."
         MOCKED_IMAGE_TAG="${PROJECT_NAME}-mocked-image"
+        MOCKED_FRONTEND_BUILDER_IMAGE_TAG="${PROJECT_NAME}-mocked-frontend-builder-image"
+
+        docker build \
+          -t "$MOCKED_FRONTEND_BUILDER_IMAGE_TAG" ./frontend
 
         docker build \
           -f backend/Mainland/Dockerfile --target development \
+          --build-context frontend-builder="docker-image://$MOCKED_FRONTEND_BUILDER_IMAGE_TAG" \
           -t "$MOCKED_IMAGE_TAG" .
+
+        docker rmi "$MOCKED_FRONTEND_BUILDER_IMAGE_TAG" 2>/dev/null || true
 
         docker run --rm \
           --env-file "$ENV_PATH" \
@@ -236,7 +239,7 @@ case "$ACTION" in
         trap 'exit 143' TERM
 
         echo "Initializing isolated test runtime atmosphere..."
-        dc up -d --build --force-recreate --wait api
+        dc up -d --build --force-recreate --wait
 
         echo "Verifying migration state schema integrity..."
         dc exec api .venv/bin/python3 manage.py makemigrations --check --dry-run
@@ -276,23 +279,31 @@ case "$ACTION" in
     export DJANGO_ENV="test_docker"
 
     echo "Bringing up dev stack from current branch's infra..."
-    dc up -d --build --force-recreate --wait api
+    # No service list -- see the `test --docker` comment above, same reasoning:
+    # matches the "Same as test --docker" stack scope this action was aligned to.
+    dc up -d --build --force-recreate --wait
 
     echo "Phase 1 (current): creating+migrating the shared test DB, running current's own tests..."
-    dc exec api .venv/bin/python3 manage.py test --keepdb
+    dc exec api .venv/bin/python3 manage.py makemigrations --check --dry-run
+    dc exec api bash -ec ".venv/bin/coverage run manage.py test --keepdb && .venv/bin/coverage combine && .venv/bin/coverage report"
 
     echo "Building release's application image (current build recipe, release's own source+deps)..."
+
     docker build -f backend/Mainland/Dockerfile --target development \
       --build-arg USER_ID=1000 --build-arg GROUP_ID=1000 \
+      --build-context frontend-builder="docker-image://$(dc images -q frontend-builder)" \
       -t "$RELEASE_IMAGE" "$RELEASE_WORKTREE"
 
     echo "Phase 2 (release): release's own test suite against the current-migrated schema..."
+    # No migrations --check here (unlike Phase 1/test --docker): this is
+    # release's own code checked against the schema Phase 1 already
+    # migrated, not against a schema it's expected to migrate itself.
     docker run --rm --network "$NETWORK_NAME" \
       --env-file "$ENV_PATH" -e DJANGO_ENV=test_docker \
       -e PROXYSQL_HOST=proxysql -e REDIS_HOST=redis-proxy \
       -e ES_PROXY_HOST=es-proxy -e MINIO_PROXY_HOST=minio-proxy \
       "$RELEASE_IMAGE" \
-      .venv/bin/python3 manage.py test --keepdb
+      bash -ec ".venv/bin/coverage run manage.py test --keepdb && .venv/bin/coverage combine && .venv/bin/coverage report"
 
     echo "Backward-compatibility check passed: release's code runs cleanly against current's migrated schema."
     ;;

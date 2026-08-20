@@ -6,6 +6,8 @@ type ButtonType =
 	| 'back'
 	| 'forward'
 	| 'cancel'
-	| 'magic';
+	| 'magic'
+	| 'select'
+	| 'pan';
 
 export type { ButtonType };

@@ -19,6 +19,10 @@
 		projection: 'side' | 'frontal';
 	} = $props();
 
+	// 7 cervical + 12 thoracic + 5 lumbar -- the human spine's full vertebra
+	// count, excluding the sacrum/coccyx (never individually annotated here).
+	const MAX_VERTEBRAE = 24;
+
 	// AI segmentation now runs automatically on every upload (see
 	// SessionService.uploadFile) -- this button no longer re-uploads or
 	// re-triggers it. It only watches the pipeline's current/live status.
@@ -29,10 +33,10 @@
 	let magicStatus = $state<AutofillStatus>('idle');
 	let magicError = $state<string | null>(null);
 
-	// Which (if any) in-app confirm card is currently showing. Both the
-	// Autofill overwrite warning and the "Clear all" action route through the
-	// same ConfirmCard component instead of the native browser confirm().
-	let activeConfirm = $state<'overwrite-ai' | 'clear-all' | null>(null);
+	// Which (if any) in-app confirm card is currently showing. The Autofill
+	// overwrite warning routes through the shared ConfirmCard component
+	// instead of the native browser confirm().
+	let activeConfirm = $state<'overwrite-ai' | null>(null);
 
 	function handleMagicClick() {
 		const proj = project.session.projections[projection];
@@ -59,8 +63,9 @@
 				magicStatus = status;
 			});
 
-			projectionContainer.edit.history?.push();
+			projectionContainer.tools.history.push();
 			proj.polygons = result;
+			projectionContainer.tools.selection.clear();
 			project.session.requestSave();
 			magicStatus = 'idle';
 		} catch (err) {
@@ -74,17 +79,17 @@
 		magicError = null;
 	}
 
-	function handleClearAllClick() {
-		activeConfirm = 'clear-all';
-	}
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
 
-	function commitClearAll() {
-		const proj = project.session.projections[projection];
-		projectionContainer.edit.history?.push();
-		proj.polygons = [];
-		projectionContainer.edit.selectedPolygon = null;
-		project.session.requestSave();
-		activeConfirm = null;
+		const target = e.target;
+		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+		if (target instanceof HTMLElement && target.isContentEditable) return;
+		if (projectionContainer.tools.selection.isEmpty) return;
+
+		// Backspace can otherwise trigger browser back-navigation.
+		e.preventDefault();
+		projectionContainer.tools.deleteSelected();
 	}
 
 	const projection_h: Record<string, Record<string, string>> = {
@@ -134,7 +139,7 @@
 	});
 
 	$effect(() => {
-		const { mainCanvas, miniCanvas, edit, nav } = projectionContainer;
+		const { mainCanvas, miniCanvas, tools, nav, centralLine } = projectionContainer;
 		if (!project.session.projections[projection].patient?.study.series.sopInstance.bitmap) return;
 
 		// Main Canvas Rendering
@@ -144,9 +149,12 @@
 				ctx,
 				project.session.projections[projection].patient?.study.series.sopInstance.bitmap,
 				project.session.projections[projection].polygons,
-				edit.selectedPolygon,
-				edit.draftPoints,
-				nav.view
+				(poly) => tools.selection.has(poly.uuid),
+				tools.draftPoints,
+				nav.view,
+				tools.selectionBox,
+				6,
+				centralLine.centralPath
 			);
 		}
 
@@ -163,6 +171,8 @@
 	});
 </script>
 
+<svelte:window onkeydown={handleGlobalKeydown} />
+
 <div
 	class="flex flex-col gap-2 rounded-xl border border-(--border) bg-(--card) p-4 text-(--card-foreground)"
 >
@@ -172,21 +182,14 @@
 	<div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
 		<Button
 			type="back"
-			callback={projectionContainer.edit.history!.undo}
-			disabled={!projectionContainer.edit.history!.canUndo}
+			callback={projectionContainer.tools.history.undo}
+			disabled={!projectionContainer.tools.history.canUndo}
 		/>
 		<Button
 			type="forward"
-			callback={projectionContainer.edit.history!.redo}
-			disabled={!projectionContainer.edit.history!.canRedo}
+			callback={projectionContainer.tools.history.redo}
+			disabled={!projectionContainer.tools.history.canRedo}
 		/>
-		<Button
-			type="magic"
-			callback={() => {
-				handleMagicClick();
-			}}
-			disabled={magicStatus !== 'idle' && magicStatus !== 'error'}>{$t('editor.autofill')}</Button
-		>
 		<Button
 			type="zoom-in"
 			callback={() => {
@@ -199,11 +202,34 @@
 				projectionContainer.nav.zoomToCenter(0.9);
 			}}
 		/>
-		{#if projectionContainer.edit.mode == 'draw'}
+		<Button
+			type="select"
+			active={projectionContainer.tools.activeToolId === 'select'}
+			callback={() => {
+				projectionContainer.tools.setActiveTool('select');
+			}}
+		/>
+		<Button
+			type="pan"
+			active={projectionContainer.tools.activeToolId === 'pan'}
+			callback={() => {
+				projectionContainer.tools.setActiveTool('pan');
+			}}
+		/>
+	</div>
+	<div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
+		<Button
+			type="magic"
+			callback={() => {
+				handleMagicClick();
+			}}
+			disabled={magicStatus !== 'idle' && magicStatus !== 'error'}>{$t('editor.autofill')}</Button
+		>
+		{#if projectionContainer.tools.activeToolId == 'draw'}
 			<Button
 				type="cancel"
 				callback={() => {
-					projectionContainer.edit.setMode('default');
+					projectionContainer.tools.setActiveTool('select');
 				}}
 				disabled={false}>{$t('editor.cancel')}</Button
 			>
@@ -211,21 +237,16 @@
 			<Button
 				type="add"
 				callback={() => {
-					projectionContainer.edit.setMode('draw');
+					projectionContainer.tools.setActiveTool('draw');
 				}}
-				disabled={false}
-			/>
+				disabled={project.session.projections[projection].polygons.length >= MAX_VERTEBRAE}
+				>{$t('editor.add_vertebra')}</Button
+			>
 		{/if}
 		<Button
 			type="delete"
-			callback={projectionContainer.edit.deleteSelected}
-			disabled={!projectionContainer.edit.selectedPolygon}
-		/>
-		<Button
-			type="delete"
-			callback={handleClearAllClick}
-			disabled={project.session.projections[projection].polygons.length === 0}
-			>{$t('editor.clear_all')}</Button
+			callback={projectionContainer.tools.deleteSelected}
+			disabled={projectionContainer.tools.selection.isEmpty}>{$t('editor.delete_selected')}</Button
 		>
 	</div>
 	<div class="relative h-150 overflow-hidden rounded-lg border border-(--border)">
@@ -239,14 +260,6 @@
 					activeConfirm = null;
 					runAutofillWatch();
 				}}
-			/>
-		{:else if activeConfirm === 'clear-all'}
-			<ConfirmCard
-				message={$t('editor.clear_all_confirm')}
-				continueLabel={$t('editor.continue')}
-				continueButtonType="delete"
-				onCancel={() => (activeConfirm = null)}
-				onContinue={commitClearAll}
 			/>
 		{:else if magicStatus !== 'idle'}
 			<div
@@ -270,18 +283,15 @@
 		<div class="flex h-full justify-center overflow-hidden">
 			<canvas
 				bind:this={projectionContainer.mainCanvas}
-				class="h-full w-full touch-none {projectionContainer.edit.cursor}"
+				class="h-full w-full touch-none {projectionContainer.tools.cursor}"
 				onpointerdown={(e) => {
-					projectionContainer.edit.handlePointerDown(e);
-					projectionContainer.nav.handlePointerDown(e);
+					projectionContainer.tools.handlePointerDown(e);
 				}}
 				onpointermove={(e) => {
-					projectionContainer.edit.handlePointerMove(e);
-					projectionContainer.nav.handlePointerMove(e);
+					projectionContainer.tools.handlePointerMove(e);
 				}}
 				onpointerup={(e) => {
-					projectionContainer.edit.handlePointerUp(e);
-					projectionContainer.nav.handlePointerUp(e);
+					projectionContainer.tools.handlePointerUp(e);
 				}}
 				onwheel={(e) => {
 					projectionContainer.nav.handleWheel(e);

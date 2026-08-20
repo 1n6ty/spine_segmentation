@@ -42,8 +42,8 @@
 		"zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
 		"autofill": "Autofill",
 		"autofill_confirm_overwrite": "This view already has vertebra polygons. Autofill will replace them with AI-generated ones.",
-		"clear_all": "Clear all",
-		"clear_all_confirm": "This will remove all vertebra polygons from this view.",
+		"add_vertebra": "Point out vertebra",
+		"delete_selected": "Delete selected",
 		"cancel": "Cancel",
 		"continue": "Continue",
 		"instructions": {
@@ -71,7 +71,9 @@
 		"cancel": "Cancel",
 		"back": "Back",
 		"forward": "Forward",
-		"magic": "Auto"
+		"magic": "Auto",
+		"select": "Select tool",
+		"pan": "Pan tool"
 	},
 	"measure": {
 		"header": "Parameters"

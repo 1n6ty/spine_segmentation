@@ -19,7 +19,9 @@
 	// purely-local, never-uploaded preview (registry.localThumbnails,
 	// set right after a client-side upload) only until the server's own
 	// generated thumbnail shows up here.
-	const thumbUrl = $derived(session?.thumbnail ?? project.registry.localThumbnails[sessionUID] ?? null);
+	const thumbUrl = $derived(
+		session?.thumbnail ?? project.registry.localThumbnails[sessionUID] ?? null
+	);
 
 	const dateTimeOptions = {
 		year: 'numeric',
@@ -48,7 +50,7 @@
 		return `${Math.floor(Math.abs(diff) / 86400)}${$t('units.time.d')} ${$t('units.time.ago')}`;
 	});
 
-	function makeActive(e: MouseEvent) {
+	function makeActive() {
 		project.resetSession(sessionUID);
 		// Always navigate -- switching research now always tracks into the
 		// URL/browser history (/researches/{id}/...), not just when starting
@@ -135,6 +137,12 @@
 	{:else}
 		<div
 			onclick={makeActive}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					makeActive();
+				}
+			}}
 			role="button"
 			tabindex="0"
 			class="flex cursor-pointer flex-col gap-6 rounded-xl border border-(--border) bg-(--card) p-2 text-(--card-foreground) transition-all hover:border-(--primary) hover:shadow-md"

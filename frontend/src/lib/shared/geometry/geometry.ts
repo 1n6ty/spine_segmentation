@@ -1,4 +1,4 @@
-import type { Point } from './geometry.type';
+import type { AABB, Point } from './geometry.type';
 
 export const EPSILON = 1e-9;
 
@@ -77,6 +77,28 @@ export function is_point_in_polygon(point: Point, vertices: Point[]): boolean {
 	}
 
 	return inside;
+}
+
+/** Axis-aligned bounding box enclosing a set of points. */
+export function aabb_of_points(points: Point[]): AABB {
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+
+	for (const p of points) {
+		if (p.x < minX) minX = p.x;
+		if (p.y < minY) minY = p.y;
+		if (p.x > maxX) maxX = p.x;
+		if (p.y > maxY) maxY = p.y;
+	}
+
+	return { minX, minY, maxX, maxY };
+}
+
+/** Inclusive overlap test -- touching edges count as overlapping. */
+export function aabb_overlaps(a: AABB, b: AABB): boolean {
+	return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
 export { centroid, get_signed_angle, distance, vector_sub, dot_product, to_degrees };

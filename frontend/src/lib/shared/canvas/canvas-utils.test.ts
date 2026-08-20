@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { drawCircle, getClampedOffset } from './canvas-utils';
+import { drawCircle, drawDiamond, getClampedOffset } from './canvas-utils';
 
 function fake_ctx() {
 	return {
 		save: vi.fn(),
 		restore: vi.fn(),
 		beginPath: vi.fn(),
+		closePath: vi.fn(),
+		moveTo: vi.fn(),
+		lineTo: vi.fn(),
 		arc: vi.fn(),
 		fill: vi.fn(),
 		stroke: vi.fn(),
@@ -35,6 +38,22 @@ describe('drawCircle', () => {
 		ctx.lineWidth = 4;
 		drawCircle(ctx, { x: 0, y: 0 }, 5, 'lime');
 		expect(ctx.lineWidth).toBe(2);
+	});
+});
+
+describe('drawDiamond', () => {
+	it('draws a closed 4-point path centered at the given point, filled and stroked', () => {
+		const ctx = fake_ctx();
+		drawDiamond(ctx, { x: 10, y: 20 }, 5, 'orange');
+
+		expect(ctx.moveTo).toHaveBeenCalledWith(10, 15);
+		expect(ctx.lineTo).toHaveBeenCalledWith(15, 20);
+		expect(ctx.lineTo).toHaveBeenCalledWith(10, 25);
+		expect(ctx.lineTo).toHaveBeenCalledWith(5, 20);
+		expect(ctx.closePath).toHaveBeenCalled();
+		expect(ctx.fillStyle).toBe('orange');
+		expect(ctx.fill).toHaveBeenCalled();
+		expect(ctx.stroke).toHaveBeenCalled();
 	});
 });
 

@@ -4,5 +4,6 @@ type Polygon = {
 	id: string;
 	points: Point[];
 };
+type AABB = { minX: number; minY: number; maxX: number; maxY: number };
 
-export type { Point, Polygon };
+export type { Point, Polygon, AABB };

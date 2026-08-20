@@ -34,18 +34,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown Mainland:Mainland /home/Mainland
 
 # ========================================================
-# Stage 2: Frontend Builder (Compile UI Panel)
+# Stage 2: Frontend Source
 # ========================================================
-FROM node:24-alpine AS frontend-builder
-
-WORKDIR /build/frontend
-
-COPY ./frontend/package.json ./frontend/package-lock.json ./
-RUN npm ci
-
-COPY ./frontend .
-
-RUN npm run build
+# `frontend-builder` is a named build context, not an image reference --
+# every caller MUST supply one (Compose's `build.additional_contexts:
+# - frontend-builder=service:frontend-builder`, or a plain `docker build
+# --build-context frontend-builder=docker-image://<tag>`). See
+# frontend/Dockerfile's header comment for why this is a shared,
+# already-built image rather than an independent `npm run build` here.
+FROM frontend-builder AS frontend-source
 
 # ========================================================
 # Stage 3: Builder (Install Python Dependencies)
@@ -88,7 +85,7 @@ RUN mkdir -p static templates/frontend /var/log/django \
 # Mainland/pages.py's index() calls render(req, 'frontend/index.html'), which
 # resolves against TEMPLATES[0]['DIRS'] (templates/) -- the directory here
 # must match that literal.
-COPY --from=frontend-builder --chown=Mainland:Mainland /build/frontend/dist/*.html /home/Mainland/templates/frontend/
+COPY --from=frontend-source --chown=Mainland:Mainland /dist/index.html /home/Mainland/templates/frontend/
 
 USER Mainland
 
@@ -110,6 +107,6 @@ RUN mkdir -p static templates/frontend /var/log/django \
 # Mainland/pages.py's index() calls render(req, 'frontend/index.html'), which
 # resolves against TEMPLATES[0]['DIRS'] (templates/) -- the directory here
 # must match that literal.
-COPY --from=frontend-builder --chown=Mainland:Mainland /build/frontend/dist/*.html /home/Mainland/templates/frontend/
+COPY --from=frontend-source --chown=Mainland:Mainland /dist/index.html /home/Mainland/templates/frontend/
 
 USER Mainland

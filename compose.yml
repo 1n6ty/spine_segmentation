@@ -1,4 +1,13 @@
 services:
+  frontend-builder:
+    image: ${REGISTRY_URL}/spine_segmentation-frontend-builder:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+      cache_from:
+        - ${REGISTRY_URL}/spine_segmentation-frontend-builder:${CACHE_TAG:-latest}
+
   api:
     image: ${REGISTRY_URL}/spine_segmentation-api:${IMAGE_TAG:-latest}
     build:
@@ -9,6 +18,8 @@ services:
         USER_ID: 1000
         GROUP_ID: 1000
         BUILDKIT_INLINE_CACHE: "1"
+      additional_contexts:
+        - frontend-builder=service:frontend-builder
       cache_from:
         - ${REGISTRY_URL}/spine_segmentation-api:${CACHE_TAG:-latest}
 
@@ -20,5 +31,7 @@ services:
       target: production
       args:
         BUILDKIT_INLINE_CACHE: "1"
+      additional_contexts:
+        - frontend-builder=service:frontend-builder
       cache_from:
         - ${REGISTRY_URL}/spine_segmentation-nginx:${CACHE_TAG:-latest}
