@@ -33,17 +33,23 @@ export interface CentralPath {
  * wire-format ground truth to match; this is a from-scratch derived overlay, recomputed from
  * `polygons` on every call. `polygons` is assumed already spine-ordered (S1 -> C2), which
  * `orderAndName()` guarantees.
+ *
+ * The spine's outermost bottom point (first vertebra's bottom plate) and outermost top point
+ * (last vertebra's top plate) are dropped entirely -- they sit past the outer edge of the
+ * outermost vertebra, outside the inter-vertebral alignment the central line is meant to track.
+ * They're excluded from the spline fit itself (not merely hidden at render time), so the curve
+ * is only ever shaped by, and only ever shown/draggable through, the remaining interior points.
  */
 export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 	if (polygons.length === 0) return null;
 
-	const controlPoints: CentralLineControlPoint[] = [];
+	const allPoints: CentralLineControlPoint[] = [];
 	polygons.forEach((poly, vertebraIndex) => {
 		if (poly.points.length !== 4) return;
 
 		(['bottom', 'top'] as const).forEach((plate) => {
 			const [i0, i1] = PLATE_CORNER_INDICES[plate];
-			controlPoints.push({
+			allPoints.push({
 				vertebraIndex,
 				plate,
 				point: get_midpoint(poly.points[i0], poly.points[i1]),
@@ -52,6 +58,7 @@ export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 		});
 	});
 
+	const controlPoints = allPoints.length > 2 ? allPoints.slice(1, -1) : [];
 	if (controlPoints.length < 2) return null;
 
 	const spline = fitArcLengthSpline2D(controlPoints.map((cp) => cp.point));

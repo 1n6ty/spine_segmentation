@@ -162,13 +162,15 @@ describe('drawMain', () => {
 
 	it('draws the central-line curve and control points in orange when a central path is provided', () => {
 		const ctx = fake_ctx();
-		const poly = square('S1', 100, 100);
-		const centralPath = computeCentralPath([poly]);
+		// A single vertebra has no interior control points (both its midpoints are
+		// spine-outermost and dropped) -- 2 are needed for a non-null central path.
+		const polys = [square('S1', 100, 140), square('L5', 100, 100)];
+		const centralPath = computeCentralPath(polys);
 
 		drawMain(
 			ctx,
 			bitmap,
-			[poly],
+			polys,
 			noneSelected,
 			[],
 			{ offset: { x: 0, y: 0 }, scale: 1 },

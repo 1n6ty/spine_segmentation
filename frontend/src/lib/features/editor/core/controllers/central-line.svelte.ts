@@ -39,8 +39,10 @@ export class CentralLineController {
 
 	constructor(private parent: InstanceContainer) {}
 
-	/** Nearest control point within hit radius, or null. Nearest-not-first, since adjacent
-	 * plates can sit close together at low zoom and first-match would pick arbitrarily. */
+	/** Nearest control point within hit radius, or null. `centralPath.controlPoints` already
+	 * excludes the spine's outermost bottom/top points (see `computeCentralPath`). Nearest-not-
+	 * first, since adjacent plates can sit close together at low zoom and first-match would pick
+	 * arbitrarily. */
 	hitTest(worldPoint: Point): CentralLineHit | null {
 		const path = this.centralPath;
 		if (!path) return null;
