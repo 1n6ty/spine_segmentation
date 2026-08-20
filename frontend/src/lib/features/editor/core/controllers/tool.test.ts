@@ -245,6 +245,60 @@ describe('ToolController vertex-drag flow (end-to-end through the controller)', 
 	});
 });
 
+describe('ToolController central-line integration (Mode 1, end-to-end through the controller)', () => {
+	it('dragging a plate-midpoint control point translates both its corner points together', () => {
+		const poly = square('C2', 100, 100);
+		session.projections.side.polygons = [poly];
+		const target = new FakeElement();
+
+		// Bottom-plate midpoint sits at (100, 110), clear of any corner (nearest corner is
+		// (90, 110) or (110, 110), 10px away -- outside the 12px hit radius is not guaranteed
+		// here, but the control point itself is exactly on target so it wins regardless).
+		container.tools.handlePointerDown(
+			fake_pointer_event({ clientX: 100, clientY: 110, target: target as any })
+		);
+		expect(container.centralLine.isDragging).toBe(true);
+
+		container.tools.handlePointerMove(fake_pointer_event({ clientX: 150, clientY: 160 }));
+		container.tools.handlePointerUp(fake_pointer_event({ target: target as any }));
+
+		expect(container.centralLine.isDragging).toBe(false);
+		expect(session.projections.side.polygons[0].points).toContainEqual({ x: 140, y: 160 });
+		expect(session.projections.side.polygons[0].points).toContainEqual({ x: 160, y: 160 });
+		expect(target.releasePointerCapture).toHaveBeenCalled();
+	});
+
+	it('a plain vertex click still wins over a nearby control point when the vertex is nearer', () => {
+		const poly = square('C2', 100, 100);
+		session.projections.side.polygons = [poly];
+		const target = new FakeElement();
+
+		// poly.points[0] === {x: 90, y: 110}, exactly on target; the bottom-plate control point
+		// at (100, 110) is 10px away -- the vertex, being nearer, must win the dispatch.
+		container.tools.handlePointerDown(
+			fake_pointer_event({ clientX: 90, clientY: 110, target: target as any })
+		);
+
+		expect(container.centralLine.isDragging).toBe(false);
+
+		container.tools.handlePointerMove(fake_pointer_event({ clientX: 200, clientY: 210 }));
+		container.tools.handlePointerUp(fake_pointer_event({ target: target as any }));
+
+		expect(session.projections.side.polygons[0].points).toContainEqual({ x: 200, y: 210 });
+	});
+
+	it('central-line control points are inert outside the select tool', () => {
+		const poly = square('C2', 100, 100);
+		session.projections.side.polygons = [poly];
+		container.tools.setActiveTool('draw');
+
+		container.tools.handlePointerDown(fake_pointer_event({ clientX: 100, clientY: 110 }));
+
+		expect(container.centralLine.isDragging).toBe(false);
+		expect(container.tools.draftPoints).toHaveLength(1);
+	});
+});
+
 describe('ToolController.clear', () => {
 	it("resets tool/history/selection and empties only this controller's own projection", () => {
 		session.projections.side.polygons = [square('C2', 0, 0)];

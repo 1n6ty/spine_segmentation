@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { drawMain } from './main-draw';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
+import { computeCentralPath } from '../logic/central-path';
 
 function fake_ctx(clientWidth = 400, clientHeight = 300) {
 	const stroke_styles: string[] = [];
@@ -157,5 +158,32 @@ describe('drawMain', () => {
 		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 }, null);
 
 		expect(ctx.strokeRect).not.toHaveBeenCalled();
+	});
+
+	it('draws the central-line curve and control points in orange when a central path is provided', () => {
+		const ctx = fake_ctx();
+		const poly = square('S1', 100, 100);
+		const centralPath = computeCentralPath([poly]);
+
+		drawMain(
+			ctx,
+			bitmap,
+			[poly],
+			noneSelected,
+			[],
+			{ offset: { x: 0, y: 0 }, scale: 1 },
+			null,
+			6,
+			centralPath
+		);
+
+		expect(ctx._strokeStyles).toContain('orange');
+	});
+
+	it('skips the central-line draw entirely when no central path is provided', () => {
+		const ctx = fake_ctx();
+		drawMain(ctx, bitmap, [], noneSelected, [], { offset: { x: 0, y: 0 }, scale: 1 });
+
+		expect(ctx._strokeStyles).not.toContain('orange');
 	});
 });

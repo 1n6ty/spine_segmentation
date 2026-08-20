@@ -1,5 +1,5 @@
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
-import { aabb_of_points, screen_to_world } from '$lib/shared/geometry/geometry';
+import { aabb_of_points, distance, screen_to_world } from '$lib/shared/geometry/geometry';
 import { getPointAndPolygonUnderCursor } from '../../logic/selection';
 import { orderAndName } from '../../logic/orderer';
 import { HistoryController } from './history.svelte';
@@ -82,6 +82,25 @@ export class ToolController {
 			return;
 		}
 
+		// Central-line control points are hit-tested alongside ordinary vertices, but only
+		// while selecting -- dragging a plate midpoint (Mode 1) is a distinct gesture from
+		// ordinary vertex/box-select interaction, handled entirely by `CentralLineController`
+		// when hit. Whichever is actually nearer to the cursor wins: a control point can sit
+		// close to its own endplate's corners at small vertebra sizes/low zoom, and a plain
+		// vertex click should never be stolen by a farther-away control point.
+		if (this.activeToolId === 'select') {
+			const worldPoint = this.worldPointFromEvent(e);
+			const centralHit = this.parent.centralLine.hitTest(worldPoint);
+			if (centralHit) {
+				const centralDist = distance(centralHit.controlPoint.point, worldPoint);
+				const nearestVertexDist = this.nearestVertexDistance(worldPoint);
+				if (nearestVertexDist === null || centralDist < nearestVertexDist) {
+					this.parent.centralLine.beginDrag(e, centralHit);
+					return;
+				}
+			}
+		}
+
 		this.activeTool.onPointerDown(e, this.buildContext());
 	}
 
@@ -91,12 +110,22 @@ export class ToolController {
 			return;
 		}
 
+		if (this.parent.centralLine.isDragging) {
+			this.parent.centralLine.updateDrag(this.worldPointFromEvent(e));
+			return;
+		}
+
 		this.activeTool.onPointerMove(e, this.buildContext());
 	}
 
 	handlePointerUp(e: PointerEvent): void {
 		if (this.parent.nav.isDragging) {
 			this.parent.nav.endDrag(e);
+			return;
+		}
+
+		if (this.parent.centralLine.isDragging) {
+			this.parent.centralLine.endDrag(e);
 			return;
 		}
 
@@ -131,6 +160,26 @@ export class ToolController {
 		this.selection.clear();
 	}
 
+	private worldPointFromEvent(e: PointerEvent): Point {
+		const { nav } = this.parent;
+		const rect = this.parent.mainCanvas!.getBoundingClientRect();
+		const clientXY = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+		return screen_to_world(clientXY, nav.view.offset, nav.view.scale);
+	}
+
+	/** Distance to whichever vertex `SelectTool`'s own hit-testing would grab, or null if none
+	 * is within its hit radius -- used to resolve priority against central-line control points. */
+	private nearestVertexDistance(worldPoint: Point): number | null {
+		const { projection, nav } = this.parent;
+		const worldHitRadius = 12 / nav.view.scale;
+		const hit = getPointAndPolygonUnderCursor(
+			worldPoint,
+			this.parent.session.projections[projection].polygons,
+			worldHitRadius
+		);
+		return hit.point ? distance(hit.point, worldPoint) : null;
+	}
+
 	private buildContext(): ToolContext<Polygon> {
 		const { projection, nav } = this.parent;
 
@@ -142,11 +191,7 @@ export class ToolController {
 			selection: this.selection,
 			history: this.history,
 			viewport: this.parent.nav,
-			worldPointFromEvent: (e) => {
-				const rect = this.parent.mainCanvas!.getBoundingClientRect();
-				const clientXY = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-				return screen_to_world(clientXY, nav.view.offset, nav.view.scale);
-			},
+			worldPointFromEvent: (e) => this.worldPointFromEvent(e),
 			hitTest: (worldPoint) => {
 				const worldHitRadius = 12 / nav.view.scale;
 				const hit = getPointAndPolygonUnderCursor(

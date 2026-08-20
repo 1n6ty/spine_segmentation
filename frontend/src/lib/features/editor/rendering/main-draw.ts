@@ -1,6 +1,7 @@
 import { centroid } from '$lib/shared/geometry/geometry';
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
-import { drawCircle } from '$lib/shared/canvas/canvas-utils';
+import { drawCircle, drawDiamond } from '$lib/shared/canvas/canvas-utils';
+import type { CentralPath } from '../logic/central-path';
 
 function drawBackground(
 	ctx: CanvasRenderingContext2D,
@@ -65,6 +66,30 @@ function drawPolygons(
 	}
 }
 
+function drawCentralLine(
+	ctx: CanvasRenderingContext2D,
+	centralPath: CentralPath | null,
+	pointsRadius: number,
+	scale: number
+): void {
+	if (!centralPath) return;
+
+	const invScale = 1 / scale;
+	const samples = centralPath.samplePoints();
+
+	if (samples.length > 1) {
+		ctx.beginPath();
+		ctx.lineWidth = 2 * invScale;
+		ctx.strokeStyle = 'orange';
+		samples.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+		ctx.stroke();
+	}
+
+	for (const controlPoint of centralPath.controlPoints) {
+		drawDiamond(ctx, controlPoint.point, pointsRadius * 0.7 * invScale, 'orange');
+	}
+}
+
 function drawDraftPoints(
 	ctx: CanvasRenderingContext2D,
 	points: Point[],
@@ -119,7 +144,8 @@ export function drawMain(
 	draftPoints: Point[],
 	view: { offset: Point; scale: number },
 	box: { start: Point; current: Point } | null = null,
-	pointsRadius: number = 6
+	pointsRadius: number = 6,
+	centralPath: CentralPath | null = null
 ) {
 	drawBackground(ctx, bitmap, view.offset, view.scale);
 
@@ -128,6 +154,8 @@ export function drawMain(
 	ctx.scale(view.scale, view.scale);
 
 	drawPolygons(ctx, polygons, isSelected, pointsRadius, view.scale);
+
+	drawCentralLine(ctx, centralPath, pointsRadius, view.scale);
 
 	drawDraftPoints(ctx, draftPoints, pointsRadius, view.scale);
 

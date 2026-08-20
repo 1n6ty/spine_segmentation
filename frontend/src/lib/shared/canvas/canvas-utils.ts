@@ -12,6 +12,24 @@ export function drawCircle(ctx: CanvasRenderingContext2D, p: Point, r: number, c
 	ctx.restore();
 }
 
+/** Diamond marker -- used to visually distinguish central-line control points from the
+ * circular vertebra-corner dots drawn by `drawCircle`. */
+export function drawDiamond(ctx: CanvasRenderingContext2D, p: Point, r: number, color: string) {
+	ctx.save();
+	ctx.beginPath();
+	ctx.moveTo(p.x, p.y - r);
+	ctx.lineTo(p.x + r, p.y);
+	ctx.lineTo(p.x, p.y + r);
+	ctx.lineTo(p.x - r, p.y);
+	ctx.closePath();
+	ctx.fillStyle = color;
+	ctx.fill();
+	ctx.strokeStyle = 'black';
+	ctx.lineWidth = ctx.lineWidth / 2;
+	ctx.stroke();
+	ctx.restore();
+}
+
 export function getClampedOffset(
 	offset: { x: number; y: number },
 	scale: number,

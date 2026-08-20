@@ -139,7 +139,7 @@
 	});
 
 	$effect(() => {
-		const { mainCanvas, miniCanvas, tools, nav } = projectionContainer;
+		const { mainCanvas, miniCanvas, tools, nav, centralLine } = projectionContainer;
 		if (!project.session.projections[projection].patient?.study.series.sopInstance.bitmap) return;
 
 		// Main Canvas Rendering
@@ -152,7 +152,9 @@
 				(poly) => tools.selection.has(poly.uuid),
 				tools.draftPoints,
 				nav.view,
-				tools.selectionBox
+				tools.selectionBox,
+				6,
+				centralLine.centralPath
 			);
 		}
 
@@ -237,8 +239,8 @@
 				callback={() => {
 					projectionContainer.tools.setActiveTool('draw');
 				}}
-				disabled={project.session.projections[projection].polygons.length >=
-					MAX_VERTEBRAE}>{$t('editor.add_vertebra')}</Button
+				disabled={project.session.projections[projection].polygons.length >= MAX_VERTEBRAE}
+				>{$t('editor.add_vertebra')}</Button
 			>
 		{/if}
 		<Button
