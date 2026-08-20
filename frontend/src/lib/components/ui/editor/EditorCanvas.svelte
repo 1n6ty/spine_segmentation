@@ -19,6 +19,10 @@
 		projection: 'side' | 'frontal';
 	} = $props();
 
+	// 7 cervical + 12 thoracic + 5 lumbar -- the human spine's full vertebra
+	// count, excluding the sacrum/coccyx (never individually annotated here).
+	const MAX_VERTEBRAE = 24;
+
 	// AI segmentation now runs automatically on every upload (see
 	// SessionService.uploadFile) -- this button no longer re-uploads or
 	// re-triggers it. It only watches the pipeline's current/live status.
@@ -185,13 +189,6 @@
 			disabled={!projectionContainer.tools.history.canRedo}
 		/>
 		<Button
-			type="magic"
-			callback={() => {
-				handleMagicClick();
-			}}
-			disabled={magicStatus !== 'idle' && magicStatus !== 'error'}>{$t('editor.autofill')}</Button
-		>
-		<Button
 			type="zoom-in"
 			callback={() => {
 				projectionContainer.nav.zoomToCenter(1.1);
@@ -217,6 +214,15 @@
 				projectionContainer.tools.setActiveTool('pan');
 			}}
 		/>
+	</div>
+	<div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
+		<Button
+			type="magic"
+			callback={() => {
+				handleMagicClick();
+			}}
+			disabled={magicStatus !== 'idle' && magicStatus !== 'error'}>{$t('editor.autofill')}</Button
+		>
 		{#if projectionContainer.tools.activeToolId == 'draw'}
 			<Button
 				type="cancel"
@@ -231,8 +237,9 @@
 				callback={() => {
 					projectionContainer.tools.setActiveTool('draw');
 				}}
-				disabled={false}
-			/>
+				disabled={project.session.projections[projection].polygons.length >=
+					MAX_VERTEBRAE}>{$t('editor.add_vertebra')}</Button
+			>
 		{/if}
 		<Button
 			type="delete"
