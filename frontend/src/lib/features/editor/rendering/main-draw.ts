@@ -31,7 +31,7 @@ function drawBackground(
 function drawPolygons(
 	ctx: CanvasRenderingContext2D,
 	polygons: Polygon[],
-	selectedPolygon: Polygon | null,
+	isSelected: (poly: Polygon) => boolean,
 	pointsRadius: number,
 	scale: number
 ): void {
@@ -40,13 +40,13 @@ function drawPolygons(
 	ctx.lineWidth = 2 * invScale;
 
 	for (const poly of polygons) {
-		const isSelected = poly.id === selectedPolygon?.id;
+		const selected = isSelected(poly);
 
 		// Path
 		ctx.beginPath();
 		poly.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
 		ctx.closePath();
-		ctx.strokeStyle = isSelected ? 'red' : 'lime';
+		ctx.strokeStyle = selected ? 'red' : 'lime';
 		ctx.stroke();
 
 		// Label
@@ -60,7 +60,7 @@ function drawPolygons(
 
 		// Vertices
 		for (const p of poly.points) {
-			drawCircle(ctx, p, pointsRadius * invScale, isSelected ? 'red' : 'lime');
+			drawCircle(ctx, p, pointsRadius * invScale, selected ? 'red' : 'lime');
 		}
 	}
 }
@@ -91,13 +91,34 @@ function drawDraftPoints(
 	});
 }
 
+function drawSelectionBox(
+	ctx: CanvasRenderingContext2D,
+	box: { start: Point; current: Point },
+	scale: number
+): void {
+	const invScale = 1 / scale;
+
+	ctx.save();
+	ctx.setLineDash([6 * invScale, 4 * invScale]);
+	ctx.lineWidth = 1.5 * invScale;
+	ctx.strokeStyle = 'white';
+	ctx.strokeRect(
+		Math.min(box.start.x, box.current.x),
+		Math.min(box.start.y, box.current.y),
+		Math.abs(box.current.x - box.start.x),
+		Math.abs(box.current.y - box.start.y)
+	);
+	ctx.restore();
+}
+
 export function drawMain(
 	ctx: CanvasRenderingContext2D,
 	bitmap: ImageBitmap,
 	polygons: Polygon[],
-	selectedPolygon: Polygon | null,
+	isSelected: (poly: Polygon) => boolean,
 	draftPoints: Point[],
 	view: { offset: Point; scale: number },
+	box: { start: Point; current: Point } | null = null,
 	pointsRadius: number = 6
 ) {
 	drawBackground(ctx, bitmap, view.offset, view.scale);
@@ -106,9 +127,11 @@ export function drawMain(
 	ctx.translate(view.offset.x, view.offset.y);
 	ctx.scale(view.scale, view.scale);
 
-	drawPolygons(ctx, polygons, selectedPolygon, pointsRadius, view.scale);
+	drawPolygons(ctx, polygons, isSelected, pointsRadius, view.scale);
 
 	drawDraftPoints(ctx, draftPoints, pointsRadius, view.scale);
+
+	if (box) drawSelectionBox(ctx, box, view.scale);
 
 	ctx.restore();
 }

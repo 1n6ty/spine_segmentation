@@ -1,5 +1,5 @@
 import type { SessionService } from '$lib/core/session/session.svelte';
-import { EditController } from './controllers/edit.svelte';
+import { ToolController } from './controllers/tool.svelte';
 import { ViewportController } from './controllers/viewport.svelte';
 
 export class InstanceContainer {
@@ -8,19 +8,19 @@ export class InstanceContainer {
 
 	// Composed Controllers
 	nav!: ViewportController;
-	edit!: EditController;
+	tools!: ToolController;
 
 	constructor(
 		public readonly projection: 'side' | 'frontal',
 		public readonly session: SessionService
 	) {
 		this.nav = new ViewportController(this);
-		this.edit = new EditController(this);
+		this.tools = new ToolController(this);
 	}
 
 	// Unified entry point for the UI to trigger redraws
 	refresh() {
 		this.nav.clear();
-		this.edit.clear();
+		this.tools.clear();
 	}
 }

@@ -2,8 +2,9 @@ import type { Point } from '$lib/shared/geometry/geometry.type';
 import { screen_to_world } from '$lib/shared/geometry/geometry';
 import { getClampedOffset } from '$lib/shared/canvas/canvas-utils';
 import { InstanceContainer } from '../instance-container.svelte';
+import type { PanViewport } from '../tools/tool.type';
 
-export class ViewportController {
+export class ViewportController implements PanViewport {
 	view = $state({ offset: { x: 0, y: 0 }, scale: 1 });
 	minScale = $state(0);
 	maxScale = $state(Infinity);
@@ -17,23 +18,22 @@ export class ViewportController {
 
 	constructor(private parent: InstanceContainer) {}
 
-	handlePointerDown(e: PointerEvent) {
-		const { edit } = this.parent;
+	/**
+	 * Starts a viewport drag. Button/mode-agnostic -- callers (the active tool, or the
+	 * always-on middle-mouse-button pan) decide *whether* to call this; ViewportController no
+	 * longer gates on which tool is active.
+	 */
+	beginDrag(e: PointerEvent) {
+		this.isDragging = true;
+		this.lastMousePos = { x: e.clientX, y: e.clientY };
 
-		// Optional: Only allow panning with middle mouse button OR if in 'default' mode
-		// e.button === 0 is left click, e.button === 1 is middle click
-		if (edit.mode === 'default') {
-			this.isDragging = true;
-			this.lastMousePos = { x: e.clientX, y: e.clientY };
-
-			// Capture pointer so dragging continues smoothly even if mouse leaves canvas bounds
-			if (e.target instanceof Element) {
-				e.target.setPointerCapture(e.pointerId);
-			}
+		// Capture pointer so dragging continues smoothly even if mouse leaves canvas bounds
+		if (e.target instanceof Element) {
+			e.target.setPointerCapture(e.pointerId);
 		}
 	}
 
-	handlePointerMove(e: PointerEvent) {
+	updateDrag(e: PointerEvent) {
 		if (!this.isDragging) return;
 
 		const delta = {
@@ -46,7 +46,7 @@ export class ViewportController {
 		this.lastMousePos = { x: e.clientX, y: e.clientY };
 	}
 
-	handlePointerUp(e: PointerEvent) {
+	endDrag(e: PointerEvent) {
 		this.isDragging = false;
 		if (e.target instanceof Element) {
 			e.target.releasePointerCapture(e.pointerId);
@@ -54,13 +54,9 @@ export class ViewportController {
 	}
 
 	pan(delta: Point) {
-		const { edit } = this.parent;
-
-		if (edit.mode === 'default') {
-			this.view.offset.x += delta.x;
-			this.view.offset.y += delta.y;
-			this.clamp();
-		}
+		this.view.offset.x += delta.x;
+		this.view.offset.y += delta.y;
+		this.clamp();
 	}
 
 	// --- ZOOMING LOGIC ---

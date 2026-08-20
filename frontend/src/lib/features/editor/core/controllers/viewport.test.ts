@@ -41,10 +41,10 @@ beforeEach(async () => {
 	container.mainCanvas = fake_canvas();
 });
 
-describe('ViewportController panning', () => {
-	it('pointer down in default mode starts a drag and captures the pointer', () => {
+describe('ViewportController dragging', () => {
+	it('beginDrag starts a drag and captures the pointer, unconditionally (button/mode-agnostic)', () => {
 		const target = new FakeElement();
-		container.nav.handlePointerDown(
+		container.nav.beginDrag(
 			fake_pointer_event({ clientX: 10, clientY: 20, target: target as any })
 		);
 
@@ -52,29 +52,23 @@ describe('ViewportController panning', () => {
 		expect(target.setPointerCapture).toHaveBeenCalledWith(1);
 	});
 
-	it('does not start a drag while the edit controller is in draw mode', () => {
-		container.edit.setMode('draw');
-		container.nav.handlePointerDown(fake_pointer_event());
-		expect(container.nav.isDragging).toBe(false);
-	});
-
-	it('pointer move while dragging pans the view by the pointer delta', () => {
-		container.nav.handlePointerDown(fake_pointer_event({ clientX: 10, clientY: 10 }));
-		container.nav.handlePointerMove(fake_pointer_event({ clientX: 25, clientY: 15 }));
+	it('updateDrag while dragging pans the view by the pointer delta', () => {
+		container.nav.beginDrag(fake_pointer_event({ clientX: 10, clientY: 10 }));
+		container.nav.updateDrag(fake_pointer_event({ clientX: 25, clientY: 15 }));
 
 		expect(container.nav.view.offset).toEqual({ x: 15, y: 5 });
 	});
 
-	it('pointer move while not dragging is a no-op', () => {
-		container.nav.handlePointerMove(fake_pointer_event({ clientX: 100, clientY: 100 }));
+	it('updateDrag while not dragging is a no-op', () => {
+		container.nav.updateDrag(fake_pointer_event({ clientX: 100, clientY: 100 }));
 		expect(container.nav.view.offset).toEqual({ x: 0, y: 0 });
 	});
 
-	it('pointer up stops dragging and releases pointer capture', () => {
+	it('endDrag stops dragging and releases pointer capture', () => {
 		const target = new FakeElement();
-		container.nav.handlePointerDown(fake_pointer_event({ target: target as any }));
+		container.nav.beginDrag(fake_pointer_event({ target: target as any }));
 
-		container.nav.handlePointerUp(fake_pointer_event({ target: target as any }));
+		container.nav.endDrag(fake_pointer_event({ target: target as any }));
 
 		expect(container.nav.isDragging).toBe(false);
 		expect(target.releasePointerCapture).toHaveBeenCalled();

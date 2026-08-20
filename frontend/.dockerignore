@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.svelte-kit/
+
+# Test/tooling output, never part of the build
+test-results/
+coverage/
+.cache/

@@ -5,11 +5,13 @@
 		type = 'add',
 		callback = (e) => {},
 		disabled = false,
+		active = false,
 		children
 	}: {
 		type: ButtonType;
 		callback: (e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) => void;
 		disabled?: boolean;
+		active?: boolean;
 		children?: any;
 	} = $props();
 
@@ -21,6 +23,8 @@
 	import BackBtn from '$lib/assets/icons/back.svg';
 	import ForwardBtn from '$lib/assets/icons/forward.svg';
 	import MagicBtn from '$lib/assets/icons/magic.svg';
+	import SelectBtn from '$lib/assets/icons/select.svg';
+	import PanBtn from '$lib/assets/icons/pan.svg';
 
 	import type { ButtonType } from './Button.type';
 
@@ -56,12 +60,21 @@
 		magic: {
 			src: MagicBtn,
 			alt: $t('icons_alt.magic')
+		},
+		select: {
+			src: SelectBtn,
+			alt: $t('icons_alt.select')
+		},
+		pan: {
+			src: PanBtn,
+			alt: $t('icons_alt.pan')
 		}
 	} as const;
 </script>
 
 <button
 	{disabled}
+	aria-pressed={active}
 	class="
     inline-flex h-8 shrink-0 items-center
     justify-center gap-1.5 rounded-md
@@ -78,6 +91,7 @@
     disabled:pointer-events-none disabled:cursor-none
     disabled:opacity-50 has-[>img]:px-2.5
     aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [&_img]:pointer-events-none [&_img]:shrink-0 [&_img:not([class*='size-'])]:size-4
+    {active ? 'border-(--ring) bg-(--accent) text-(--accent-foreground)' : ''}
   "
 	title={mapTypeToIcon[type].alt}
 	onclick={(e) => {

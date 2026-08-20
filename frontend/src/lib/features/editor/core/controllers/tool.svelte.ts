@@ -1,0 +1,169 @@
+import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
+import { aabb_of_points, screen_to_world } from '$lib/shared/geometry/geometry';
+import { getPointAndPolygonUnderCursor } from '../../logic/selection';
+import { orderAndName } from '../../logic/orderer';
+import { HistoryController } from './history.svelte';
+import type { InstanceContainer } from '../instance-container.svelte';
+import { SelectionState } from '../selection-state.svelte';
+import { SelectTool } from '../tools/select-tool.svelte';
+import { DrawTool } from '../tools/draw-tool.svelte';
+import { PanTool } from '../tools/pan-tool.svelte';
+import type { CursorStyle, Tool, ToolContext, ToolId } from '../tools/tool.type';
+
+const POINTS_PER_VERTEBRA = 4;
+const MIDDLE_MOUSE_BUTTON = 1;
+
+/**
+ * Polygon-concrete orchestrator: composes the generic tools + a `SelectionState<Polygon>` +
+ * `HistoryController`, owns tool-switching, and is the single pointer-dispatch entry point.
+ * Deliberately not generic itself -- the app has exactly one entity type today, and pushing
+ * genericity through this layer too would be overbuilding; genericity lives one level down, in
+ * `tools/` and `SelectionState`.
+ */
+export class ToolController {
+	activeToolId = $state<ToolId>('select');
+	selection = new SelectionState<Polygon>();
+	history: HistoryController;
+
+	private selectTool = new SelectTool<Polygon>();
+	private drawTool = new DrawTool<Polygon>(POINTS_PER_VERTEBRA);
+	private panTool = new PanTool<Polygon>();
+	private tools: Record<ToolId, Tool<Polygon>>;
+
+	get activeTool(): Tool<Polygon> {
+		return this.tools[this.activeToolId];
+	}
+
+	cursor: CursorStyle = $derived.by(() => {
+		if (this.parent.nav.isDragging) return 'cursor-grabbing';
+		return this.activeTool.getCursor(this.buildContext());
+	});
+
+	get draftPoints(): Point[] {
+		return this.drawTool.draftPoints;
+	}
+
+	get selectionBox(): { start: Point; current: Point } | null {
+		return this.selectTool.box;
+	}
+
+	constructor(private parent: InstanceContainer) {
+		this.history = new HistoryController(this.parent.projection, this.parent.session);
+		this.tools = { select: this.selectTool, draw: this.drawTool, pan: this.panTool };
+	}
+
+	/** Explicit, user-initiated tool switch (toolbar buttons) -- always clears the selection. */
+	setActiveTool(id: ToolId): void {
+		this.switchTool(id, { clearSelection: true });
+	}
+
+	/**
+	 * Switches the active tool. `clearSelection: false` is used for the internal
+	 * draw-commit -> select handoff (`ToolContext.requestToolSwitch`), which deliberately wants
+	 * the just-drawn entity's selection to survive the switch -- mirrors the pre-refactor
+	 * `EditController.commit()`, which set `this.mode = 'default'` directly instead of going
+	 * through `setMode()` for exactly this reason.
+	 */
+	private switchTool(id: ToolId, opts: { clearSelection: boolean }): void {
+		if (id === this.activeToolId) return;
+
+		const ctx = this.buildContext();
+		this.tools[this.activeToolId].onDeactivate(ctx);
+		if (opts.clearSelection) this.selection.clear();
+		this.activeToolId = id;
+		this.tools[id].onActivate(ctx);
+	}
+
+	handlePointerDown(e: PointerEvent): void {
+		// Middle-mouse-button always pans, regardless of the active tool -- intercepted here so
+		// individual tools never have to special-case buttons themselves.
+		if (e.button === MIDDLE_MOUSE_BUTTON) {
+			this.parent.nav.beginDrag(e);
+			return;
+		}
+
+		this.activeTool.onPointerDown(e, this.buildContext());
+	}
+
+	handlePointerMove(e: PointerEvent): void {
+		if (this.parent.nav.isDragging) {
+			this.parent.nav.updateDrag(e);
+			return;
+		}
+
+		this.activeTool.onPointerMove(e, this.buildContext());
+	}
+
+	handlePointerUp(e: PointerEvent): void {
+		if (this.parent.nav.isDragging) {
+			this.parent.nav.endDrag(e);
+			return;
+		}
+
+		this.activeTool.onPointerUp(e, this.buildContext());
+	}
+
+	deleteSelected = (): void => {
+		if (this.selection.isEmpty) return;
+
+		this.history.push();
+
+		const { projection } = this.parent;
+		this.parent.session.projections[projection].polygons = orderAndName(
+			this.parent.session.projections[projection].polygons.filter(
+				(p) => !this.selection.has(p.uuid)
+			)
+		);
+
+		this.selection.clear();
+		this.parent.session.requestSave();
+	};
+
+	clear(): void {
+		const { projection } = this.parent;
+
+		this.setActiveTool('select');
+		this.history.clear();
+
+		this.parent.session.projections[projection].polygons = [];
+		this.parent.session.requestSave();
+
+		this.selection.clear();
+	}
+
+	private buildContext(): ToolContext<Polygon> {
+		const { projection, nav } = this.parent;
+
+		return {
+			entities: this.parent.session.projections[projection].polygons,
+			setEntities: (next) => {
+				this.parent.session.projections[projection].polygons = next;
+			},
+			selection: this.selection,
+			history: this.history,
+			viewport: this.parent.nav,
+			worldPointFromEvent: (e) => {
+				const rect = this.parent.mainCanvas!.getBoundingClientRect();
+				const clientXY = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+				return screen_to_world(clientXY, nav.view.offset, nav.view.scale);
+			},
+			hitTest: (worldPoint) => {
+				const worldHitRadius = 12 / nav.view.scale;
+				const hit = getPointAndPolygonUnderCursor(
+					worldPoint,
+					this.parent.session.projections[projection].polygons,
+					worldHitRadius
+				);
+				return { entity: hit.polygon, pointIndex: hit.indexInPolygon };
+			},
+			boundsOf: (poly) => aabb_of_points(poly.points),
+			createEntity: (points) => ({ uuid: crypto.randomUUID(), id: '', points: [...points] }),
+			setEntityPoint: (poly, i, p) => {
+				poly.points[i] = { ...p };
+			},
+			reorder: orderAndName,
+			requestSave: () => this.parent.session.requestSave(),
+			requestToolSwitch: (id) => this.switchTool(id, { clearSelection: false })
+		};
+	}
+}
