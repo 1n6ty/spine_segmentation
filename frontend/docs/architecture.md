@@ -56,6 +56,14 @@ src/
   `patient-info`) that itself uses several `ui/` pieces.
 - **2+ places need it → move up**, same rule as the backend: code needed by both a route and a
   `ui/` component moves to `core/` or `features/`, not either call site.
+- **Constants** — no dedicated `constants.ts` per module (unlike the backend's `constants.py`).
+  A constant used by only one file stays inline in that file (`NORMAL_BAND_DEG` in
+  `diagnosis/rules/frontal.ts`, `HIT_RADIUS_PX` in `central-line.svelte.ts`). One used by 2+ files
+  gets promoted to its nearest shared ancestor under the same rule above — e.g.
+  `PROJECTION_TO_FILE_ROLE_SLUG` in `dicom/types.ts`, `parametersConfig` in
+  `medical-parameters/config.ts`. **Deploy-time tunables** (values ops might change per
+  environment — reconnect attempts/delays, history limit) are the one exception: those go in
+  `.env` as `PUBLIC_`-prefixed vars, read via `$env/static/public`, not as code constants at all.
 
 ## State Management
 

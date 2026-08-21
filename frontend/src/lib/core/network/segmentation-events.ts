@@ -1,3 +1,7 @@
+import {
+	PUBLIC_SEGMENTATION_MAX_RECONNECT_ATTEMPTS,
+	PUBLIC_SEGMENTATION_RECONNECT_DELAY_MS
+} from '$env/static/public';
 import { stream_sse, SseHttpError } from './sse';
 import type { SegmentationStatus, SegmentationRefPoints } from './types';
 
@@ -7,8 +11,8 @@ export type SegmentationEvent = {
 };
 
 const TERMINAL_STATUSES: SegmentationStatus[] = ['done', 'error'];
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY_MS = 500;
+const MAX_RECONNECT_ATTEMPTS = parseInt(PUBLIC_SEGMENTATION_MAX_RECONNECT_ATTEMPTS) || 5;
+const RECONNECT_DELAY_MS = parseInt(PUBLIC_SEGMENTATION_RECONNECT_DELAY_MS) || 500;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));

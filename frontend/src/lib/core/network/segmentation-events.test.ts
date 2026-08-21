@@ -9,6 +9,13 @@ vi.mock('./sse', async (importOriginal) => ({
 }));
 
 import { stream_segmentation_events } from './segmentation-events';
+import {
+	PUBLIC_SEGMENTATION_MAX_RECONNECT_ATTEMPTS,
+	PUBLIC_SEGMENTATION_RECONNECT_DELAY_MS
+} from '$env/static/public';
+
+const MAX_RECONNECT_ATTEMPTS = parseInt(PUBLIC_SEGMENTATION_MAX_RECONNECT_ATTEMPTS) || 5;
+const RECONNECT_DELAY_MS = parseInt(PUBLIC_SEGMENTATION_RECONNECT_DELAY_MS) || 500;
 
 async function* gen_from(items: SegmentationEvent[]) {
 	for (const item of items) yield item;
@@ -66,7 +73,7 @@ describe('stream_segmentation_events', () => {
 			.mockImplementationOnce(() => gen_from([{ status: 'done', ref_points: { vertebraes: [] } }]));
 
 		const promise = collect('uid-3');
-		await vi.advanceTimersByTimeAsync(500);
+		await vi.advanceTimersByTimeAsync(RECONNECT_DELAY_MS);
 		const received = await promise;
 
 		expect(received).toHaveLength(1);
@@ -78,10 +85,10 @@ describe('stream_segmentation_events', () => {
 
 		const promise = collect('uid-4');
 		const assertion = expect(promise).rejects.toThrow();
-		await vi.advanceTimersByTimeAsync(500 * 5);
+		await vi.advanceTimersByTimeAsync(RECONNECT_DELAY_MS * MAX_RECONNECT_ATTEMPTS);
 		await assertion;
 
-		expect(stream_sse).toHaveBeenCalledTimes(5);
+		expect(stream_sse).toHaveBeenCalledTimes(MAX_RECONNECT_ATTEMPTS);
 	});
 
 	it('propagates immediately without retrying when the signal is already aborted', async () => {
