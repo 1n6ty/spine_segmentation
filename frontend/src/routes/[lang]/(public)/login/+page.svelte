@@ -118,7 +118,20 @@
 					<label
 						class="flex cursor-pointer items-center gap-2 text-sm text-(--muted-foreground) select-none"
 					>
-						<input type="checkbox" bind:checked={rememberMe} class="cursor-pointer" />
+						<input
+							type="checkbox"
+							bind:checked={rememberMe}
+							class="cursor-pointer"
+							onkeydown={(e) => {
+								// A checkbox only toggles on Space natively -- Enter falls through
+								// to the form's implicit submit instead, so without this the
+								// checkbox is unreachable by Enter and silently submits the form
+								// (blocked only by the browser's own required-field validation).
+								if (e.key !== 'Enter') return;
+								e.preventDefault();
+								rememberMe = !rememberMe;
+							}}
+						/>
 						{$t('login.remember_me')}
 					</label>
 					<button

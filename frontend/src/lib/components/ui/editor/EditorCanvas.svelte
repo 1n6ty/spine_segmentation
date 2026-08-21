@@ -19,8 +19,10 @@
 		projection: 'side' | 'frontal';
 	} = $props();
 
-	// 7 cervical + 12 thoracic + 5 lumbar -- the human spine's full vertebra
-	// count, excluding the sacrum/coccyx (never individually annotated here).
+	// The keyboard-shortcut scope is this whole card (see the wrapping <div> below), not just
+	// the canvas -- bound here so its own pointerdown/focus-fallback handler can reach it.
+	let cardEl: HTMLDivElement | undefined;
+
 	const MAX_VERTEBRAE = 24;
 
 	// AI segmentation now runs automatically on every upload (see
@@ -79,17 +81,85 @@
 		magicError = null;
 	}
 
-	function handleGlobalKeydown(e: KeyboardEvent) {
-		if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+	// Keyboard equivalents for the toolbar -- bound on the whole card <div> (not
+	// `<svelte:window>`), so shortcuts fire while focus is anywhere inside THIS projection's
+	// card (toolbar buttons, canvas, or the card's own background/chrome), via normal keydown
+	// bubbling. With both 'side' and 'frontal' cards mounted at once, a window-level listener
+	// would fire for both simultaneously on every keypress; scoping to the card is what keeps
+	// them independent, and pairing it with `tabindex="0"` on the card (below) is what makes
+	// the whole widget keyboard/click-focusable in the first place.
+	function handleCanvasKeydown(e: KeyboardEvent) {
+		if (e.altKey) return;
+		const mod = e.ctrlKey || e.metaKey;
 
-		const target = e.target;
-		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-		if (target instanceof HTMLElement && target.isContentEditable) return;
-		if (projectionContainer.tools.selection.isEmpty) return;
+		if (mod) {
+			switch (e.key.toLowerCase()) {
+				case 'z':
+					e.preventDefault();
+					if (e.shiftKey) projectionContainer.tools.history.redo();
+					else projectionContainer.tools.history.undo();
+					return;
+				case 'y':
+					e.preventDefault();
+					projectionContainer.tools.history.redo();
+					return;
+				case 'a':
+					e.preventDefault();
+					projectionContainer.tools.selection.replaceWith(
+						project.session.projections[projection].polygons.map((p) => p.uuid)
+					);
+					return;
+				case '0':
+					e.preventDefault();
+					projectionContainer.nav.zoomToFit();
+					return;
+			}
+			// Any other modified combo (e.g. Ctrl+V) is left alone -- fall through to nothing
+			// rather than risk matching one of the bare-letter tool shortcuts below.
+			return;
+		}
 
-		// Backspace can otherwise trigger browser back-navigation.
-		e.preventDefault();
-		projectionContainer.tools.deleteSelected();
+		switch (e.key) {
+			case 'Delete':
+			case 'Backspace':
+				// Always prevent-default while the canvas has focus, even with nothing
+				// selected -- otherwise Backspace can trigger browser back-navigation.
+				e.preventDefault();
+				if (!projectionContainer.tools.selection.isEmpty) {
+					projectionContainer.tools.deleteSelected();
+				}
+				return;
+			case 'Escape':
+				if (projectionContainer.tools.activeToolId === 'draw') {
+					projectionContainer.tools.setActiveTool('select');
+				} else {
+					projectionContainer.tools.selection.clear();
+				}
+				return;
+			case 'v':
+			case 'V':
+				projectionContainer.tools.setActiveTool('select');
+				return;
+			case 'h':
+			case 'H':
+				projectionContainer.tools.setActiveTool('pan');
+				return;
+			case 'a':
+			case 'A':
+				if (project.session.projections[projection].polygons.length < MAX_VERTEBRAE) {
+					projectionContainer.tools.setActiveTool('draw');
+				}
+				return;
+			case '+':
+			case '=':
+				e.preventDefault();
+				projectionContainer.nav.zoomToCenter(1.1);
+				return;
+			case '-':
+				e.preventDefault();
+				projectionContainer.nav.zoomToCenter(0.9);
+				return;
+		}
 	}
 
 	const projection_h: Record<string, Record<string, string>> = {
@@ -111,14 +181,14 @@
 		// The canvas's backing-store size only gets re-synced as a side effect
 		// of the next redraw (drawBackground() in main-draw.ts sets
 		// canvas.width/height = canvas.clientWidth/clientHeight every draw),
-		// and zoomToFit() -- which recomputes the "contain" scale/offset for
-		// the current canvas size -- was never otherwise re-invoked on its
-		// own. Without this, resizing the viewport (e.g. opening devtools)
-		// left the view's scale/offset stale for the old canvas size, so the
-		// image visibly shrank/misaligned instead of staying correctly
-		// contained at its own aspect ratio.
+		// and nothing was otherwise re-invoked when the viewport resized (e.g.
+		// opening devtools, or the window itself resizing) -- the view's
+		// scale/offset were left stale for the old canvas size, misaligning
+		// the image. `syncToViewportSize()` re-adapts to the new size WITHOUT
+		// resetting the user's chosen zoom/pan the way `zoomToFit()` would --
+		// that would otherwise snap back to 100%-fit on every resize.
 		const resizeObserver = new ResizeObserver(() => {
-			projectionContainer.nav.zoomToFit();
+			projectionContainer.nav.syncToViewportSize();
 		});
 		if (projectionContainer.mainCanvas) {
 			resizeObserver.observe(projectionContainer.mainCanvas);
@@ -171,10 +241,45 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
-
+<!--
+	This is a custom keyboard-driven composite widget (an image-editing canvas plus its
+	toolbar), which is exactly what `role="application"` exists for; the linter's role
+	taxonomy just doesn't classify "application" as "interactive enough" to license
+	tabindex + handlers on its own, hence the two ignores below.
+-->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-	class="flex flex-col gap-2 rounded-xl border border-(--border) bg-(--card) p-4 text-(--card-foreground)"
+	bind:this={cardEl}
+	class="flex flex-col gap-2 rounded-xl border border-(--border) bg-(--card) p-4 text-(--card-foreground) outline-none focus-visible:ring-[3px] focus-visible:ring-(--ring)/50"
+	role="application"
+	tabindex="0"
+	aria-label={$t('editor.canvas_aria_label', {
+		values: {
+			view: projection_h[$locale && $locale in projection_h ? $locale : 'en'][projection]
+		}
+	})}
+	onpointerdown={() => {
+		// Clicking ANYWHERE in the card -- not just the canvas -- should be enough to
+		// enable the keyboard shortcuts below. A click that lands on something with its
+		// own focus behavior (a toolbar button) still wins in the end here: the browser's
+		// default mousedown-focus action for that element runs after this pointerdown
+		// handler, so it simply overrides this call. This only "sticks" for clicks on
+		// otherwise non-focusable card chrome (background, heading, help text, canvas).
+		cardEl?.focus();
+	}}
+	onclick={() => {
+		// Several toolbar buttons become `disabled` as a direct result of being clicked
+		// (Undo once the stack empties, Delete once the selection clears, Add-vertebra at
+		// the 24-vertebra cap, Autofill entering its "checking" state) -- and a browser
+		// auto-blurs a focused element the instant it goes disabled, dropping focus out of
+		// the card entirely so keydowns have nothing left to bubble from. `click` fires
+		// after the whole mousedown-focus-then-maybe-disable sequence has already played
+		// out, so re-focusing the card here reliably wins regardless of what happened to
+		// whatever was actually clicked.
+		cardEl?.focus();
+	}}
+	onkeydown={handleCanvasKeydown}
 >
 	<h3 class="font-semibold">
 		{projection_h[$locale && $locale in projection_h ? $locale : 'en'][projection]}
@@ -182,28 +287,33 @@
 	<div class="flex flex-wrap justify-start gap-x-2 gap-y-2">
 		<Button
 			type="back"
+			shortcut="Ctrl+Z"
 			callback={projectionContainer.tools.history.undo}
 			disabled={!projectionContainer.tools.history.canUndo}
 		/>
 		<Button
 			type="forward"
+			shortcut="Ctrl+Shift+Z"
 			callback={projectionContainer.tools.history.redo}
 			disabled={!projectionContainer.tools.history.canRedo}
 		/>
 		<Button
 			type="zoom-in"
+			shortcut="+"
 			callback={() => {
 				projectionContainer.nav.zoomToCenter(1.1);
 			}}
 		/>
 		<Button
 			type="zoom-out"
+			shortcut="-"
 			callback={() => {
 				projectionContainer.nav.zoomToCenter(0.9);
 			}}
 		/>
 		<Button
 			type="select"
+			shortcut="V"
 			active={projectionContainer.tools.activeToolId === 'select'}
 			callback={() => {
 				projectionContainer.tools.setActiveTool('select');
@@ -211,6 +321,7 @@
 		/>
 		<Button
 			type="pan"
+			shortcut="H"
 			active={projectionContainer.tools.activeToolId === 'pan'}
 			callback={() => {
 				projectionContainer.tools.setActiveTool('pan');
@@ -228,6 +339,7 @@
 		{#if projectionContainer.tools.activeToolId == 'draw'}
 			<Button
 				type="cancel"
+				shortcut="Esc"
 				callback={() => {
 					projectionContainer.tools.setActiveTool('select');
 				}}
@@ -236,6 +348,7 @@
 		{:else}
 			<Button
 				type="add"
+				shortcut="A"
 				callback={() => {
 					projectionContainer.tools.setActiveTool('draw');
 				}}
@@ -245,6 +358,7 @@
 		{/if}
 		<Button
 			type="delete"
+			shortcut="Delete"
 			callback={projectionContainer.tools.deleteSelected}
 			disabled={projectionContainer.tools.selection.isEmpty}>{$t('editor.delete_selected')}</Button
 		>
@@ -298,7 +412,7 @@
 				}}
 			></canvas>
 			<div
-				class="absolute right-2 bottom-2 flex h-56 w-40 justify-center rounded border-2 border-(--primary) bg-(--background)/90 shadow-lg"
+				class="absolute right-2 bottom-2 flex h-32 w-24 justify-center rounded border-2 border-(--primary) bg-(--background)/90 shadow-lg"
 			>
 				<canvas
 					class="block h-full w-full cursor-pointer"

@@ -39,6 +39,7 @@
 	},
 	"editor": {
 		"header": "Image editor",
+		"canvas_aria_label": "{view} vertebra annotation canvas. Keyboard shortcuts: V select tool, H pan tool, A add vertebra, Escape cancel, Delete removes selection, Ctrl+Z undo, Ctrl+Shift+Z redo, Ctrl+A select all, Ctrl+0 zoom to fit.",
 		"zoom_help": "Zoom: {percentage}% | Drag or Mouse Wheel to pan/zoom",
 		"autofill": "Autofill",
 		"autofill_confirm_overwrite": "This view already has vertebra polygons. Autofill will replace them with AI-generated ones.",

@@ -6,12 +6,15 @@
 		callback = (e) => {},
 		disabled = false,
 		active = false,
+		shortcut,
 		children
 	}: {
 		type: ButtonType;
 		callback: (e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) => void;
 		disabled?: boolean;
 		active?: boolean;
+		/** Keyboard shortcut hint appended to the button's title tooltip, e.g. "V" -> "Select (V)". */
+		shortcut?: string;
 		children?: any;
 	} = $props();
 
@@ -93,7 +96,7 @@
     aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [&_img]:pointer-events-none [&_img]:shrink-0 [&_img:not([class*='size-'])]:size-4
     {active ? 'border-(--ring) bg-(--accent) text-(--accent-foreground)' : ''}
   "
-	title={mapTypeToIcon[type].alt}
+	title={shortcut ? `${mapTypeToIcon[type].alt} (${shortcut})` : mapTypeToIcon[type].alt}
 	onclick={(e) => {
 		callback(e);
 	}}

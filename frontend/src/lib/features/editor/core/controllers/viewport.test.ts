@@ -10,12 +10,20 @@ class FakeElement {
 	releasePointerCapture = vi.fn();
 }
 
-function fake_canvas(clientWidth = 800, clientHeight = 600) {
+function fake_canvas(
+	clientWidth = 800,
+	clientHeight = 600,
+	// Defaults to matching clientWidth/clientHeight, like the real canvas does once a draw has
+	// run -- pass an explicit, different value to simulate the stale backing-store size that
+	// exists briefly right after a resize, before the next `drawBackground()` call resyncs it.
+	backingWidth = clientWidth,
+	backingHeight = clientHeight
+) {
 	return {
 		clientWidth,
 		clientHeight,
-		width: clientWidth,
-		height: clientHeight,
+		width: backingWidth,
+		height: backingHeight,
 		getBoundingClientRect: () => ({ left: 0, top: 0 })
 	} as unknown as HTMLCanvasElement;
 }
@@ -151,6 +159,126 @@ describe('ViewportController.zoomToFit', () => {
 	it('is a no-op with no bitmap loaded yet', () => {
 		expect(() => container.nav.zoomToFit()).not.toThrow();
 		expect(container.nav.view.scale).toBe(1);
+	});
+
+	it('centers on the LIVE clientWidth/clientHeight, not a stale canvas.width/height left over from before a resize', () => {
+		// Regression test: right after a window resize, `mainCanvas.clientWidth/clientHeight`
+		// already reflect the new layout size, but `mainCanvas.width/height` (the backing-store
+		// resolution) are still whatever the last `drawBackground()` call set them to, until the
+		// next draw. `clamp()` must key off the live size (matching zoomToFit's own offset math)
+		// or the freshly-centered offset gets immediately overwritten by a clamp computed
+		// against the wrong, smaller/larger stale size -- visibly sticking the image to one edge.
+		const bitmap = { width: 500, height: 1000 }; // tall image
+		session.projections.side.patient = {
+			study: { series: { sopInstance: { bitmap } } }
+		} as any;
+		// Live layout size is now a 1000x1000 square (e.g. the window just grew), but the
+		// backing store is still the old, much smaller 100x100 from before the resize.
+		container.mainCanvas = fake_canvas(1000, 1000, 100, 100);
+
+		container.nav.zoomToFit();
+
+		// scale = min(1000/500, 1000/1000) = 1; the image is narrower than the canvas at that
+		// scale (500 < 1000), so offset.x should CENTER it: (1000 - 500*1)/2 = 250. Clamping
+		// against the stale 100x100 backing store instead would wrongly take the "already wider
+		// than the canvas" edge-clamp branch (500 >= 100) and collapse offset.x to 0 -- visibly
+		// pinning the image to the left/top instead of centering it.
+		expect(container.nav.view.scale).toBeCloseTo(1);
+		expect(container.nav.view.offset.x).toBeCloseTo(250);
+		expect(container.nav.view.offset.y).toBeCloseTo(0);
+	});
+});
+
+describe('ViewportController.syncToViewportSize', () => {
+	beforeEach(() => {
+		const bitmap = { width: 1000, height: 1000 };
+		session.projections.side.patient = {
+			study: { series: { sopInstance: { bitmap } } }
+		} as any;
+		container.mainCanvas = fake_canvas(500, 500);
+		container.nav.zoomToFit(); // scale = minScale = 0.5, offset centered
+	});
+
+	it('preserves a custom zoom level instead of resetting it to fit, unlike zoomToFit()', () => {
+		container.nav.view.scale = 2; // the user zoomed in manually
+		container.mainCanvas = fake_canvas(800, 800); // window grew
+
+		container.nav.syncToViewportSize();
+
+		expect(container.nav.view.scale).toBeCloseTo(2);
+	});
+
+	it('recomputes minScale/maxScale for the new canvas size', () => {
+		container.mainCanvas = fake_canvas(800, 800);
+
+		container.nav.syncToViewportSize();
+
+		expect(container.nav.minScale).toBeCloseTo(0.8);
+		expect(container.nav.maxScale).toBeCloseTo(12.8);
+	});
+
+	it('pulls scale down to the new maxScale if the resize made it invalid', () => {
+		container.nav.view.scale = 100;
+		container.mainCanvas = fake_canvas(200, 200); // window shrank a lot -> maxScale drops
+
+		container.nav.syncToViewportSize();
+
+		expect(container.nav.view.scale).toBeCloseTo(container.nav.maxScale);
+	});
+
+	it('pulls scale up to the new minScale if the resize made it invalid', () => {
+		container.nav.view.scale = 0.1;
+		container.mainCanvas = fake_canvas(2000, 2000); // window grew a lot -> minScale rises above 0.1
+
+		container.nav.syncToViewportSize();
+
+		expect(container.nav.view.scale).toBeCloseTo(container.nav.minScale);
+	});
+
+	it('keeps the same world point centered when the canvas grows -- not anchored to top-left', () => {
+		// Regression test: this only shows up while zoomed in enough that the image doesn't
+		// fully fit the viewport on that axis (scaledSize >= canvasSize) -- when it DOES fit,
+		// getClampedOffset's own "center if smaller" branch recenters unconditionally regardless
+		// of the incoming offset, which is what made this bug easy to miss. Simulate a user
+		// zoomed to 2x and panned so the image's own center sits at the (500, 500) viewport's
+		// center: offset = -750 satisfies world(500,500) -> screen(250,250) at scale 2.
+		container.nav.view.scale = 2;
+		container.nav.view.offset = { x: -750, y: -750 };
+		container.mainCanvas = fake_canvas(900, 500); // grows wider only, same height
+
+		container.nav.syncToViewportSize();
+
+		// The image's center (world (500, 500)) should still land at the new viewport's center
+		// (450, 250) -- i.e. offset.x should shift by half the added width (200), not stay put.
+		expect(container.nav.view.offset.x).toBeCloseTo(-550);
+		expect(container.nav.view.offset.y).toBeCloseTo(-750); // height unchanged -> no y shift
+	});
+
+	it('re-clamps the offset so it stays valid even if the recentered value would not be', () => {
+		container.nav.view.offset = { x: -10000, y: -10000 };
+		container.mainCanvas = fake_canvas(800, 800);
+
+		container.nav.syncToViewportSize();
+
+		const scaledSize = 1000 * container.nav.view.scale;
+		expect(container.nav.view.offset.x).toBeGreaterThanOrEqual(800 - scaledSize);
+		expect(container.nav.view.offset.y).toBeGreaterThanOrEqual(800 - scaledSize);
+	});
+
+	it('is a no-op with no mainCanvas', () => {
+		container.nav.view.scale = 2;
+		container.mainCanvas = null;
+
+		expect(() => container.nav.syncToViewportSize()).not.toThrow();
+		expect(container.nav.view.scale).toBe(2);
+	});
+
+	it('is a no-op with no bitmap loaded', () => {
+		session.projections.side.patient = null;
+		container.nav.view.scale = 2;
+
+		expect(() => container.nav.syncToViewportSize()).not.toThrow();
+		expect(container.nav.view.scale).toBe(2);
 	});
 });
 

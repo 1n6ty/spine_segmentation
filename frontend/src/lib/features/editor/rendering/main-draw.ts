@@ -105,9 +105,7 @@ function drawDraftPoints(
 	ctx.lineWidth = 2 * invScale;
 	ctx.strokeStyle = 'cyan';
 
-	points.forEach((p, i) => {
-		i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-	});
+	points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
 	ctx.stroke();
 
 	// Points stay the same size on your monitor

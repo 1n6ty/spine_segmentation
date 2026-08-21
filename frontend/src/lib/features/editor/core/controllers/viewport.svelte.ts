@@ -16,6 +16,12 @@ export class ViewportController implements PanViewport {
 	isDragging = $state(false);
 	private lastMousePos: Point = { x: 0, y: 0 };
 
+	/** The canvas's clientWidth/clientHeight as of the last `zoomToFit()`/`syncToViewportSize()`
+	 * call -- lets a later resize recover "what the viewport's center pointed at" even though,
+	 * by the time `syncToViewportSize()` runs, `mainCanvas.clientWidth/clientHeight` already
+	 * reflect the NEW size (the browser resizes the element before notifying the observer). */
+	private lastKnownSize: { width: number; height: number } | null = null;
+
 	constructor(private parent: InstanceContainer) {}
 
 	/**
@@ -129,6 +135,50 @@ export class ViewportController implements PanViewport {
 		this.view.offset.y = mainCanvas.clientHeight / 2 - (bitmap.height * this.view.scale) / 2;
 
 		this.clamp();
+		this.lastKnownSize = { width: mainCanvas.clientWidth, height: mainCanvas.clientHeight };
+	}
+
+	/**
+	 * Adapts the current view to a changed canvas size (e.g. a window resize) WITHOUT resetting
+	 * the user's chosen zoom/pan the way `zoomToFit()` does -- `minScale`/`maxScale` (which
+	 * genuinely depend on canvas size) get recomputed, `view.scale` is left untouched unless the
+	 * new bounds would make it invalid (then pulled to the nearest bound, same as `zoom()`
+	 * would), and the offset is re-anchored so whatever world point was at the CENTER of the
+	 * viewport before the resize is still at the center afterward -- otherwise, since offset
+	 * measures from the canvas's left/top edge, added width/height only ever shows up on the
+	 * right/bottom, growing lopsided instead of around the middle.
+	 */
+	syncToViewportSize() {
+		const { projection, mainCanvas } = this.parent;
+		const bitmap =
+			this.parent.session.projections[projection].patient?.study.series.sopInstance.bitmap;
+
+		if (!mainCanvas || !bitmap) return;
+
+		// `mainCanvas.clientWidth/clientHeight` already reflect the NEW size by the time this
+		// runs -- `lastKnownSize` is what the viewport looked like just before the resize.
+		const oldSize = this.lastKnownSize ?? {
+			width: mainCanvas.clientWidth,
+			height: mainCanvas.clientHeight
+		};
+		const centerWorld = screen_to_world(
+			{ x: oldSize.width / 2, y: oldSize.height / 2 },
+			this.view.offset,
+			this.view.scale
+		);
+
+		const scaleX = mainCanvas.clientWidth / bitmap.width;
+		const scaleY = mainCanvas.clientHeight / bitmap.height;
+
+		this.minScale = Math.min(scaleX, scaleY);
+		this.maxScale = this.minScale * 16;
+		this.view.scale = Math.max(this.minScale, Math.min(this.maxScale, this.view.scale));
+
+		this.view.offset.x = mainCanvas.clientWidth / 2 - centerWorld.x * this.view.scale;
+		this.view.offset.y = mainCanvas.clientHeight / 2 - centerWorld.y * this.view.scale;
+
+		this.clamp();
+		this.lastKnownSize = { width: mainCanvas.clientWidth, height: mainCanvas.clientHeight };
 	}
 
 	jumpToMinimap(e: PointerEvent) {
@@ -177,11 +227,19 @@ export class ViewportController implements PanViewport {
 			this.view.offset,
 			this.view.scale,
 			this.parent.session.projections[projection].patient?.study.series.sopInstance.bitmap!,
-			mainCanvas
+			// `clientWidth`/`clientHeight` (live CSS layout size), NOT `mainCanvas` itself --
+			// its own `.width`/`.height` are the backing-store resolution, which only gets
+			// resynced to the current layout size as a side effect of the next `drawBackground()`
+			// call. Right after a resize (before that next draw has run), passing the raw canvas
+			// element here would clamp against the STALE pre-resize size while `zoomToFit()`'s own
+			// offset math (a few lines up the call stack) already used the live size, so the two
+			// would disagree and the image would end up clamped/stuck against the wrong edge.
+			{ width: mainCanvas.clientWidth, height: mainCanvas.clientHeight }
 		);
 	}
 
 	clear() {
 		this.view = { offset: { x: 0, y: 0 }, scale: 1 };
+		this.lastKnownSize = null;
 	}
 }
