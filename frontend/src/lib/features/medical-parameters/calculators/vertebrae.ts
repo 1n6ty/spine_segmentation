@@ -24,65 +24,125 @@ const UP: Point = { x: 0, y: -1 };
 const RIGHT: Point = { x: 1, y: 0 };
 
 export const getVertebraeParams = (projection: Projection, v: Vertebrae, mmPerPixel: number) => {
+	const isMidVertebra = v.id != 'S1' && v.id != 'C2';
+
+	// p1/p2 (endplate size) are identical between projections; p3-p9 diverge -- see
+	// diagnosis.*.json's parameterNames.{side,frontal}.vertebrae for the per-projection
+	// clinical definitions each formula below implements.
+	const shared = {
+		p1: {
+			val: v.id != 'C2' ? M.distance(v.points[1], v.points[2]) * mmPerPixel : null,
+			type: 'linear'
+		},
+		p2: {
+			val: v.id != 'S1' ? M.distance(v.points[0], v.points[3]) * mmPerPixel : null,
+			type: 'linear'
+		}
+	};
+
+	if (projection === 'frontal') {
+		return {
+			name: v.id,
+			params: {
+				...shared,
+				p3: {
+					val: isMidVertebra ? M.distance(v.points[2], v.points[3]) * mmPerPixel : null,
+					type: 'linear'
+				},
+				p4: {
+					val: isMidVertebra ? M.distance(v.points[0], v.points[1]) * mmPerPixel : null,
+					type: 'linear'
+				},
+				p5: {
+					val: isMidVertebra
+						? M.distance(
+								M.get_midpoint(v.points[1], v.points[2]),
+								M.get_midpoint(v.points[0], v.points[3])
+							) * mmPerPixel
+						: null,
+					type: 'linear'
+				},
+				p6: {
+					val: isMidVertebra
+						? M.to_degrees(
+								M.get_signed_angle(
+									M.vector_sub(v.points[2], v.points[3]),
+									M.vector_sub(v.points[1], v.points[0])
+								)
+							)
+						: null,
+					type: 'angular'
+				},
+				p7: {
+					val: isMidVertebra
+						? M.to_degrees(
+								M.get_signed_angle(
+									UP,
+									M.vector_sub(
+										M.get_midpoint(v.points[1], v.points[2]),
+										M.get_midpoint(v.points[0], v.points[3])
+									)
+								)
+							)
+						: null,
+					type: 'angular'
+				},
+				p8: {
+					val:
+						v.id != 'C2'
+							? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[2], v.points[1])))
+							: null,
+					type: 'angular'
+				},
+				p9: {
+					val:
+						v.id != 'S1'
+							? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[3], v.points[0])))
+							: null,
+					type: 'angular'
+				}
+			}
+		};
+	}
+
 	return {
 		name: v.id,
 		params: {
-			p1: { 
-				val: 
-					v.id != 'C2'
-						? M.distance(v.points[1], v.points[2]) * mmPerPixel
-						: null,
+			...shared,
+			p3: {
+				val: isMidVertebra ? M.distance(v.points[0], v.points[1]) * mmPerPixel : null,
 				type: 'linear'
 			},
-			p2: { 
-				val: 
-					v.id != 'S1'
-						? M.distance(v.points[0], v.points[3]) * mmPerPixel
-						: null,
-				type: 'linear'
-			},
-			p3: { 
-				val: 
-					v.id != 'S1' && v.id != 'C2'
-						? M.distance(v.points[0], v.points[1]) * mmPerPixel
-						: null,
-				type: 'linear'
-			},
-			p4: { 
-				val: 
-					v.id != 'S1' && v.id != 'C2'
-						? M.distance(v.points[2], v.points[3]) * mmPerPixel
-						: null,
+			p4: {
+				val: isMidVertebra ? M.distance(v.points[2], v.points[3]) * mmPerPixel : null,
 				type: 'linear'
 			},
 			p5: {
-				val:
-					v.id != 'S1' && v.id != 'C2'
-						? M.to_degrees(
+				val: isMidVertebra
+					? M.to_degrees(
 							M.get_signed_angle(
 								M.vector_sub(v.points[2], v.points[3]),
 								M.vector_sub(v.points[1], v.points[0])
 							)
 						)
-						: null,
+					: null,
 				type: 'angular'
 			},
 			p6: {
-				val: 
-					v.id != 'S1' && v.id != 'C2'
-						? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[1], v.points[0])))
-						: null,
+				val: isMidVertebra
+					? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[1], v.points[0])))
+					: null,
 				type: 'angular'
 			},
 			p7: {
-				val: 
+				val:
 					v.id != 'C2'
 						? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[2], v.points[1])))
 						: null,
 				type: 'angular'
 			},
 			p8: {
-				val: 
+				val:
 					v.id != 'S1'
 						? M.to_degrees(M.get_signed_angle(UP, M.vector_sub(v.points[3], v.points[0])))
 						: null,

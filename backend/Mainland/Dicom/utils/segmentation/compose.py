@@ -84,8 +84,22 @@ def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32]) -> list[Ve
     return vertebraes
 
 
+# The annotated range this app ever names is S1 through C2 -- 24 vertebrae, never more.
+# Capping right here (highest-confidence detections first, not SAHI's arbitrary result
+# order) stops a spuriously-over-detecting image (more than 24 raw instances) from ever
+# reaching the heal/reveal pipeline below with too many inputs.
+#
+# NOT sufficient on its own, though: `reveal()` (heal/reveal.py) statistically estimates
+# *missing* vertebrae from gaps in spacing between the ones it has and can insert more
+# than one per gap -- observed inflating a clean 22-instance detection to 41 final
+# vertebraes on one real fixture, with a raw count already under this cap. If that
+# resurfaces, the fix belongs in `segment_spine_from_S1_to_C2`'s return value (or inside
+# `reveal()` itself), not here -- this cap only bounds the input side.
+MAX_VERTEBRAE = 24
+
 def segment_spine_from_S1_to_C2(pixel_array: np.ndarray, detection_model) -> list[Vertebrae]:
     _logger.debug("Instances extraction...")
-    instances = get_instances(pixel_array, detection_model=detection_model)[:24]
+    instances = get_instances(pixel_array, detection_model=detection_model)
+    instances = sorted(instances, key=lambda vm: vm["confidence"], reverse=True)[:MAX_VERTEBRAE]
 
     return segment_spine_from_S1_to_C2_masks([vm["polygon"].astype(np.int32) for vm in instances])

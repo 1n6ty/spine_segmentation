@@ -32,6 +32,11 @@ _POLYGONS_FIELDS = {
     FRONTAL_PROJECTION_SLUG: 'frontal_polygons',
 }
 
+_SEGMENTS_FIELDS = {
+    SIDE_PROJECTION_SLUG: 'side_segments',
+    FRONTAL_PROJECTION_SLUG: 'frontal_segments',
+}
+
 _SELECT_RELATED = ('study__patient',)
 
 
@@ -150,11 +155,12 @@ class UserRecentStudiesViewSet(StdViewSetMixin):
         return OkResponse().drf_response
 
     @extend_schema(
-        summary="Attach a DICOM image and/or update polygons for one projection slot",
+        summary="Attach a DICOM image and/or update polygons/segments for one projection slot",
         description="slug is 'side' or 'frontal'. sop_instance_uid attaches an "
                     "already-parsed DicomImage (via the existing /api/dcm/parse/ endpoint) "
                     "to this slot; polygons replaces the slot's current (possibly manually "
-                    "edited) Polygon[]. Either or both may be supplied. Bumps last_accessed.",
+                    "edited) Polygon[]; segments replaces the slot's current SegmentDefinition[]. "
+                    "Any subset may be supplied. Bumps last_accessed.",
         request=UserRecentStudies_Projection_PATCH_Schema,
         responses={200: OkResponse, 400: BadRequestResponse, 401: UnauthorizedResponse, 404: UserRecentStudies_NotFound_Response},
     )
@@ -176,6 +182,7 @@ class UserRecentStudiesViewSet(StdViewSetMixin):
         polygons_field = _POLYGONS_FIELDS.get(slug)
         if polygons_field is None:
             return BadRequestResponse.single(field="slug", message=f"Unknown projection slug '{slug}'.").drf_response
+        segments_field = _SEGMENTS_FIELDS[slug]
 
         if patch_data.sop_instance_uid is not None:
             try:
@@ -211,6 +218,9 @@ class UserRecentStudiesViewSet(StdViewSetMixin):
 
         if patch_data.polygons is not None:
             setattr(row, polygons_field, patch_data.polygons)
+
+        if patch_data.segments is not None:
+            setattr(row, segments_field, patch_data.segments)
 
         await row.asave()
         return OkResponse().drf_response

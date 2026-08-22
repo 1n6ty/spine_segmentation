@@ -123,7 +123,7 @@
 		);
 
 	let totalColumns = $derived(
-		1 + linearHead.length + angularHead.length + (isSegments ? 2 : 0)
+		1 + linearHead.length + angularHead.length + (isSegments ? 1 : 0)
 	);
 </script>
 

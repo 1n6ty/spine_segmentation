@@ -361,18 +361,19 @@ case "$ACTION" in
 
     echo "Building real-backend e2e image..."
     # Data/ is ~3GB total -- only copy the specific fixture(s) the live spec
-    # actually reads (Data/spine-segmentation/dicom/side/2.dcm), preserving
-    # its path so e2e/live/autofill-workflow.test.ts's path.join(...) still
-    # resolves, rather than copying the whole directory in. The seed manifest
-    # is mounted at run time below instead of COPY'd in here, so rerunning
-    # against freshly-seeded data never needs an image rebuild.
+    # actually reads (Data/spine-segmentation/dicom/side/0.dcm -- see
+    # e2e/live/helpers.ts's SIDE_FIXTURE for why this one specifically),
+    # preserving its path so path.join(...) there still resolves, rather than
+    # copying the whole directory in. The seed manifest is mounted at run time
+    # below instead of COPY'd in here, so rerunning against freshly-seeded
+    # data never needs an image rebuild.
     docker build -f - -t "$E2E_IMAGE" . <<'DOCKERFILE'
 FROM mcr.microsoft.com/playwright:v1.58.0-noble
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-COPY Data/spine-segmentation/dicom/side/2.dcm /app/Data/spine-segmentation/dicom/side/2.dcm
+COPY Data/spine-segmentation/dicom/side/0.dcm /app/Data/spine-segmentation/dicom/side/0.dcm
 DOCKERFILE
 
     echo "Running real-backend e2e suite..."
