@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { drawMain } from './main-draw';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
-import { computeCentralPath } from '../logic/central-path';
+import { computeCentralPath } from '$lib/shared/anatomy/central-path';
 
 function fake_ctx(clientWidth = 400, clientHeight = 300) {
 	const stroke_styles: string[] = [];

@@ -115,7 +115,11 @@
 		"one": "part",
 		"plural_1": "parts",
 		"plural_2": "parts",
-		"add": "Add segment"
+		"add": "Add segment",
+		"modal_title": "Select vertebra range",
+		"select_range_instructions": "Drag the handles along the spine, or click a starting vertebra and Shift+click an ending vertebra to select a contiguous range.",
+		"create": "Create segment",
+		"not_enough_vertebrae": "Add at least 2 annotated vertebrae on this projection before creating a segment."
 	},
 	"parameters": {
 		"linear": "Linear Parameters",

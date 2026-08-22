@@ -4,7 +4,7 @@ import {
 	computeCentralPath,
 	type CentralLineControlPoint,
 	type CentralPath
-} from '../../logic/central-path';
+} from '$lib/shared/anatomy/central-path';
 import { orderAndName } from '../../logic/orderer';
 import type { InstanceContainer } from '../instance-container.svelte';
 

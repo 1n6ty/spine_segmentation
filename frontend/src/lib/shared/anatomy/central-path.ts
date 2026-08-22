@@ -82,3 +82,16 @@ export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 		}
 	};
 }
+
+/**
+ * A vertebra's own plate midpoint, computed directly from its polygon corners --
+ * independent of `computeCentralPath`'s `controlPoints`, which deliberately drop the
+ * spine's two outermost plate points (see `computeCentralPath`'s doc comment). Callers
+ * needing "the top/bottom of vertebra N specifically" (e.g. a range-selection handle
+ * that must be able to land on the true inferior-most or superior-most vertebra) should
+ * use this rather than searching `controlPoints`, which may not contain that plate at all.
+ */
+export function getPlateMidpoint(polygon: Polygon, plate: Plate): Point {
+	const [i0, i1] = PLATE_CORNER_INDICES[plate];
+	return get_midpoint(polygon.points[i0], polygon.points[i1]);
+}

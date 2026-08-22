@@ -5,7 +5,7 @@
 	import type { Projection } from '$lib/features/dicom/types';
 	import { parametersConfig } from '$lib/features/medical-parameters/config';
 	import { params } from '$lib/features/medical-parameters/parameters-store.svelte';
-	import { remove_segment } from '$lib/features/medical-parameters/segments';
+	import { remove_segment, can_add_segment } from '$lib/features/medical-parameters/segments';
 	import { t } from 'svelte-i18n';
 	import { project } from '$lib/core/project.svelte';
 	import addSVG from '$lib/assets/icons/add.svg';
@@ -48,6 +48,7 @@
 	}
 
 	let isSegments = $derived(params.activeStructure === 'segments');
+	let canAddSegment = $derived(can_add_segment(projection));
 
 	let rows = $derived.by((): Row[] => {
 		$inspect(project.session.projections[projection].polygons);
@@ -122,7 +123,7 @@
 		);
 
 	let totalColumns = $derived(
-		1 + linearHead.length + angularHead.length + 1 + (isSegments ? 2 : 0)
+		1 + linearHead.length + angularHead.length + (isSegments ? 2 : 0)
 	);
 </script>
 
@@ -167,11 +168,6 @@
 							class="h-10 border-r border-(--border) px-2 text-center align-middle font-medium whitespace-nowrap text-(--foreground) [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-0.5"
 							>{$t('parameters.angular')}</th
 						>
-						<th
-							rowspan="2"
-							class="h-10 border-r border-(--border) px-2 text-center align-middle font-medium whitespace-nowrap text-(--foreground) [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-0.5"
-							>{$t('parameters.observation')}</th
-						>
 						{#if isSegments}
 							<th
 								rowspan="2"
@@ -215,7 +211,6 @@
 								>
 							{/each}
 							{#if isSegments}
-								<td class="p-2 text-center align-middle whitespace-nowrap"></td>
 								<td class="p-2 text-center align-middle whitespace-nowrap">
 									<button
 										onclick={() => row.definitionId && remove_segment(projection, row.definitionId)}
@@ -234,10 +229,12 @@
 					{/each}
 					{#if isSegments}
 						<tr class="border-b border-(--border) transition-colors hover:bg-(--muted)/50">
-							<td colspan={totalColumns} class="p-2 align-middle">
+							<td colspan={totalColumns} class="align-middle">
 								<button
 									onclick={() => onAddSegment(projection)}
-									class="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium whitespace-nowrap text-(--muted-foreground) transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50"
+									disabled={!canAddSegment}
+									title={canAddSegment ? undefined : $t('segments.not_enough_vertebrae')}
+									class="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md p-2 text-sm font-medium whitespace-nowrap text-(--muted-foreground) transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<img src={addSVG} alt="Add" class="h-4 w-4" />
 									{$t('segments.add')}

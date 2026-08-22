@@ -1,7 +1,7 @@
 import { centroid } from '$lib/shared/geometry/geometry';
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
 import { drawCircle, drawDiamond } from '$lib/shared/canvas/canvas-utils';
-import type { CentralPath } from '../logic/central-path';
+import type { CentralPath } from '$lib/shared/anatomy/central-path';
 
 function drawBackground(
 	ctx: CanvasRenderingContext2D,
