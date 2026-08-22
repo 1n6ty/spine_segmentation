@@ -1,32 +1,10 @@
 import { distance, centroid, get_signed_angle } from '$lib/shared/geometry/geometry';
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
+import { VERTEBRA_ORDER } from '$lib/shared/anatomy/vertebra-order';
 
-const vertebraeNames = [
-	'S1',
-	'L5',
-	'L4',
-	'L3',
-	'L2',
-	'L1',
-	'Th12',
-	'Th11',
-	'Th10',
-	'Th9',
-	'Th8',
-	'Th7',
-	'Th6',
-	'Th5',
-	'Th4',
-	'Th3',
-	'Th2',
-	'Th1',
-	'C7',
-	'C6',
-	'C5',
-	'C4',
-	'C3',
-	'C2'
-];
+// Bottom-up (S1 first, C2 last) -- the reverse of VERTEBRA_ORDER, since orderIdx here
+// walks from the TSP's starting point (highest-Y, i.e. S1) upward.
+const vertebraeNames = [...VERTEBRA_ORDER].reverse();
 
 /**
  * Solves the sequence using a Greedy Nearest Neighbor approach.

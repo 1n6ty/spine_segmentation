@@ -1,6 +1,7 @@
 import { get, patch_json, post, post_json } from '$lib/core/network/client';
 import { PROJECTION_TO_FILE_ROLE_SLUG } from '$lib/features/dicom/types';
 import type { Patient, Projection, Series, Study } from '$lib/features/dicom/types';
+import { DEFAULT_SEGMENT_DEFINITIONS } from '$lib/features/medical-parameters/diagnosis/regions';
 import { PatientService } from './patient.svelte';
 import { registry } from './registry.svelte';
 import type { SeriesService } from './series.svelte';
@@ -44,8 +45,10 @@ type RecentStudyDetail = {
 		id: number;
 		side_sop_instance_uid: string | null;
 		side_polygons: unknown[];
+		side_segments: unknown[];
 		frontal_sop_instance_uid: string | null;
 		frontal_polygons: unknown[];
+		frontal_segments: unknown[];
 	};
 };
 
@@ -73,13 +76,15 @@ export class SessionService {
 			sopInstanceUid: '',
 			arrayBuffer: null,
 			patient: null,
-			polygons: []
+			polygons: [],
+			segments: DEFAULT_SEGMENT_DEFINITIONS
 		},
 		frontal: {
 			sopInstanceUid: '',
 			arrayBuffer: null,
 			patient: null,
-			polygons: []
+			polygons: [],
+			segments: DEFAULT_SEGMENT_DEFINITIONS
 		}
 	});
 
@@ -100,16 +105,25 @@ export class SessionService {
 				key: Projection;
 				sopInstanceUid: string | null;
 				polygons: SessionProjection['polygons'];
+				segments: SessionProjection['segments'];
 			}[] = [
 				{
 					key: 'side',
 					sopInstanceUid: detail.side_sop_instance_uid,
-					polygons: (detail.side_polygons ?? []) as SessionProjection['polygons']
+					polygons: (detail.side_polygons ?? []) as SessionProjection['polygons'],
+					segments:
+						(detail.side_segments ?? []).length > 0
+							? (detail.side_segments as SessionProjection['segments'])
+							: DEFAULT_SEGMENT_DEFINITIONS
 				},
 				{
 					key: 'frontal',
 					sopInstanceUid: detail.frontal_sop_instance_uid,
-					polygons: (detail.frontal_polygons ?? []) as SessionProjection['polygons']
+					polygons: (detail.frontal_polygons ?? []) as SessionProjection['polygons'],
+					segments:
+						(detail.frontal_segments ?? []).length > 0
+							? (detail.frontal_segments as SessionProjection['segments'])
+							: DEFAULT_SEGMENT_DEFINITIONS
 				}
 			];
 
@@ -132,6 +146,7 @@ export class SessionService {
 						key: slot.key,
 						sopInstanceUid: slot.sopInstanceUid,
 						polygons: slot.polygons,
+						segments: slot.segments,
 						arrayBuffer,
 						patient: new PatientService(this, dataSet)
 					};
@@ -149,6 +164,7 @@ export class SessionService {
 				const target = this.projections[res.key];
 				target.sopInstanceUid = res.sopInstanceUid;
 				target.polygons = res.polygons;
+				target.segments = res.segments;
 				target.arrayBuffer = res.arrayBuffer;
 				target.patient = res.patient;
 			}
@@ -289,9 +305,10 @@ export class SessionService {
 
 				saves.push(
 					patch_json(`/api/dcm/recent-studies/${sessionUID}/projections/${projection}/`, {
-						polygons: $state.snapshot(slot.polygons)
+						polygons: $state.snapshot(slot.polygons),
+						segments: $state.snapshot(slot.segments)
 					}).catch((err) => {
-						console.error(`Failed to save ${projection} polygons:`, err);
+						console.error(`Failed to save ${projection} polygons/segments:`, err);
 					})
 				);
 			});

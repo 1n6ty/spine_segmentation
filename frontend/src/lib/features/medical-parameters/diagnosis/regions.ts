@@ -1,5 +1,6 @@
 import type { Localized } from '$lib/core/i18n/types';
 import { resolve_localized } from '$lib/core/i18n/resolve';
+import type { SegmentDefinition } from '../types';
 
 /**
  * Fixed anatomical regions, matched by vertebra id — not by array position —
@@ -56,3 +57,15 @@ export const REGIONS: RegionDef[] = [
 		vertebraeLabel: 'L1-S1'
 	}
 ];
+
+/**
+ * The measure page's segments tab seeds a brand-new/never-saved session's segment
+ * list with these -- the same 3 ranges as REGIONS, in the id-range shape the
+ * user-manageable segment list uses, so they start out as ordinary (deletable) entries
+ * instead of a hardcoded computed value. See `core/session/session.svelte.ts`.
+ */
+export const DEFAULT_SEGMENT_DEFINITIONS: SegmentDefinition[] = REGIONS.map((region) => ({
+	id: region.id,
+	topId: region.ids.at(-1)!,
+	bottomId: region.ids[0]!
+}));

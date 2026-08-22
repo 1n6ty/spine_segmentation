@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { REGIONS, match_items_by_ids } from './regions';
+import { DEFAULT_SEGMENT_DEFINITIONS, REGIONS, match_items_by_ids } from './regions';
 
 describe('REGIONS', () => {
 	it('defines cervical, thoracic, and lumbar, in that order', () => {
@@ -29,6 +29,19 @@ describe('REGIONS', () => {
 			expect(region.label['en-US']).toBeTruthy();
 			expect(region.label['ru-RU']).toBeTruthy();
 		}
+	});
+});
+
+describe('DEFAULT_SEGMENT_DEFINITIONS', () => {
+	it('has one definition per region, with the expected top/bottom vertebra ids', () => {
+		expect(DEFAULT_SEGMENT_DEFINITIONS).toHaveLength(3);
+		expect(DEFAULT_SEGMENT_DEFINITIONS).toEqual(
+			expect.arrayContaining([
+				{ id: 'cervical', topId: 'C2', bottomId: 'C7' },
+				{ id: 'thoracic', topId: 'Th1', bottomId: 'Th12' },
+				{ id: 'lumbar', topId: 'L1', bottomId: 'S1' }
+			])
+		);
 	});
 });
 

@@ -114,7 +114,8 @@
 		"head": "Part",
 		"one": "part",
 		"plural_1": "parts",
-		"plural_2": "parts"
+		"plural_2": "parts",
+		"add": "Add segment"
 	},
 	"parameters": {
 		"linear": "Linear Parameters",
