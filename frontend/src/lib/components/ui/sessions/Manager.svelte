@@ -5,6 +5,8 @@
 	import leftSVG from '$lib/assets/icons/left.svg';
 	import rightSVG from '$lib/assets/icons/right.svg';
 	import Card from './Card.svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { project } from '$lib/core/project.svelte';
 	import type { SessionValue } from '$lib/core/session/types';
 	import { t } from 'svelte-i18n';
@@ -41,6 +43,12 @@
 		e.preventDefault();
 
 		project.resetSession();
+		// This button is also mounted inside an active research's own layout (the shared
+		// authenticated layout wraps every route) -- without navigating away, the tab bar and
+		// URL stayed pinned to the just-abandoned research while the session underneath had
+		// already gone empty. Mirrors Card.svelte's makeActive()/ProfileBar.svelte's logout:
+		// reset then always navigate.
+		goto(`/${page.params.lang}`);
 	}
 
 	function handleDeleteAll(e: MouseEvent) {
@@ -48,6 +56,7 @@
 
 		project.resetSession();
 		project.registry.clearAll();
+		goto(`/${page.params.lang}`);
 	}
 
 	// Keeps a Tab-focused card in view even though it may sit outside the
