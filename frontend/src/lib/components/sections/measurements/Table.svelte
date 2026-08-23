@@ -3,13 +3,15 @@
 	import type { LocaleKey } from '$lib/core/i18n/types';
 	import { resolve_localized } from '$lib/core/i18n/resolve';
 	import type { Projection } from '$lib/features/dicom/types';
+	import type { Polygon } from '$lib/shared/geometry/geometry.type';
 	import { parametersConfig } from '$lib/features/medical-parameters/config';
-	import { params } from '$lib/features/medical-parameters/parameters-store.svelte';
+	import { params, structures } from '$lib/features/medical-parameters/parameters-store.svelte';
 	import { remove_segment, can_add_segment } from '$lib/features/medical-parameters/segments';
 	import { t } from 'svelte-i18n';
 	import { project } from '$lib/core/project.svelte';
 	import addSVG from '$lib/assets/icons/add.svg';
 	import deleteSVG from '$lib/assets/icons/delete.svg';
+	import RowPreviewCard from '$lib/components/ui/measurements/RowPreviewCard.svelte';
 
 	let {
 		projection = 'side',
@@ -45,10 +47,20 @@
 	interface Row {
 		cells: string[];
 		definitionId?: string;
+		regionPolygons: Polygon[];
 	}
 
 	let isSegments = $derived(params.activeStructure === 'segments');
 	let canAddSegment = $derived(can_add_segment(projection));
+
+	let hoveredRow = $state<{ polygons: Polygon[]; anchorRect: DOMRect } | null>(null);
+
+	function onRowHover(e: MouseEvent, regionPolygons: Polygon[]) {
+		hoveredRow = {
+			polygons: regionPolygons,
+			anchorRect: (e.currentTarget as HTMLElement).getBoundingClientRect()
+		};
+	}
 
 	let rows = $derived.by((): Row[] => {
 		$inspect(project.session.projections[projection].polygons);
@@ -59,6 +71,30 @@
 		const targetData = currentProjection[activeKey] as unknown as ParameterRow[];
 
 		if (!targetData) return [];
+
+		// Raw, index-aligned source for `targetData` -- `structures[projection][activeKey]`
+		// is mapped 1:1 into `params[projection][activeKey]` by `parameters-store.svelte.ts`,
+		// so row `i`'s underlying polygon(s) are always `rawItems[i]`. Shape depends on
+		// `activeKey`: a single `Polygon` for vertebrae, `{top, bottom}` for gaps, or
+		// `{definitionId, polygons}` for segments.
+		const rawItems = (structures[projection] as unknown as Record<ValidKeys, unknown[]>)[
+			activeKey
+		] as (
+			| Polygon
+			| { top: Polygon; bottom: Polygon }
+			| { definitionId: string; polygons: Polygon[] }
+		)[];
+
+		function regionPolygonsFor(raw: (typeof rawItems)[number]): Polygon[] {
+			if (activeKey === 'gaps') {
+				const gap = raw as { top: Polygon; bottom: Polygon };
+				return [gap.top, gap.bottom];
+			}
+			if (activeKey === 'segments') {
+				return (raw as { definitionId: string; polygons: Polygon[] }).polygons;
+			}
+			return [raw as Polygon];
+		}
 
 		// Values must be ordered the same way the headers are grouped below (linear columns
 		// first, then angular), using `head`'s own type declarations as the single source of
@@ -74,7 +110,7 @@
 				.map(([k]) => k)
 		];
 
-		const mapped = targetData.map((e) => {
+		const mapped = targetData.map((e, i) => {
 			const roundedValues = orderedKeys.map((key) => {
 				const pv = (e.params as Record<string, { val: number | string | null; type: string }>)[key];
 				if (!pv || pv.val === null) return '';
@@ -82,7 +118,11 @@
 				return `${valStr} ${$t('units.' + pv.type)}`;
 			});
 
-			return { cells: [e.name, ...roundedValues], definitionId: e.definitionId };
+			return {
+				cells: [e.name, ...roundedValues],
+				definitionId: e.definitionId,
+				regionPolygons: regionPolygonsFor(rawItems[i])
+			};
 		});
 
 		// Segments already come pre-sorted anatomically (superior first) from the store, and
@@ -122,9 +162,7 @@
 			})
 		);
 
-	let totalColumns = $derived(
-		1 + linearHead.length + angularHead.length + (isSegments ? 1 : 0)
-	);
+	let totalColumns = $derived(1 + linearHead.length + angularHead.length + (isSegments ? 1 : 0));
 </script>
 
 <div>
@@ -202,6 +240,8 @@
 					{#each rows as row}
 						<tr
 							class="border-b border-(--border) transition-colors hover:bg-(--muted)/50 data-[state=selected]:bg-(--muted)"
+							onmouseenter={(e) => onRowHover(e, row.regionPolygons)}
+							onmouseleave={() => (hoveredRow = null)}
 						>
 							{#each row.cells as cell, i}
 								<td
@@ -246,4 +286,11 @@
 			</table>
 		</div>
 	</div>
+	{#if hoveredRow}
+		<RowPreviewCard
+			{projection}
+			polygons={hoveredRow.polygons}
+			anchorRect={hoveredRow.anchorRect}
+		/>
+	{/if}
 </div>

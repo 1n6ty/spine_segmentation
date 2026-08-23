@@ -3,7 +3,7 @@ import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
 import { drawCircle, drawDiamond } from '$lib/shared/canvas/canvas-utils';
 import type { CentralPath } from '$lib/shared/anatomy/central-path';
 
-function drawBackground(
+export function drawBackground(
 	ctx: CanvasRenderingContext2D,
 	image: ImageBitmap,
 	offset: Point,
@@ -29,7 +29,7 @@ function drawBackground(
 	ctx.restore();
 }
 
-function drawPolygons(
+export function drawPolygons(
 	ctx: CanvasRenderingContext2D,
 	polygons: Polygon[],
 	isSelected: (poly: Polygon) => boolean,
