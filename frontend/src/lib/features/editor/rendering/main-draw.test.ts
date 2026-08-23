@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { drawMain } from './main-draw';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
 import { computeCentralPath } from '$lib/shared/anatomy/central-path';
+import type { SelectionEntry } from '../core/selection-state.svelte';
 
 function fake_ctx(clientWidth = 400, clientHeight = 300) {
 	const stroke_styles: string[] = [];
+	const fill_styles: string[] = [];
 	const ctx = {
 		canvas: { width: 0, height: 0, clientWidth, clientHeight },
 		save: vi.fn(),
@@ -23,14 +25,14 @@ function fake_ctx(clientWidth = 400, clientHeight = 300) {
 		fill: vi.fn(),
 		arc: vi.fn(),
 		fillText: vi.fn(),
-		fillStyle: '',
 		lineWidth: 1,
 		font: '',
 		textAlign: '',
 		textBaseline: '',
 		imageSmoothingEnabled: false,
 		imageSmoothingQuality: '',
-		_strokeStyles: stroke_styles
+		_strokeStyles: stroke_styles,
+		_fillStyles: fill_styles
 	};
 	Object.defineProperty(ctx, 'strokeStyle', {
 		set(v: string) {
@@ -40,7 +42,18 @@ function fake_ctx(clientWidth = 400, clientHeight = 300) {
 			return stroke_styles[stroke_styles.length - 1];
 		}
 	});
-	return ctx as unknown as CanvasRenderingContext2D & { _strokeStyles: string[] };
+	Object.defineProperty(ctx, 'fillStyle', {
+		set(v: string) {
+			fill_styles.push(v);
+		},
+		get() {
+			return fill_styles[fill_styles.length - 1];
+		}
+	});
+	return ctx as unknown as CanvasRenderingContext2D & {
+		_strokeStyles: string[];
+		_fillStyles: string[];
+	};
 }
 
 function square(id: string, cx: number, cy: number): Polygon {
@@ -59,7 +72,7 @@ function square(id: string, cx: number, cy: number): Polygon {
 
 const bitmap = {} as ImageBitmap;
 
-const noneSelected = () => false;
+const noneSelected: SelectionEntry[] = [];
 
 describe('drawMain', () => {
 	it('resizes the canvas backing store to its display size and clears it', () => {
@@ -95,13 +108,116 @@ describe('drawMain', () => {
 		const selected = square('C2', 0, 0);
 		const other = square('C3', 100, 0);
 
-		drawMain(ctx, bitmap, [other, selected], (poly) => poly.uuid === selected.uuid, [], {
+		drawMain(
+			ctx,
+			bitmap,
+			[other, selected],
+			[{ kind: 'vertebra', polygonUuid: selected.uuid }],
+			[],
+			{
+				offset: { x: 0, y: 0 },
+				scale: 1
+			}
+		);
+
+		expect(ctx._strokeStyles).toContain('red');
+		expect(ctx._strokeStyles).toContain('lime');
+	});
+
+	it('a side-only selection strokes the outline lime (not red) but still strokes a red edge segment', () => {
+		const ctx = fake_ctx();
+		const poly = square('C2', 0, 0);
+
+		drawMain(ctx, bitmap, [poly], [{ kind: 'side', polygonUuid: poly.uuid, side: 'left' }], [], {
+			offset: { x: 0, y: 0 },
+			scale: 1
+		});
+
+		// The outline path (closePath'd) is lime; a separate open (never closePath'd) red
+		// segment is drawn for just the selected side.
+		expect(ctx._strokeStyles).toContain('lime');
+		expect(ctx._strokeStyles).toContain('red');
+		expect(ctx.moveTo).toHaveBeenCalledWith(poly.points[0].x, poly.points[0].y);
+		expect(ctx.lineTo).toHaveBeenCalledWith(poly.points[1].x, poly.points[1].y);
+	});
+
+	it('two independently point-selected corners of the same edge (e.g. two separate Ctrl+clicks) light up the edge between them, same as an explicit side selection', () => {
+		const ctx = fake_ctx();
+		const poly = square('C2', 0, 0);
+
+		drawMain(
+			ctx,
+			bitmap,
+			[poly],
+			[
+				{ kind: 'point', polygonUuid: poly.uuid, pointIndex: 0 },
+				{ kind: 'point', polygonUuid: poly.uuid, pointIndex: 1 }
+			],
+			[],
+			{ offset: { x: 0, y: 0 }, scale: 1 }
+		);
+
+		expect(ctx._strokeStyles).toContain('lime'); // outline stays lime, not a full vertebra select
+		expect(ctx.moveTo).toHaveBeenCalledWith(poly.points[0].x, poly.points[0].y);
+		expect(ctx.lineTo).toHaveBeenCalledWith(poly.points[1].x, poly.points[1].y);
+		expect(ctx._fillStyles.filter((c) => c === 'red')).toHaveLength(2); // both vertices red
+	});
+
+	it('two points on DIFFERENT edges do not draw any connecting edge segment', () => {
+		const ctx = fake_ctx();
+		const poly = square('C2', 0, 0);
+
+		drawMain(
+			ctx,
+			bitmap,
+			[poly],
+			[
+				{ kind: 'point', polygonUuid: poly.uuid, pointIndex: 0 }, // bottom-left
+				{ kind: 'point', polygonUuid: poly.uuid, pointIndex: 2 } // top-right, diagonal
+			],
+			[],
+			{ offset: { x: 0, y: 0 }, scale: 1 }
+		);
+
+		// The outline stays lime (no `vertebra` entry), and no red edge segment is drawn --
+		// drawCircle's own per-vertex strokeStyle='black' calls land in the same array but never
+		// 'red', since no single edge has both of its endpoints selected here.
+		expect(ctx._strokeStyles[0]).toBe('lime');
+		expect(ctx._strokeStyles).not.toContain('red');
+		expect(ctx._fillStyles.filter((c) => c === 'red')).toHaveLength(2); // both points still red
+	});
+
+	it('a top-side selection strokes just the top edge (between top-left and top-right) red', () => {
+		const ctx = fake_ctx();
+		const poly = square('C2', 0, 0);
+
+		drawMain(ctx, bitmap, [poly], [{ kind: 'side', polygonUuid: poly.uuid, side: 'top' }], [], {
 			offset: { x: 0, y: 0 },
 			scale: 1
 		});
 
 		expect(ctx._strokeStyles).toContain('red');
-		expect(ctx._strokeStyles).toContain('lime');
+		expect(ctx.moveTo).toHaveBeenCalledWith(poly.points[1].x, poly.points[1].y);
+		expect(ctx.lineTo).toHaveBeenCalledWith(poly.points[2].x, poly.points[2].y);
+	});
+
+	it('a point-only selection keeps the outline lime, draws no extra edge segment, and colors exactly that one vertex red', () => {
+		const ctx = fake_ctx();
+		const poly = square('C2', 0, 0);
+
+		drawMain(ctx, bitmap, [poly], [{ kind: 'point', polygonUuid: poly.uuid, pointIndex: 0 }], [], {
+			offset: { x: 0, y: 0 },
+			scale: 1
+		});
+
+		// The outline stroke is lime, and no red side-edge stroke was pushed (drawCircle's own
+		// per-vertex strokeStyle='black' calls land in the same array but never 'red', since
+		// neither `leftSide` nor `rightSide` is set by a lone point entry).
+		expect(ctx._strokeStyles[0]).toBe('lime');
+		expect(ctx._strokeStyles).not.toContain('red');
+		// Exactly one vertex (of 4) is fill-colored red; the rest are lime.
+		expect(ctx._fillStyles.filter((c) => c === 'red')).toHaveLength(1);
+		expect(ctx._fillStyles.filter((c) => c === 'lime')).toHaveLength(3);
 	});
 
 	it('draws in-progress draft points as an open cyan polyline when present', () => {

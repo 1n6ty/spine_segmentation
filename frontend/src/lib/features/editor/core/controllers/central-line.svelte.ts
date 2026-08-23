@@ -67,7 +67,14 @@ export class CentralLineController {
 		this.draggingPolygon = hit.polygon;
 		this.draggingCornerIndices = hit.controlPoint.cornerIndices;
 
-		this.parent.tools.selection.selectOnly(hit.polygon.uuid);
+		// Only the plate being dragged (its 2 corners), not the whole vertebra -- `plate` is
+		// already 'top' | 'bottom', a subset of `Side`, and its corner indices are the same pair
+		// `TOP_SIDE_INDICES`/`BOTTOM_SIDE_INDICES` (`orderer.ts`) already use for that side.
+		this.parent.tools.selection.selectOnly({
+			kind: 'side',
+			polygonUuid: hit.polygon.uuid,
+			side: hit.controlPoint.plate
+		});
 		this.parent.tools.history.push();
 
 		if (e.target instanceof Element) {

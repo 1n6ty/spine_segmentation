@@ -18,8 +18,7 @@ function fake_ctx(viewport: Partial<PanViewport> = {}): ToolContext<Item> {
 			...viewport
 		},
 		worldPointFromEvent: vi.fn(),
-		hitTest: vi.fn(),
-		boundsOf: vi.fn(),
+		hitTestEntity: vi.fn(),
 		createEntity: vi.fn(),
 		setEntityPoint: vi.fn(),
 		reorder: vi.fn(),

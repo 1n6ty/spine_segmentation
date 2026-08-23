@@ -2,6 +2,17 @@ import { distance, centroid, get_signed_angle } from '$lib/shared/geometry/geome
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
 import { VERTEBRA_ORDER } from '$lib/shared/anatomy/vertebra-order';
 
+/** Which two indices into a vertebra's `points` form each of its four selectable edges, per the
+ * [bottom-left, top-left, top-right, bottom-right] convention this file enforces
+ * (`getOrderedReferencePoints` below). Used by the editor's side/point selection granularity --
+ * see `selection-state.svelte.ts`. Top/bottom match `PLATE_CORNER_INDICES` in
+ * `central-path.ts` (top=[1,2], bottom=[0,3]) -- same corners, different name for the same
+ * concept in the two domains (anatomical endplate vs. generic selectable edge). */
+export const LEFT_SIDE_INDICES: readonly [number, number] = [0, 1];
+export const RIGHT_SIDE_INDICES: readonly [number, number] = [2, 3];
+export const TOP_SIDE_INDICES: readonly [number, number] = [1, 2];
+export const BOTTOM_SIDE_INDICES: readonly [number, number] = [0, 3];
+
 // Bottom-up (S1 first, C2 last) -- the reverse of VERTEBRA_ORDER, since orderIdx here
 // walks from the TSP's starting point (highest-Y, i.e. S1) upward.
 const vertebraeNames = [...VERTEBRA_ORDER].reverse();

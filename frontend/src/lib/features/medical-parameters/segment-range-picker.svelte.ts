@@ -1,5 +1,5 @@
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
-import { distance, is_point_in_polygon } from '$lib/shared/geometry/geometry';
+import { centroid, distance } from '$lib/shared/geometry/geometry';
 import {
 	computeCentralPath,
 	getPlateMidpoint,
@@ -39,12 +39,22 @@ export function nearestVertebraByPlate(
 	return bestIdx;
 }
 
-/** Point-in-polygon hit test for Shift+Click -- the schematic body IS the real polygon (per
- * the confirmed rendering decision), so a click "inside the shape" is the natural target.
- * First match wins (spine-ordered vertebrae shouldn't overlap). */
-export function hitTestVertebraBody(polygons: Polygon[], worldPoint: Point): number | null {
-	const idx = polygons.findIndex((p) => is_point_in_polygon(worldPoint, p.points));
-	return idx === -1 ? null : idx;
+/** Nearest vertebra to `worldPoint`, judged by distance to its centroid -- unbounded (always
+ * returns an index), same "go near it, no precise aim required" philosophy as
+ * `nearestVertebraByPlate` above, now applied to click-to-select and body-drag too so the whole
+ * modal has one consistent, forgiving targeting model instead of requiring the cursor to land
+ * exactly inside a (possibly small, at low zoom) vertebra shape. `polygons` must be non-empty. */
+export function nearestVertebraIndex(polygons: Polygon[], worldPoint: Point): number {
+	let bestIdx = 0;
+	let bestDist = Infinity;
+	polygons.forEach((poly, i) => {
+		const d = distance(centroid(poly.points), worldPoint);
+		if (d < bestDist) {
+			bestDist = d;
+			bestIdx = i;
+		}
+	});
+	return bestIdx;
 }
 
 /**
@@ -59,6 +69,7 @@ export class SegmentRangePicker {
 	inferiorIndex = $state<number | null>(null);
 	private anchorIndex = $state<number | null>(null);
 	private draggingHandle = $state<RangeHandle | null>(null);
+	private draggingBody = $state(false);
 
 	readonly centralPath: CentralPath | null = $derived.by(() =>
 		computeCentralPath(this.getPolygons())
@@ -83,6 +94,10 @@ export class SegmentRangePicker {
 
 	get isDragging(): boolean {
 		return this.draggingHandle !== null;
+	}
+
+	get isDraggingBody(): boolean {
+		return this.draggingBody;
 	}
 
 	get hasSelection(): boolean {
@@ -120,8 +135,11 @@ export class SegmentRangePicker {
 		return best;
 	}
 
-	hitTestVertebraBody(worldPoint: Point): number | null {
-		return hitTestVertebraBody(this.getPolygons(), worldPoint);
+	/** `getPolygons()` must be non-empty when called -- guarded at the Svelte layer's call sites
+	 * with a `polygons.length > 0` check, same as this modal is only ever shown for an
+	 * already-annotated projection. */
+	nearestVertebraIndex(worldPoint: Point): number {
+		return nearestVertebraIndex(this.getPolygons(), worldPoint);
 	}
 
 	beginDragHandle(e: PointerEvent, handle: RangeHandle): void {
@@ -155,6 +173,16 @@ export class SegmentRangePicker {
 		}
 	}
 
+	/** Shared by Shift+click and body-drag: expands the range to
+	 * [min(anchor, index), max(anchor, index)], anchor unchanged. No-op if there's no anchor
+	 * yet (shouldn't happen in practice -- both callers only reach this after an anchor has
+	 * already been set). */
+	private expandRangeFromAnchor(index: number): void {
+		if (this.anchorIndex === null) return;
+		this.inferiorIndex = Math.min(this.anchorIndex, index);
+		this.superiorIndex = Math.max(this.anchorIndex, index);
+	}
+
 	/** Plain click: sets a single-vertebra selection and a new anchor. Shift+click (with an
 	 * existing anchor): expands to [min(anchor, index), max(anchor, index)] regardless of click
 	 * order, per spec -- the anchor itself is left unchanged so repeated Shift+clicks keep
@@ -166,7 +194,35 @@ export class SegmentRangePicker {
 			this.inferiorIndex = index;
 			return;
 		}
-		this.inferiorIndex = Math.min(this.anchorIndex, index);
-		this.superiorIndex = Math.max(this.anchorIndex, index);
+		this.expandRangeFromAnchor(index);
+	}
+
+	/** Mousedown directly on a vertebra body: same immediate effect as a plain click
+	 * (single-vertebra selection, new anchor), but arms live range-dragging -- see
+	 * `updateDragBody`. Distinct from `beginDragHandle`: there's nothing to snap to yet, the
+	 * anchor itself IS the starting vertebra. */
+	beginDragBody(e: PointerEvent, index: number): void {
+		this.draggingBody = true;
+		this.anchorIndex = index;
+		this.superiorIndex = index;
+		this.inferiorIndex = index;
+		if (e.target instanceof Element) {
+			e.target.setPointerCapture(e.pointerId);
+		}
+	}
+
+	/** Live-extends the range to whichever vertebra is nearest the pointer, reusing Shift+click's
+	 * expand-from-anchor logic. Unbounded like the handle drag -- always tracks somewhere, so
+	 * dragging loosely near the vertebra column (not precisely over each body) still works. */
+	updateDragBody(worldPoint: Point): void {
+		if (!this.draggingBody) return;
+		this.expandRangeFromAnchor(this.nearestVertebraIndex(worldPoint));
+	}
+
+	endDragBody(e: PointerEvent): void {
+		this.draggingBody = false;
+		if (e.target instanceof Element) {
+			e.target.releasePointerCapture(e.pointerId);
+		}
 	}
 }

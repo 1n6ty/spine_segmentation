@@ -49,6 +49,34 @@
 		project.resetSession();
 		project.registry.clearAll();
 	}
+
+	// Keeps a Tab-focused card in view even though it may sit outside the
+	// currently-slid-to window -- without this, tabbing past the last visible
+	// card leaves focus on an offscreen element with no visual indication.
+	function handleFocusIn(e: FocusEvent) {
+		const cardEl = (e.target as HTMLElement).closest('[data-card-index]');
+		if (!cardEl) return;
+
+		const i = Number(cardEl.getAttribute('data-card-index'));
+		if (Number.isNaN(i)) return;
+
+		const maxIndex = Math.max(0, sessions.length - visibleCount);
+		if (i < currentIndex) {
+			currentIndex = Math.min(i, maxIndex);
+		} else if (i > currentIndex + visibleCount - 1) {
+			currentIndex = Math.min(i - visibleCount + 1, maxIndex);
+		}
+	}
+
+	function handleTrackKeydown(e: KeyboardEvent) {
+		if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			prev();
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			next();
+		}
+	}
 </script>
 
 <div
@@ -95,7 +123,12 @@
 		</div>
 	</div>
 	{#if sessions.length > 0}
-		<div class="relative px-2">
+		<div
+			class="relative px-2"
+			role="region"
+			aria-roledescription="carousel"
+			aria-label={$t('research.head')}
+		>
 			<div class="flex items-center gap-2">
 				<button
 					onclick={prev}
@@ -105,22 +138,30 @@
 					<img src={leftSVG} alt="back" class="size-4" />
 				</button>
 
+				<!--
+					The keydown/focusin handlers here only react to focus/key events bubbling up
+					from the focusable Card children below (arrow-key paging, and scrolling a
+					Tab-focused card into view) -- this element itself is never a keyboard target.
+				-->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<div
-					class="relative flex h-34 flex-1 items-center overflow-hidden"
+					class="relative flex h-34 flex-1 items-center overflow-hidden p-2"
+					role="group"
 					bind:clientWidth={containerWidth}
+					onfocusin={handleFocusIn}
+					onkeydown={handleTrackKeydown}
 				>
 					<div
 						class="flex flex-row gap-4 transition-transform duration-500 ease-out"
 						style="transform: translateX({translateX}px);"
+						aria-live="polite"
 					>
 						{#each sessions as sessionValue, i}
-							<div style="width: {cardWidth}px;" class="h-full shrink-0">
-								{#if i >= currentIndex - 1 && i <= currentIndex + visibleCount + 1}
-									<Card
-										active={project.session?.sessionUID === sessionValue.sessionUID}
-										sessionUID={sessionValue.sessionUID}
-									/>
-								{/if}
+							<div style="width: {cardWidth}px;" class="h-full shrink-0" data-card-index={i}>
+								<Card
+									active={project.session?.sessionUID === sessionValue.sessionUID}
+									sessionUID={sessionValue.sessionUID}
+								/>
 							</div>
 						{/each}
 					</div>

@@ -53,31 +53,52 @@
 
 	// The browser fires a synthetic `click` right after `pointerup` on the same element
 	// (pointer capture keeps the target the canvas throughout the drag) -- by then
-	// `picker.isDragging` has already gone back to false (`endDragHandle` cleared it in
-	// `onpointerup`, which always runs first), so `onclick` couldn't tell a genuine click
-	// apart from the tail end of a handle drag and treated it as a fresh single-vertebra
-	// selection, snapping BOTH handles onto whatever vertebra was under the cursor at
-	// release. Tracked separately so `onclick` can suppress exactly that one synthetic event.
+	// `picker.isDragging`/`isDraggingBody` have already gone back to false (`endDragHandle`/
+	// `endDragBody` cleared them in `onpointerup`, which always runs first), so `onclick`
+	// couldn't tell a genuine click apart from the tail end of a drag. Tracked separately so
+	// `onclick` can suppress exactly that one synthetic event.
 	let justFinishedDrag = false;
 
 	function onpointerdown(e: PointerEvent) {
 		const handle = picker.hitTestHandle(world_point(e), view.scale);
-		if (handle) picker.beginDragHandle(e, handle);
+		if (handle) {
+			picker.beginDragHandle(e, handle);
+			return;
+		}
+
+		// Shift+click keeps its own extend-from-anchor meaning (`onclick` below) -- arming a
+		// body-drag here would reset the anchor to this vertebra before that logic ever runs.
+		if (e.shiftKey) return;
+
+		if (picker.polygons.length === 0) return;
+		picker.beginDragBody(e, picker.nearestVertebraIndex(world_point(e)));
 	}
 	function onpointermove(e: PointerEvent) {
-		if (picker.isDragging) picker.updateDragHandle(world_point(e));
+		if (picker.isDragging) {
+			picker.updateDragHandle(world_point(e));
+		} else if (picker.isDraggingBody) {
+			picker.updateDragBody(world_point(e));
+		}
 	}
 	function onpointerup(e: PointerEvent) {
-		if (picker.isDragging) justFinishedDrag = true;
-		picker.endDragHandle(e);
+		if (picker.isDragging) {
+			justFinishedDrag = true;
+			picker.endDragHandle(e);
+		} else if (picker.isDraggingBody) {
+			justFinishedDrag = true;
+			picker.endDragBody(e);
+		}
 	}
 	function onclick(e: MouseEvent) {
 		if (justFinishedDrag) {
 			justFinishedDrag = false;
 			return;
 		}
-		const idx = picker.hitTestVertebraBody(world_point(e));
-		if (idx !== null) picker.selectVertebra(idx, e.shiftKey);
+		// Reached only for clicks that never armed a body-drag on pointerdown: Shift+click
+		// (skipped above on purpose). A plain, non-Shift click already resolved via
+		// `beginDragBody`/`endDragBody` and is suppressed above.
+		if (picker.polygons.length === 0) return;
+		picker.selectVertebra(picker.nearestVertebraIndex(world_point(e)), e.shiftKey);
 	}
 </script>
 

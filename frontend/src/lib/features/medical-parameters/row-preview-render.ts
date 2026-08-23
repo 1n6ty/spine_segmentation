@@ -53,7 +53,13 @@ export function drawRegionPreview(
 	ctx.save();
 	ctx.translate(view.offset.x, view.offset.y);
 	ctx.scale(view.scale, view.scale);
-	drawPolygons(ctx, highlightPolygons, () => true, 6, view.scale);
+	drawPolygons(
+		ctx,
+		highlightPolygons,
+		highlightPolygons.map((p) => ({ kind: 'vertebra' as const, polygonUuid: p.uuid })),
+		6,
+		view.scale
+	);
 	ctx.restore();
 }
 

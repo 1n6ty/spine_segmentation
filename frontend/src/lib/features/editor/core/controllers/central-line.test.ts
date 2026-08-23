@@ -107,17 +107,20 @@ describe('CentralLineController.hitTest', () => {
 });
 
 describe('CentralLineController drag lifecycle (Mode 1)', () => {
-	it('beginDrag selects the polygon and pushes history', () => {
+	it('beginDrag selects only the dragged plate (its 2 corners), not the whole vertebra, and pushes history', () => {
 		const [s1, l5] = two_vertebrae();
 		session.projections.side.polygons = [s1, l5];
-		const hit = container.centralLine.hitTest({ x: 100, y: 130 })!;
+		const hit = container.centralLine.hitTest({ x: 100, y: 130 })!; // S1's top plate
 		const history_push = vi.spyOn(container.tools.history, 'push');
 		const target = new FakeElement();
 
 		container.centralLine.beginDrag(fake_pointer_event({ target: target as any }), hit);
 
 		expect(container.centralLine.isDragging).toBe(true);
-		expect(container.tools.selection.has(s1.uuid)).toBe(true);
+		expect(container.tools.selection.has({ kind: 'side', polygonUuid: s1.uuid, side: 'top' })).toBe(
+			true
+		);
+		expect(container.tools.selection.has({ kind: 'vertebra', polygonUuid: s1.uuid })).toBe(false);
 		expect(history_push).toHaveBeenCalledTimes(1);
 		expect(target.setPointerCapture).toHaveBeenCalled();
 	});
