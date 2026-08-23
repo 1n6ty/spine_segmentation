@@ -10,6 +10,9 @@ from Dicom.utils.segmentation.heal.reveal import reveal
 
 _logger = getLogger('segmentation.compose')
 
+# The annotated range this app ever names is S1 through C2 -- 24 vertebrae, never more.
+MAX_VERTEBRAE = 24
+
 def _TSP_solve(central_points: np.ndarray[np.float32], prefix: np.ndarray[np.int32]) -> np.ndarray[np.int32]:
     """Solves TSP problem in gready way.
 
@@ -61,7 +64,7 @@ def _order_vertebraes_reference_points(vertebraes: list[Vertebrae]) -> list[Vert
 
     return new_vertebraes
 
-def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32]) -> list[Vertebrae]:
+def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32], max_vertebraes: int | None = MAX_VERTEBRAE) -> list[Vertebrae]:
     _logger.debug("Starting vertebraes building...")
     vertebraes: list[Vertebrae] = [Vertebrae(mask_xy=vm) for vm in polygons]
     _logger.debug(f"Built {len(vertebraes)} vertebraes.")
@@ -76,26 +79,13 @@ def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32]) -> list[Ve
     vpath = compute_spine_central_path(vertebraes)
     vertebraes = set_central_path_to_vertebraes(vertebraes, vpath)
 
-    vertebraes = reveal(vertebraes, vpath)
+    vertebraes = reveal(vertebraes, vpath, max_total=max_vertebraes)
     vertebraes = unstick(vertebraes)
 
     vertebraes = set_vertebraes_names(vertebraes)
 
     return vertebraes
 
-
-# The annotated range this app ever names is S1 through C2 -- 24 vertebrae, never more.
-# Capping right here (highest-confidence detections first, not SAHI's arbitrary result
-# order) stops a spuriously-over-detecting image (more than 24 raw instances) from ever
-# reaching the heal/reveal pipeline below with too many inputs.
-#
-# NOT sufficient on its own, though: `reveal()` (heal/reveal.py) statistically estimates
-# *missing* vertebrae from gaps in spacing between the ones it has and can insert more
-# than one per gap -- observed inflating a clean 22-instance detection to 41 final
-# vertebraes on one real fixture, with a raw count already under this cap. If that
-# resurfaces, the fix belongs in `segment_spine_from_S1_to_C2`'s return value (or inside
-# `reveal()` itself), not here -- this cap only bounds the input side.
-MAX_VERTEBRAE = 24
 
 def segment_spine_from_S1_to_C2(pixel_array: np.ndarray, detection_model) -> list[Vertebrae]:
     _logger.debug("Instances extraction...")
