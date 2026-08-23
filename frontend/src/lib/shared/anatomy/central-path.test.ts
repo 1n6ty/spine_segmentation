@@ -20,32 +20,42 @@ describe('computeCentralPath', () => {
 		expect(computeCentralPath([])).toBeNull();
 	});
 
-	it('returns null for a single vertebra (its 2 midpoints are both spine-outermost, so both are dropped)', () => {
-		expect(computeCentralPath([square('S1', 0, 0)])).toBeNull();
-	});
-
-	it('drops the spine-outermost bottom and top points, keeping only the interior pair, for 2 vertebrae', () => {
-		const polygons = [square('S1', 0, 40), square('L5', 0, 0)];
-		const path = computeCentralPath(polygons)!;
+	it('includes both midpoints of a single vertebra (its own bottom and top plate)', () => {
+		const path = computeCentralPath([square('S1', 0, 0)])!;
 
 		expect(path.controlPoints).toHaveLength(2);
 		expect(path.controlPoints.map((cp) => [cp.vertebraIndex, cp.plate])).toEqual([
-			[0, 'top'],
-			[1, 'bottom']
+			[0, 'bottom'],
+			[0, 'top']
 		]);
 	});
 
-	it('emits interior bottom/top control points per vertebra, in vertebra order, for 3+ vertebrae', () => {
+	it('includes every vertebra bottom/top point, including the spine outermost pair, for 2 vertebrae', () => {
+		const polygons = [square('S1', 0, 40), square('L5', 0, 0)];
+		const path = computeCentralPath(polygons)!;
+
+		expect(path.controlPoints).toHaveLength(4);
+		expect(path.controlPoints.map((cp) => [cp.vertebraIndex, cp.plate])).toEqual([
+			[0, 'bottom'],
+			[0, 'top'],
+			[1, 'bottom'],
+			[1, 'top']
+		]);
+	});
+
+	it('emits bottom/top control points per vertebra, in vertebra order, for 3+ vertebrae', () => {
 		const polygons = [square('S1', 0, 80), square('L5', 0, 40), square('L4', 0, 0)];
 		const path = computeCentralPath(polygons)!;
 
-		// 3 vertebrae -> 6 raw midpoints -> drop first (S1 bottom) and last (L4 top) -> 4 left.
-		expect(path.controlPoints).toHaveLength(4);
+		// 3 vertebrae -> 6 raw midpoints, none dropped.
+		expect(path.controlPoints).toHaveLength(6);
 		expect(path.controlPoints.map((cp) => [cp.vertebraIndex, cp.plate])).toEqual([
+			[0, 'bottom'],
 			[0, 'top'],
 			[1, 'bottom'],
 			[1, 'top'],
-			[2, 'bottom']
+			[2, 'bottom'],
+			[2, 'top']
 		]);
 	});
 
@@ -53,11 +63,11 @@ describe('computeCentralPath', () => {
 		const polygons = [square('S1', 0, 40), square('L5', 0, 0)];
 		const path = computeCentralPath(polygons)!;
 
-		const [s1Top, l5Bottom] = path.controlPoints;
+		const [s1Bottom, s1Top] = path.controlPoints;
+		expect(s1Bottom.point).toEqual({ x: 0, y: 50 }); // midpoint of points[0], points[3]
+		expect(s1Bottom.cornerIndices).toEqual([0, 3]);
 		expect(s1Top.point).toEqual({ x: 0, y: 30 }); // midpoint of points[1], points[2]
 		expect(s1Top.cornerIndices).toEqual([1, 2]);
-		expect(l5Bottom.point).toEqual({ x: 0, y: 10 }); // midpoint of points[0], points[3]
-		expect(l5Bottom.cornerIndices).toEqual([0, 3]);
 	});
 
 	it('samples points along every segment plus the final endpoint', () => {
@@ -65,8 +75,8 @@ describe('computeCentralPath', () => {
 		const path = computeCentralPath(polygons)!;
 
 		const samples = path.samplePoints(4);
-		// 4 control points -> 3 segments * 4 samples + 1 final point
-		expect(samples).toHaveLength(3 * 4 + 1);
+		// 6 control points -> 5 segments * 4 samples + 1 final point
+		expect(samples).toHaveLength(5 * 4 + 1);
 	});
 
 	it('skips a malformed polygon (not exactly 4 points) rather than throwing', () => {
@@ -74,6 +84,6 @@ describe('computeCentralPath', () => {
 		const polygons = [square('S1', 0, 80), malformed, square('L5', 0, 40), square('L4', 0, 0)];
 		const path = computeCentralPath(polygons)!;
 
-		expect(path.controlPoints.map((cp) => cp.vertebraIndex)).toEqual([0, 2, 2, 3]);
+		expect(path.controlPoints.map((cp) => cp.vertebraIndex)).toEqual([0, 0, 2, 2, 3, 3]);
 	});
 });

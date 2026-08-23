@@ -149,13 +149,13 @@ describe('drawSegmentRangePicker', () => {
 		expect(ctx._strokeStyles).toContain('#64748b');
 	});
 
-	it('skips the central-line stroke when there are fewer than 2 vertebrae', () => {
+	it('still strokes the central line for a single vertebra (its own bottom/top form a trivial line)', () => {
 		const ctx = fake_ctx();
 		const picker = new SegmentRangePicker(() => [square('S1', 100, 100)]);
 
 		drawSegmentRangePicker(ctx, picker, view);
 
-		expect(ctx._strokeStyles).not.toContain('#64748b');
+		expect(ctx._strokeStyles).toContain('#64748b');
 	});
 
 	it('labels each vertebra with its id, same as the editor', () => {

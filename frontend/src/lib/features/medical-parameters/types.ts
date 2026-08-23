@@ -20,4 +20,9 @@ export type SegmentDefinition = {
 	id: string;
 	topId: string;
 	bottomId: string;
+	/** True for a segment auto-detected by the arc-segmentation pipeline (see
+	 * `shared/anatomy/central-arc-segments.ts`); absent/false for a user-managed one. Generated
+	 * entries are recomputed and re-persisted whenever the underlying polygons change (see
+	 * `generated-segments.ts`), but remain ordinary, deletable segments otherwise. */
+	generated?: boolean;
 };

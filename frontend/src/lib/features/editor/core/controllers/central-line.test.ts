@@ -45,10 +45,9 @@ function square(id: string, cx: number, cy: number, h = 10): Polygon {
 	};
 }
 
-// S1's bottom-plate midpoint (100, 150) and L5's top-plate midpoint (100, 90) are the spine's
-// outermost points -- dropped from the structure entirely by `computeCentralPath`. Only the
-// interior pair -- S1's top-plate midpoint (100, 130) and L5's bottom-plate midpoint (100, 110)
-// -- are part of the curve and hittable/draggable.
+// Control points, in order: S1 bottom (100, 150), S1 top (100, 130), L5 bottom (100, 110),
+// L5 top (100, 90) -- every plate midpoint is part of the curve and hittable/draggable,
+// including the spine's outermost points (S1's true bottom, L5's true top here).
 function two_vertebrae(): [Polygon, Polygon] {
 	return [square('S1', 100, 140), square('L5', 100, 100)];
 }
@@ -69,14 +68,14 @@ describe('CentralLineController.centralPath', () => {
 		expect(container.centralLine.centralPath).toBeNull();
 	});
 
-	it('is null with a single vertebra (both its midpoints are spine-outermost)', () => {
+	it('has both midpoints of a single vertebra (its own bottom and top plate)', () => {
 		session.projections.side.polygons = [square('S1', 100, 100)];
-		expect(container.centralLine.centralPath).toBeNull();
+		expect(container.centralLine.centralPath?.controlPoints).toHaveLength(2);
 	});
 
-	it('is derived from the current polygons, excluding the spine-outermost points', () => {
+	it('is derived from the current polygons, including every plate midpoint', () => {
 		session.projections.side.polygons = two_vertebrae();
-		expect(container.centralLine.centralPath?.controlPoints).toHaveLength(2);
+		expect(container.centralLine.centralPath?.controlPoints).toHaveLength(4);
 	});
 });
 
@@ -86,7 +85,7 @@ describe('CentralLineController.hitTest', () => {
 		expect(container.centralLine.hitTest({ x: 1000, y: 1000 })).toBeNull();
 	});
 
-	it('hits the nearest interior control point (S1 top-plate midpoint) within radius', () => {
+	it('hits the nearest control point (S1 top-plate midpoint) within radius', () => {
 		const [s1] = two_vertebrae();
 		session.projections.side.polygons = [s1, square('L5', 100, 100)];
 
@@ -97,12 +96,13 @@ describe('CentralLineController.hitTest', () => {
 		expect(hit?.controlPoint.cornerIndices).toEqual([1, 2]);
 	});
 
-	it('never hits the spine-outermost points -- they are not part of the structure at all', () => {
-		session.projections.side.polygons = two_vertebrae();
+	it('also hits the spine-outermost points -- they are part of the structure now', () => {
+		const [s1, l5] = two_vertebrae();
+		session.projections.side.polygons = [s1, l5];
 
 		// S1's bottom-plate midpoint (100, 150) and L5's top-plate midpoint (100, 90).
-		expect(container.centralLine.hitTest({ x: 100, y: 150 })).toBeNull();
-		expect(container.centralLine.hitTest({ x: 100, y: 90 })).toBeNull();
+		expect(container.centralLine.hitTest({ x: 100, y: 150 })?.polygon.uuid).toBe(s1.uuid);
+		expect(container.centralLine.hitTest({ x: 100, y: 90 })?.polygon.uuid).toBe(l5.uuid);
 	});
 });
 

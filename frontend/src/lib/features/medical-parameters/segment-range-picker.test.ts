@@ -77,9 +77,9 @@ describe('hitTestVertebraBody', () => {
 });
 
 describe('SegmentRangePicker.centralPath', () => {
-	it('is null with fewer than 2 vertebrae', () => {
+	it('is non-null even for a single vertebra (its own bottom/top plate form a trivial line)', () => {
 		const picker = new SegmentRangePicker(() => [square('S1', 100, 100)]);
-		expect(picker.centralPath).toBeNull();
+		expect(picker.centralPath).not.toBeNull();
 	});
 
 	it('is derived from the current polygons', () => {

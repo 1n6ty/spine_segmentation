@@ -41,9 +41,10 @@ export function computeFitTransform(
  * Draws the schematic viewport: the central line (neutral color -- not the editor's orange,
  * which signals an annotation-EDITING affordance elsewhere in the app), each vertebra's real
  * polygon flat-filled and highlighted when inside the current selection, and two diamond
- * handle markers. Handle positions are always computed from the selected vertebra's own
- * polygon corners (`getPlateMidpoint`), never from `centralPath.controlPoints` -- see
- * `central-path.ts`'s doc comment on why the outermost vertebra's true plate is excluded there.
+ * handle markers. Handle positions are computed directly from the selected vertebra's own
+ * polygon corners (`getPlateMidpoint`) rather than searched for in `centralPath.controlPoints`,
+ * since a handle needs to unconditionally resolve to "the top/bottom of vertebra N" regardless
+ * of that vertebra's position in the array.
  */
 export function drawSegmentRangePicker(
 	ctx: CanvasRenderingContext2D,

@@ -246,10 +246,9 @@ describe('ToolController vertex-drag flow (end-to-end through the controller)', 
 });
 
 describe('ToolController central-line integration (Mode 1, end-to-end through the controller)', () => {
-	// A single vertebra's 2 midpoints are both spine-outermost and dropped from the structure
-	// entirely (see `computeCentralPath`), so these tests need 2 vertebrae. With `c2` first and
-	// `c3` second in the array, only c2's TOP-plate midpoint (100, 90) and c3's BOTTOM-plate
-	// midpoint (100, 150) are interior/part of the curve.
+	// With `c2` first and `c3` second in the array, control points are: c2 bottom (100, 110),
+	// c2 top (100, 90), c3 bottom (100, 150), c3 top (100, 130) -- every plate midpoint is
+	// part of the curve and hittable, including the spine's outermost points.
 	function two_vertebrae() {
 		return [square('C2', 100, 100), square('C3', 100, 140)];
 	}
@@ -310,13 +309,13 @@ describe('ToolController central-line integration (Mode 1, end-to-end through th
 		expect(container.tools.draftPoints).toHaveLength(1);
 	});
 
-	it('never hits the spine-outermost points -- they are not part of the structure at all', () => {
+	it('also hits the spine-outermost points -- they are part of the structure now', () => {
 		const [c2, c3] = two_vertebrae();
 		session.projections.side.polygons = [c2, c3];
 
 		// c2's bottom-plate midpoint (100, 110) is the spine's outermost bottom point.
 		container.tools.handlePointerDown(fake_pointer_event({ clientX: 100, clientY: 110 }));
-		expect(container.centralLine.isDragging).toBe(false);
+		expect(container.centralLine.isDragging).toBe(true);
 	});
 });
 

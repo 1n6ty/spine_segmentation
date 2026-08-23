@@ -34,22 +34,21 @@ export interface CentralPath {
  * `polygons` on every call. `polygons` is assumed already spine-ordered (S1 -> C2), which
  * `orderAndName()` guarantees.
  *
- * The spine's outermost bottom point (first vertebra's bottom plate) and outermost top point
- * (last vertebra's top plate) are dropped entirely -- they sit past the outer edge of the
- * outermost vertebra, outside the inter-vertebral alignment the central line is meant to track.
- * They're excluded from the spline fit itself (not merely hidden at render time), so the curve
- * is only ever shaped by, and only ever shown/draggable through, the remaining interior points.
+ * Includes every vertebra's bottom and top plate midpoint, including the spine's outermost
+ * points (S1's true bottom plate and C2's true top plate) -- callers that need "the true
+ * outermost plate specifically" no longer need `getPlateMidpoint`'s workaround, though it's
+ * kept for callers that only have a single polygon in hand.
  */
 export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 	if (polygons.length === 0) return null;
 
-	const allPoints: CentralLineControlPoint[] = [];
+	const controlPoints: CentralLineControlPoint[] = [];
 	polygons.forEach((poly, vertebraIndex) => {
 		if (poly.points.length !== 4) return;
 
 		(['bottom', 'top'] as const).forEach((plate) => {
 			const [i0, i1] = PLATE_CORNER_INDICES[plate];
-			allPoints.push({
+			controlPoints.push({
 				vertebraIndex,
 				plate,
 				point: get_midpoint(poly.points[i0], poly.points[i1]),
@@ -58,7 +57,6 @@ export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 		});
 	});
 
-	const controlPoints = allPoints.length > 2 ? allPoints.slice(1, -1) : [];
 	if (controlPoints.length < 2) return null;
 
 	const spline = fitArcLengthSpline2D(controlPoints.map((cp) => cp.point));
