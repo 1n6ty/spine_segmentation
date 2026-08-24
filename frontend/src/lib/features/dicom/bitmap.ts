@@ -25,10 +25,31 @@ export async function create_dicom_bitmap(
 	const num_pixels = rows * cols;
 	const output = new Uint8ClampedArray(num_pixels * 4);
 
-	// 2. Pre-calculate windowing constants to save CPU cycles
-	const low = window_center - window_width / 2;
-	const high = window_center + window_width / 2;
-	const range = window_width || 1; // Prevent division by zero
+	// 2. Find the actual (rescaled) pixel value range so we can fall back to
+	// auto min/max contrast when the declared window doesn't overlap it at
+	// all -- some source files carry a WindowCenter/Width computed for a
+	// different bit depth than the pixel data actually stored (stale/mismatched
+	// metadata), which would otherwise window every real pixel to a single
+	// solid color. The backend's thumbnail renderer sidesteps this the same
+	// way, via an unconditional min/max stretch.
+	let data_min = Infinity;
+	let data_max = -Infinity;
+	for (let i = 0; i < num_pixels; i++) {
+		const val = pixel_data[i] * slope + intercept;
+		if (val < data_min) data_min = val;
+		if (val > data_max) data_max = val;
+	}
+
+	let low = window_center - window_width / 2;
+	let high = window_center + window_width / 2;
+
+	const window_overlaps_data = window_width > 0 && low <= data_max && high >= data_min;
+	if (!window_overlaps_data) {
+		low = data_min;
+		high = data_max;
+	}
+
+	const range = high - low || 1; // Prevent division by zero
 
 	for (let i = 0; i < num_pixels; i++) {
 		// FIX: Access pixelData directly (not .buffer)
