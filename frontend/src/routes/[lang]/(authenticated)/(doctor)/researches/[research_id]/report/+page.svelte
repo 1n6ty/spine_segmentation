@@ -13,6 +13,8 @@
 	import type {
 		Finding,
 		GapDiagnosis,
+		NarrativeClause,
+		ParametersNarrative,
 		RegionDiagnosis,
 		VertebraDiagnosis
 	} from '$lib/features/medical-parameters/diagnosis/types';
@@ -47,9 +49,21 @@
 		else expandedItems.add(itemKey);
 	}
 
+	/** Flattens the (at most one-level-deep) region/sub-region tree into a flat
+	 * list — used for expand-all/collapse-all bookkeeping, which doesn't care
+	 * about nesting. */
+	function flattenRegions(regions: RegionDiagnosis[]): RegionDiagnosis[] {
+		const out: RegionDiagnosis[] = [];
+		for (const r of regions) {
+			out.push(r);
+			if (r.subRegions) out.push(...flattenRegions(r.subRegions));
+		}
+		return out;
+	}
+
 	function allItemKeys(): string[] {
 		const keys: string[] = [];
-		for (const region of currentDiagnosis.regions) {
+		for (const region of flattenRegions(currentDiagnosis.regions)) {
 			for (const row of interleave(region)) {
 				keys.push(row.kind === 'vertebra' ? `v-${row.data.id}` : `g-${row.data.id}`);
 			}
@@ -59,7 +73,7 @@
 
 	function expandAll() {
 		expandedRegions.clear();
-		currentDiagnosis.regions.forEach((r) => expandedRegions.add(r.id));
+		flattenRegions(currentDiagnosis.regions).forEach((r) => expandedRegions.add(r.id));
 		expandedItems.clear();
 		allItemKeys().forEach((key) => expandedItems.add(key));
 	}
@@ -75,11 +89,13 @@
 		});
 	}
 
-	function goToSection(regionId: string, anchorId: string) {
-		expandedRegions.add(regionId);
-		// anchorId is the region's own id when navigating to the region heading itself
-		// (no matching vertebra/gap item key to also expand in that case).
-		if (anchorId !== regionId) {
+	/** `ancestorIds` is the chain of region ids to expand on the way to
+	 * `anchorId` (e.g. `['thoracic', 'thoracic-upper']` for a vertebra inside
+	 * the thoracic container's upper sub-region) — every id in the chain gets
+	 * expanded, then the page scrolls to `anchorId`. */
+	function goToSection(ancestorIds: string[], anchorId: string) {
+		for (const id of ancestorIds) expandedRegions.add(id);
+		if (!ancestorIds.includes(anchorId)) {
 			expandedItems.add(anchorId);
 		}
 		scrollToId(anchorId);
@@ -102,20 +118,55 @@
 		}
 	}
 
+	/** Same red scale as severityClasses, plus green for 'normal' — used only
+	 * for the inline per-parameter reference-range badges in the narrative,
+	 * not the finding cards (which stay neutral gray for 'normal', unchanged). */
+	function rangeBadgeClasses(severity: Finding['severity']): string {
+		switch (severity) {
+			case 'grade1':
+				return 'bg-amber-400/15 text-amber-700';
+			case 'grade2':
+				return 'bg-orange-500/15 text-orange-700';
+			case 'grade3':
+				return 'bg-red-500/15 text-red-700';
+			case 'grade4':
+				return 'bg-red-700/15 text-red-800';
+			case 'grade5':
+				return 'bg-red-900/15 text-red-900';
+			default:
+				return 'bg-emerald-500/15 text-emerald-700';
+		}
+	}
+
 	type RowItem =
 		| { kind: 'vertebra'; data: VertebraDiagnosis }
 		| { kind: 'gap'; data: GapDiagnosis };
 
 	function interleave(region: RegionDiagnosis): RowItem[] {
-		// region.vertebrae/.gaps are bottom-up (inferior->superior) — that order feeds the
+		// region.vertebrae is bottom-up (inferior->superior) — that order feeds the
 		// calculators (sign conventions for angles assume it) and must stay untouched there.
 		// Reversed here, display-only, so rows read top-to-bottom (e.g. cervical: C2...C7).
+		const ordered = [...region.vertebrae].reverse();
+		const gapById = new Map(region.gaps.map((g) => [g.id, g]));
 		const rows: RowItem[] = [];
-		region.vertebrae.forEach((v, i) => {
-			rows.push({ kind: 'vertebra', data: v });
-			if (i < region.gaps.length) rows.push({ kind: 'gap', data: region.gaps[i] });
-		});
-		return rows.reverse();
+		const usedIds: string[] = [];
+		for (let i = 0; i < ordered.length; i++) {
+			rows.push({ kind: 'vertebra', data: ordered[i] });
+			if (i + 1 < ordered.length) {
+				const id = `${ordered[i].id}-${ordered[i + 1].id}`;
+				const gap = gapById.get(id);
+				if (gap) {
+					rows.push({ kind: 'gap', data: gap });
+					usedIds.push(id);
+				}
+			}
+		}
+		// A gap not between two of this region's own vertebrae — e.g. a thoracic
+		// sub-region's boundary disc, appended at the end of its gaps list by
+		// diagnosis-store.svelte.ts — renders after the region's last (most
+		// inferior) vertebra row instead.
+		for (const g of region.gaps) if (!usedIds.includes(g.id)) rows.push({ kind: 'gap', data: g });
+		return rows;
 	}
 </script>
 
@@ -153,11 +204,12 @@
 				<button
 					class="rounded-md border border-(--border) px-3 py-1.5 text-sm font-medium transition-colors hover:bg-(--accent)"
 					onclick={() => {
-						if (expandedRegions.size === currentDiagnosis.regions.length) collapseAll();
+						if (expandedRegions.size === flattenRegions(currentDiagnosis.regions).length)
+							collapseAll();
 						else expandAll();
 					}}
 				>
-					{expandedRegions.size === currentDiagnosis.regions.length
+					{expandedRegions.size === flattenRegions(currentDiagnosis.regions).length
 						? $t('report.collapse')
 						: $t('report.expand')}
 				</button>
@@ -198,7 +250,7 @@
 						<h3 class="text-sm font-semibold">{$t('report.toc')}</h3>
 					</div>
 					<div class="p-2 pt-0">
-						{#each currentDiagnosis.regions as region (region.id)}
+						{#snippet tocEntry(region: RegionDiagnosis, chain: string[])}
 							<div class="mb-2">
 								<button
 									class="w-full rounded px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-(--muted) {isExpanded(
@@ -206,32 +258,43 @@
 									)
 										? 'bg-(--primary)/10 text-(--primary)'
 										: ''}"
-									onclick={() => goToSection(region.id, region.id)}
+									onclick={() => goToSection(chain, region.id)}
 								>
 									{localize(region.label)}
 								</button>
-								<div class="mt-1 ml-3 space-y-0.5">
-									{#each interleave(region) as row (row.kind + '-' + row.data.id)}
-										{#if row.kind === 'vertebra'}
-											<button
-												class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
-												onclick={() => goToSection(region.id, `v-${row.data.id}`)}
-											>
-												{$t('vertebrae.head')}
-												{row.data.id}
-											</button>
-										{:else}
-											<button
-												class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
-												onclick={() => goToSection(region.id, `g-${row.data.id}`)}
-											>
-												{$t('gaps.head')}
-												{row.data.id}
-											</button>
-										{/if}
-									{/each}
-								</div>
+								{#if region.subRegions?.length}
+									<div class="mt-1 ml-3 space-y-1">
+										{#each region.subRegions as sub (sub.id)}
+											{@render tocEntry(sub, [...chain, sub.id])}
+										{/each}
+									</div>
+								{:else}
+									<div class="mt-1 ml-3 space-y-0.5">
+										{#each interleave(region) as row (row.kind + '-' + row.data.id)}
+											{#if row.kind === 'vertebra'}
+												<button
+													class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
+													onclick={() => goToSection(chain, `v-${row.data.id}`)}
+												>
+													{$t('vertebrae.head')}
+													{row.data.id}
+												</button>
+											{:else}
+												<button
+													class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
+													onclick={() => goToSection(chain, `g-${row.data.id}`)}
+												>
+													{$t('gaps.head')}
+													{row.data.id}
+												</button>
+											{/if}
+										{/each}
+									</div>
+								{/if}
 							</div>
+						{/snippet}
+						{#each currentDiagnosis.regions as region (region.id)}
+							{@render tocEntry(region, [region.id])}
 						{/each}
 						<div class="my-2 h-px w-full shrink-0 bg-(--border)"></div>
 						<button
@@ -248,7 +311,43 @@
 				>
 					<div class="p-6">
 						<div class="space-y-8 pb-8">
-							{#each currentDiagnosis.regions as region (region.id)}
+							{#snippet clauseBadge(badge: NonNullable<NarrativeClause['badge']>)}<span
+									class="ml-1 rounded px-1.5 py-0.5 text-xs font-medium {rangeBadgeClasses(
+										badge.severity
+									)}">{localize(badge.display)}</span
+								>{/snippet}
+							{#snippet narrativeParagraph(narrative: ParametersNarrative, marginClass: string)}
+								<p class="{marginClass} text-sm leading-relaxed">
+									{localize(narrative.identity)}: {#each narrative.clauses as clause, i (clause.key)}{localize(
+											clause.text
+										)}{#if clause.badge}{@render clauseBadge(clause.badge)}{/if}{i <
+										narrative.clauses.length - 1
+											? ', '
+											: '.'}{/each}
+								</p>
+							{/snippet}
+
+							{#snippet findingsList(findings: Finding[], padding: string)}
+								<div class="space-y-2">
+									{#if findings.length > 0}
+										{#each findings as finding (finding.id)}
+											<div
+												class="rounded border-l-4 {padding} text-sm {severityClasses(
+													finding.severity
+												)}"
+											>
+												{localize(finding.text)}
+											</div>
+										{/each}
+									{:else}
+										<div class="rounded border-l-4 {padding} text-sm {severityClasses('normal')}">
+											{$t('report.no_anomalies')}
+										</div>
+									{/if}
+								</div>
+							{/snippet}
+
+							{#snippet regionSection(region: RegionDiagnosis)}
 								<div class="scroll-mt-20" id={region.id}>
 									<button
 										class="group mb-4 flex w-full items-center justify-between"
@@ -273,122 +372,74 @@
 
 									{#if isExpanded(region.id)}
 										<div class="mb-4 ml-8">
-											<p class="mb-3 text-sm leading-relaxed">{localize(region.narrative)}</p>
-											<div class="space-y-2">
-												{#if region.findings.length > 0}
-													{#each region.findings as finding (finding.id)}
-														<div
-															class="rounded border-l-4 p-3 text-sm {severityClasses(
-																finding.severity
-															)}"
-														>
-															{localize(finding.text)}
-														</div>
-													{/each}
-												{:else}
-													<div class="rounded border-l-4 p-3 text-sm {severityClasses('normal')}">
-														{$t('report.no_anomalies')}
-													</div>
-												{/if}
+											{@render narrativeParagraph(region.narrative, 'mb-3')}
+											{@render findingsList(region.findings, 'p-3')}
+										</div>
+										{#if region.subRegions?.length}
+											<div class="ml-8 space-y-8">
+												{#each region.subRegions as sub (sub.id)}
+													{@render regionSection(sub)}
+												{/each}
 											</div>
-										</div>
-										<div class="ml-8 space-y-4">
-											{#each interleave(region) as row (row.kind + '-' + row.data.id)}
-												{#if row.kind === 'vertebra'}
-													{@const itemKey = `v-${row.data.id}`}
-													<div id={itemKey} class="scroll-mt-20">
-														<button
-															class="group mb-2 flex w-full items-center gap-2"
-															onclick={() => toggleItem(itemKey)}
-														>
-															<img
-																src={downSVG}
-																alt="Expand/Collapse"
-																class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
-																	? ''
-																	: '-rotate-90'}"
-															/>
-															<h4 class="font-medium">{$t('vertebrae.head')} {row.data.id}</h4>
-														</button>
-														{#if isItemExpanded(itemKey)}
-															<div class="ml-6">
-																<p class="mb-2 text-sm leading-relaxed">
-																	{localize(row.data.narrative)}
-																</p>
-																<div class="space-y-2">
-																	{#if row.data.findings.length > 0}
-																		{#each row.data.findings as finding (finding.id)}
-																			<div
-																				class="rounded border-l-4 p-2 text-sm {severityClasses(
-																					finding.severity
-																				)}"
-																			>
-																				{localize(finding.text)}
-																			</div>
-																		{/each}
-																	{:else}
-																		<div
-																			class="rounded border-l-4 p-2 text-sm {severityClasses(
-																				'normal'
-																			)}"
-																		>
-																			{$t('report.no_anomalies')}
-																		</div>
-																	{/if}
+										{:else}
+											<div class="ml-8 space-y-4">
+												{#each interleave(region) as row (row.kind + '-' + row.data.id)}
+													{#if row.kind === 'vertebra'}
+														{@const itemKey = `v-${row.data.id}`}
+														<div id={itemKey} class="scroll-mt-20">
+															<button
+																class="group mb-2 flex w-full items-center gap-2"
+																onclick={() => toggleItem(itemKey)}
+															>
+																<img
+																	src={downSVG}
+																	alt="Expand/Collapse"
+																	class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
+																		? ''
+																		: '-rotate-90'}"
+																/>
+																<h4 class="font-medium">{$t('vertebrae.head')} {row.data.id}</h4>
+															</button>
+															{#if isItemExpanded(itemKey)}
+																<div class="ml-6">
+																	{@render narrativeParagraph(row.data.narrative, 'mb-2')}
+																	{@render findingsList(row.data.findings, 'p-2')}
 																</div>
-															</div>
-														{/if}
-													</div>
-												{:else}
-													{@const itemKey = `g-${row.data.id}`}
-													<div id={itemKey} class="scroll-mt-20">
-														<button
-															class="group mb-2 flex w-full items-center gap-2"
-															onclick={() => toggleItem(itemKey)}
-														>
-															<img
-																src={downSVG}
-																alt="Expand/Collapse"
-																class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
-																	? ''
-																	: '-rotate-90'}"
-															/>
-															<h4 class="font-medium">{$t('gaps.head')} {row.data.id}</h4>
-														</button>
-														{#if isItemExpanded(itemKey)}
-															<div class="ml-6">
-																<p class="mb-2 text-sm leading-relaxed">
-																	{localize(row.data.narrative)}
-																</p>
-																<div class="space-y-2">
-																	{#if row.data.findings.length > 0}
-																		{#each row.data.findings as finding (finding.id)}
-																			<div
-																				class="rounded border-l-4 p-2 text-sm {severityClasses(
-																					finding.severity
-																				)}"
-																			>
-																				{localize(finding.text)}
-																			</div>
-																		{/each}
-																	{:else}
-																		<div
-																			class="rounded border-l-4 p-2 text-sm {severityClasses(
-																				'normal'
-																			)}"
-																		>
-																			{$t('report.no_anomalies')}
-																		</div>
-																	{/if}
+															{/if}
+														</div>
+													{:else}
+														{@const itemKey = `g-${row.data.id}`}
+														<div id={itemKey} class="scroll-mt-20">
+															<button
+																class="group mb-2 flex w-full items-center gap-2"
+																onclick={() => toggleItem(itemKey)}
+															>
+																<img
+																	src={downSVG}
+																	alt="Expand/Collapse"
+																	class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
+																		? ''
+																		: '-rotate-90'}"
+																/>
+																<h4 class="font-medium">{$t('gaps.head')} {row.data.id}</h4>
+															</button>
+															{#if isItemExpanded(itemKey)}
+																<div class="ml-6">
+																	{@render narrativeParagraph(row.data.narrative, 'mb-2')}
+																	{@render findingsList(row.data.findings, 'p-2')}
 																</div>
-															</div>
-														{/if}
-													</div>
-												{/if}
-											{/each}
-										</div>
+															{/if}
+														</div>
+													{/if}
+												{/each}
+											</div>
+										{/if}
 									{/if}
 								</div>
+							{/snippet}
+
+							{#each currentDiagnosis.regions as region (region.id)}
+								{@render regionSection(region)}
 							{/each}
 						</div>
 

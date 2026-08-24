@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildParametersNarrative, paramLabel, vertebraLabel, gapLabel } from './narrative';
+import {
+	buildParametersNarrative,
+	narrativeSentence,
+	withRangeBadge,
+	paramLabel,
+	vertebraLabel,
+	gapLabel
+} from './narrative';
 
 describe('vertebraLabel', () => {
 	it('returns a bilingual vertebra label with the id interpolated', () => {
@@ -35,7 +42,12 @@ describe('buildParametersNarrative', () => {
 			p3: { val: 72.3, type: 'angular' },
 			p4: { val: null, type: 'angular' }
 		};
-		const result = buildParametersNarrative(identity, 'side', 'segments', params);
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		expect(narrative.clauses).toHaveLength(3);
+		expect(narrative.clauses.map((c) => c.key)).toEqual(['p1', 'p2', 'p3']);
+		expect(narrative.clauses.every((c) => c.badge === undefined)).toBe(true);
+
+		const result = narrativeSentence(narrative);
 		expect(result['ru-RU']).toBe(
 			'Отрезок от Th1 до Th12: Радиус дуги составляет 145.2 мм, Длина хорды дуги составляет 210.4 мм, Центральный угол дуги составляет 72.3°.'
 		);
@@ -44,12 +56,62 @@ describe('buildParametersNarrative', () => {
 		);
 	});
 
-	it('produces an empty list (just identity + colon + period) when every value is null', () => {
+	it('produces an empty clause list when every value is null', () => {
 		const params = {
 			p1: { val: null, type: 'linear' },
 			p2: { val: null, type: 'linear' }
 		};
-		const result = buildParametersNarrative(identity, 'side', 'segments', params);
-		expect(result['ru-RU']).toBe('Отрезок от Th1 до Th12: .');
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		expect(narrative.clauses).toHaveLength(0);
+		expect(narrativeSentence(narrative)['ru-RU']).toBe('Отрезок от Th1 до Th12: .');
+	});
+});
+
+describe('withRangeBadge', () => {
+	const identity = { 'ru-RU': 'Отрезок от Th1 до Th12', 'en-US': 'Segment from Th1 to Th12' };
+	const params = {
+		p3: { val: 72.3, type: 'angular' }
+	};
+
+	it('attaches a badge to the matching clause, formatted as center ± tolerance', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -5, max: 5, center: 0 });
+		expect(badged.clauses[0].badge?.severity).toBe('normal');
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 0 ± 5°');
+	});
+
+	it('formats a non-symmetric range as min–max', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p3', 'grade1', { min: 39, max: 65 });
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 39–65°');
+	});
+
+	it('formats an open-ended range with a bare lower bound', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -35, max: Infinity });
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal > -35°');
+	});
+
+	it('is a no-op when no clause has the given key', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p9', 'normal', { min: 0, max: 1 });
+		expect(badged.clauses[0].badge).toBeUndefined();
+	});
+
+	it('rounds a center+tolerance range to 2 decimals, not a raw floating-point subtraction', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		// 9.11 - 6.61 === 2.499999999999999 in raw JS float math -- must round to 2.5.
+		const badged = withRangeBadge(narrative, 'p3', 'normal', {
+			min: 4.11,
+			max: 9.11,
+			center: 6.61
+		});
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 6.61 ± 2.5°');
+	});
+
+	it('rounds a plain min-max range to 2 decimals', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: 1.005, max: 2.0049999 });
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 1–2°');
 	});
 });
