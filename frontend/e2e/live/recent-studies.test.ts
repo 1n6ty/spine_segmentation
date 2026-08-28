@@ -35,11 +35,9 @@ test('an uploaded session appears in "recent studies" live, without a reload, an
 	// state (which renders as a plain dark placeholder box, since requestSave()
 	// used to read the DICOM bitmap synchronously before it had finished
 	// decoding and silently skipped saving a thumbnail on the very first save).
-	await expect(page.getByAltText('Preview').first()).toHaveAttribute(
-		'src',
-		/^data:image\//,
-		{ timeout: 15_000 }
-	);
+	await expect(page.getByAltText('Preview').first()).toHaveAttribute('src', /^data:image\//, {
+		timeout: 15_000
+	});
 
 	// Reload while still on /researches/{id}/patient -- the URL itself names
 	// the research (researches/[research_id]/+layout.svelte re-fetches
@@ -55,7 +53,7 @@ test('an uploaded session appears in "recent studies" live, without a reload, an
 	await expect(page.getByText('LATERAL /', { exact: true }).first()).toBeVisible();
 });
 
-test('tracks the active research in the URL, and "New research" does not navigate away from it', async ({
+test('tracks the active research in the URL, and "New research" resets back to the landing page', async ({
 	page
 }) => {
 	await login(page, DOCTOR);
@@ -69,12 +67,14 @@ test('tracks the active research in the URL, and "New research" does not navigat
 	// Switching tabs preserves the same research id in the URL.
 	await page.getByText('X-Ray Editing', { exact: false }).click();
 	await expect(page).toHaveURL(/\/researches\/\d+\/edit$/);
-	const editUrl = page.url();
 
-	// "New research" resets the session (Manager.svelte) but must not
-	// navigate anywhere -- the URL stays exactly where it was.
+	// "New research" resets the session (Manager.svelte) and navigates back to
+	// the landing page -- mirrors Card.svelte's makeActive()/ProfileBar's
+	// logout: reset then always navigate, so the tab bar/URL can't stay pinned
+	// to a research whose session underneath has already gone empty.
 	await page.getByRole('button', { name: 'New research' }).click();
-	expect(page.url()).toBe(editUrl);
+	await expect(page).toHaveURL(/\/en\/?$/);
+	await expect(page.getByRole('button', { name: 'New research' })).toBeDisabled();
 });
 
 test('navigating back to the landing page from a research deselects it', async ({ page }) => {

@@ -5,18 +5,24 @@
 	import leftSVG from '$lib/assets/icons/left.svg';
 	import rightSVG from '$lib/assets/icons/right.svg';
 	import Card from './Card.svelte';
+	import SkeletonCard from './SkeletonCard.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { project } from '$lib/core/project.svelte';
-	import type { SessionValue } from '$lib/core/session/types';
+	import { PAGE_SIZE } from '$lib/core/session/registry.svelte';
 	import { t } from 'svelte-i18n';
 
-	let sessions = $state<SessionValue[]>([]);
-	$effect(() => {
-		sessions = Object.values(project.registry.sessionValues).sort(
-			(a, b) => b.lastAccessed - a.lastAccessed
-		);
-	});
+	// Ids come pre-sorted (-last_accessed) from the server, loaded a page at a
+	// time -- see RegistryService. `slotCount` is every row that exists, so
+	// slots past `order.length` render a SkeletonCard until their page arrives.
+	// The full batch of skeletons shows ONLY on the first-ever load
+	// (loadedPages === 0); once anything has loaded, a background refresh()
+	// keeps the current cards on screen instead of flashing skeletons.
+	const order = $derived(project.registry.order);
+	const firstLoad = $derived(project.registry.loadedPages === 0 && project.registry.loading);
+	const slotCount = $derived(
+		project.registry.totalItems > 0 ? project.registry.totalItems : firstLoad ? PAGE_SIZE : 0
+	);
 
 	let currentIndex = $state(0);
 	const cardWidth = 260;
@@ -28,8 +34,14 @@
 
 	function next() {
 		// Prevent scrolling past the end
-		if (currentIndex < sessions.length - visibleCount) {
+		if (currentIndex < slotCount - visibleCount) {
 			currentIndex++;
+		}
+		// Fetch the next page once the view is within a card of the not-yet-
+		// loaded tail (loadMore() no-ops if there's nothing more or a fetch is
+		// already running).
+		if (currentIndex + Math.ceil(visibleCount) >= order.length && project.registry.hasMore) {
+			project.registry.loadMore();
 		}
 	}
 
@@ -69,7 +81,7 @@
 		const i = Number(cardEl.getAttribute('data-card-index'));
 		if (Number.isNaN(i)) return;
 
-		const maxIndex = Math.max(0, sessions.length - visibleCount);
+		const maxIndex = Math.max(0, slotCount - visibleCount);
 		if (i < currentIndex) {
 			currentIndex = Math.min(i, maxIndex);
 		} else if (i > currentIndex + visibleCount - 1) {
@@ -100,7 +112,7 @@
 			<span
 				class="inline-flex h-5 w-fit shrink-0 items-center justify-center overflow-hidden rounded-md border border-transparent bg-(--secondary) px-2 py-0.5 text-sm font-medium whitespace-nowrap text-(--secondary-foreground) transition-[color,box-shadow] focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [a&]:hover:bg-(--secondary)/90"
 			>
-				{sessions.length}
+				{project.registry.totalItems || order.length}
 			</span>
 		</div>
 		<div class="flex gap-2">
@@ -131,7 +143,7 @@
 			</button>
 		</div>
 	</div>
-	{#if sessions.length > 0}
+	{#if slotCount > 0}
 		<div
 			class="relative px-2"
 			role="region"
@@ -165,12 +177,13 @@
 						style="transform: translateX({translateX}px);"
 						aria-live="polite"
 					>
-						{#each sessions as sessionValue, i}
+						{#each Array(slotCount) as _, i (order[i] ?? `skeleton-${i}`)}
 							<div style="width: {cardWidth}px;" class="h-full shrink-0" data-card-index={i}>
-								<Card
-									active={project.session?.sessionUID === sessionValue.sessionUID}
-									sessionUID={sessionValue.sessionUID}
-								/>
+								{#if i < order.length}
+									<Card active={project.session?.sessionUID === order[i]} sessionUID={order[i]} />
+								{:else}
+									<SkeletonCard />
+								{/if}
 							</div>
 						{/each}
 					</div>
@@ -178,7 +191,7 @@
 
 				<button
 					onclick={next}
-					disabled={currentIndex >= sessions.length - visibleCount}
+					disabled={currentIndex >= slotCount - visibleCount}
 					class="z-10 inline-flex h-34 cursor-pointer items-center justify-center rounded-md border border-(--border) bg-(--background) px-2 hover:bg-(--accent) disabled:opacity-30"
 				>
 					<img src={rightSVG} alt="forward" class="size-4" />

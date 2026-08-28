@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { locale } from 'svelte-i18n';
 	import type { LocaleKey } from '$lib/core/i18n/types';
-	import { project } from '$lib/core/project.svelte';
 	import type { supportedStructures } from '$lib/features/medical-parameters/types';
 	import { params } from '$lib/features/medical-parameters/parameters-store.svelte';
 	import StructureTabs from '$lib/components/ui/measurements/StructureTabs.svelte';
+	import SessionLoadingGate from '$lib/components/ui/sessions/SessionLoadingGate.svelte';
 	import MeasurementsPanel from '$lib/components/sections/measurements/MeasurementsPanel.svelte';
 
 	const titles: Record<LocaleKey, Record<supportedStructures, string>> = {
@@ -23,7 +23,7 @@
 	};
 </script>
 
-{#await project.session.loadingPromise then}
+<SessionLoadingGate>
 	<div
 		class="flex flex-col gap-6 rounded-xl border border-(--border) bg-(--card) p-6 text-(--card-foreground)"
 	>
@@ -44,4 +44,4 @@
 			<MeasurementsPanel />
 		</div>
 	</div>
-{/await}
+</SessionLoadingGate>

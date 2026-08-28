@@ -8,7 +8,7 @@
 	import downloadSVG from '$lib/assets/icons/download.svg';
 	import documentSVG from '$lib/assets/icons/document.svg';
 
-	import { project } from '$lib/core/project.svelte';
+	import SessionLoadingGate from '$lib/components/ui/sessions/SessionLoadingGate.svelte';
 	import { diagnosis } from '$lib/features/medical-parameters/diagnosis/diagnosis-store.svelte';
 	import type {
 		Finding,
@@ -170,7 +170,7 @@
 	}
 </script>
 
-{#await project.session.loadingPromise then}
+<SessionLoadingGate>
 	<div class="mt-6 flex-1 outline-none">
 		<div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 			<h2 class="text-2xl font-bold">{$t('report.header')}</h2>
@@ -468,4 +468,4 @@
 			</div>
 		{/if}
 	</div>
-{/await}
+</SessionLoadingGate>
