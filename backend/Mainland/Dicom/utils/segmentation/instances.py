@@ -10,7 +10,9 @@ def get_instances(
     overlap: int = 160,
     iou_threshold: float = 0.3
 ):
-    # 1. Normalize and prepare image — matches training preprocessing exactly
+    # 1. Per-image min-max -> uint8. Caller is expected to have already applied
+    #    apply_voi_lut + MONOCHROME1 polarity (Dicom.utils.pixels
+    #    .dicom_to_windowed_float32), matching model/train.py's load_dicom_uint8.
     img = pixel_array.astype(np.float32)
     img = (img - img.min()) / (img.max() - img.min() + 1e-6)
     img = (img * 255).astype(np.uint8)

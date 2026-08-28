@@ -1,12 +1,11 @@
 import os
 from pathlib import Path
 
-import numpy as np
 import pydicom
-from pydicom.pixels import apply_voi_lut
 from django.conf import settings
 from django.test import SimpleTestCase
 
+from Dicom.utils.pixels import dicom_to_windowed_float32
 from Dicom.utils.constants import SEGMENTATION_MODEL_WEIGHTS
 from Dicom.utils.segmentation.compose import MAX_VERTEBRAE, segment_spine_from_S1_to_C2
 
@@ -31,7 +30,7 @@ class RevealSideFixtureTests(SimpleTestCase):
         from sahi import AutoDetectionModel
 
         dcm = pydicom.dcmread(fixture_path)
-        pixel_array = apply_voi_lut(dcm.pixel_array, dcm).astype(np.float32)
+        pixel_array = dicom_to_windowed_float32(dcm)
 
         detection_model = AutoDetectionModel.from_pretrained(
             model_type="ultralytics",

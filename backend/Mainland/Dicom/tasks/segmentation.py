@@ -1,5 +1,4 @@
-import pydicom, numpy as np
-from pydicom.pixels import apply_voi_lut
+import pydicom
 from celery import shared_task
 from asgiref.sync import async_to_sync
 from logging import getLogger
@@ -9,6 +8,7 @@ from django.conf import settings
 from channels.layers import get_channel_layer
 
 from Dicom.utils.constants import SEGMENTATION_GROUP, SEGMENTATION_MODEL_WEIGHTS, SEGMENTATION_STATUS_WIRE
+from Dicom.utils.pixels import dicom_to_windowed_float32
 from Dicom.utils.segmentation.compose import segment_spine_from_S1_to_C2
 
 _models: dict = {}
@@ -53,7 +53,7 @@ def segment_vertebraes(sop_instance_uid: str):
         # object instead, which works for any storage backend.
         with image_instance.xray_file.file.open('rb') as dicom_fp:
             dcm = pydicom.dcmread(dicom_fp)
-            pixel_array = apply_voi_lut(dcm.pixel_array, dcm).astype(np.float32)
+            pixel_array = dicom_to_windowed_float32(dcm)
 
         # 3. Run the YOLO segmentation
         vertebraes_list = segment_spine_from_S1_to_C2(
