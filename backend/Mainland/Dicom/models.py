@@ -87,6 +87,16 @@ class DicomImage(models.Model):
     segmentation_status = models.ForeignKey(SegmentationStatus, on_delete=models.PROTECT, null=True, blank=True, related_name='dicom_images')
     segmentation_error = models.TextField(null=True, blank=True)
 
+    # Provenance for `reference_points`, written only by Dicom.tasks.segmentation
+    # (and copied verbatim by Dicom.utils.parse's hash-reuse branch) -- never from
+    # DICOM-tag metadata. `segmentation_model_version` holds the
+    # SEGMENTATION_PIPELINE_VERSION that produced the current result; NULL means
+    # pre-versioning / never run, and is treated as stale so the next
+    # /api/dcm/parse/ re-runs the pipeline. `segmented_at` is the wall-clock time
+    # the pipeline last wrote this row (set explicitly, not auto_now).
+    segmentation_model_version = models.CharField(max_length=64, null=True, blank=True)
+    segmented_at = models.DateTimeField(null=True, blank=True)
+
     # Image Metadata
     rows = models.IntegerField(null=True, blank=True)
     cols = models.IntegerField(null=True, blank=True)

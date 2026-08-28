@@ -5,9 +5,15 @@ from logging import getLogger
 _logger = getLogger('Dicom.tasks.segmentation')
 
 from django.conf import settings
+from django.utils import timezone
 from channels.layers import get_channel_layer
 
-from Dicom.utils.constants import SEGMENTATION_GROUP, SEGMENTATION_MODEL_WEIGHTS, SEGMENTATION_STATUS_WIRE
+from Dicom.utils.constants import (
+    SEGMENTATION_GROUP,
+    SEGMENTATION_MODEL_WEIGHTS,
+    SEGMENTATION_PIPELINE_VERSION,
+    SEGMENTATION_STATUS_WIRE,
+)
 from Dicom.utils.pixels import dicom_to_windowed_float32
 from Dicom.utils.segmentation.compose import segment_spine_from_S1_to_C2
 
@@ -71,9 +77,15 @@ def segment_vertebraes(sop_instance_uid: str):
             })
         _logger.info(parsed_vertebraes)
 
-        # 4. Save results (Using update_fields is safer for concurrent saves)
+        # 4. Save results (Using update_fields is safer for concurrent saves).
+        # Stamp the pipeline version + timestamp here, before the 'done' broadcast,
+        # so a client that self-hydrates immediately after that event reads a row
+        # already marked current -- otherwise its next /api/dcm/parse/ would see
+        # 'done' + a stale-looking version and needlessly re-dispatch.
         image_instance.reference_points = parsed_vertebraes
-        image_instance.save(update_fields=['reference_points'])
+        image_instance.segmentation_model_version = SEGMENTATION_PIPELINE_VERSION
+        image_instance.segmented_at = timezone.now()
+        image_instance.save(update_fields=['reference_points', 'segmentation_model_version', 'segmented_at'])
 
         _advance_status(channel_layer, image_instance, 'done', ref_points=parsed_vertebraes)
 
@@ -84,7 +96,12 @@ def segment_vertebraes(sop_instance_uid: str):
         try:
             image_instance = DicomImage.objects.get(sop_instance_uid=sop_instance_uid)
             image_instance.segmentation_error = str(e)
-            image_instance.save(update_fields=['segmentation_error'])
+            # Stamp the version on failure too: a failure under the *current*
+            # pipeline must not be re-dispatched on every identical re-upload --
+            # only a failure left by an older version (or NULL) is stale.
+            image_instance.segmentation_model_version = SEGMENTATION_PIPELINE_VERSION
+            image_instance.segmented_at = timezone.now()
+            image_instance.save(update_fields=['segmentation_error', 'segmentation_model_version', 'segmented_at'])
             _advance_status(channel_layer, image_instance, 'error')
         except DicomImage.DoesNotExist:
             pass

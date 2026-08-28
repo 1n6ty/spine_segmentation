@@ -336,7 +336,7 @@ class TestProfilesViewSet(APITestCase):
         target.refresh_from_db()
         target_profile.refresh_from_db()
         self.assertEqual(target_profile.company_id, new_company.id)
-        self.assertEqual(target_profile.role_id, doctor_role.id)
+        self.assertEqual(target_profile.role_id, doctor_role.pk)
         self.assertFalse(target.groups.filter(pk=viewer_role.group_id).exists())
         self.assertTrue(target.groups.filter(pk=doctor_role.group_id).exists())
 

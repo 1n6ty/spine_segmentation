@@ -13,6 +13,14 @@ SEGMENTATION_MODEL_WEIGHTS = {
     "frontal": "Dicom/tasks/weights/yolo26m-seg-fro.onnx",
 }
 
+# Bump MANUALLY on ANY change that alters segmentation output: re-exporting either
+# weights file above, or changing anything under Dicom/utils/segmentation/
+# (compose.py geometry, unstick/reveal, cap logic). Stamped onto
+# DicomImage.segmentation_model_version by Dicom.tasks.segmentation.segment_vertebraes;
+# a stored value other than this makes /api/dcm/parse/ re-run segmentation and replace
+# the result even for a byte-identical re-upload (Dicom.utils.parse._segmentation_is_stale).
+SEGMENTATION_PIPELINE_VERSION = "1"
+
 # SegmentationStatus.slug -> wire "status" string sent to the frontend over SSE.
 # Kept distinct from the DB slug so the wire contract (matching the frontend's
 # existing SegmentationStatus/AutofillStatus TS types) never has to change
