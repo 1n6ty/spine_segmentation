@@ -1,15 +1,9 @@
-import type { AABB, Point } from '$lib/shared/geometry/geometry.type';
-import type { SelectionState } from '../selection-state.svelte';
+import type { Point } from '$lib/shared/geometry/geometry.type';
+import type { PolygonSelectionState, SelectionEntry } from '../selection-state.svelte';
 import type { HistoryController } from '../controllers/history.svelte';
 
 export type ToolId = 'select' | 'draw' | 'pan';
 export type CursorStyle = 'cursor-grab' | 'cursor-grabbing' | 'cursor-crosshair' | 'cursor-default';
-
-export interface HitResult<TEntity> {
-	entity: TEntity | null;
-	/** Non-null only for entity kinds that expose sub-point hit-testing (e.g. polygon vertices). */
-	pointIndex: number | null;
-}
 
 /** The subset of viewport-drag behavior a tool needs, without depending on ViewportController itself. */
 export interface PanViewport {
@@ -20,19 +14,20 @@ export interface PanViewport {
 }
 
 /**
- * Everything a `Tool` needs to operate, injected by the orchestrating controller. The four
- * point-aware callbacks (`hitTest`, `boundsOf`, `createEntity`, `setEntityPoint`) are the only
- * place "this entity has points" leaks into the otherwise entity-shape-agnostic tool machinery.
+ * Everything a `Tool` needs to operate, injected by the orchestrating controller. `selection` and
+ * `hitTestEntity` are inherently Polygon/vertebra-shaped (side/point addressing depends on the
+ * fixed 4-point, left=[0,1]/right=[2,3] convention `orderer.ts` enforces) -- `SelectTool` is the
+ * only tool that uses either. `DrawTool`/`PanTool` stay entity-shape-agnostic through the rest of
+ * this interface (`entities`, `createEntity`, `setEntityPoint`).
  */
 export interface ToolContext<TEntity extends { uuid: string }> {
 	readonly entities: TEntity[];
 	setEntities(next: TEntity[]): void;
-	readonly selection: SelectionState<TEntity>;
+	readonly selection: PolygonSelectionState;
 	readonly history: HistoryController;
 	readonly viewport: PanViewport;
 	worldPointFromEvent(e: PointerEvent): Point;
-	hitTest(worldPoint: Point): HitResult<TEntity>;
-	boundsOf(entity: TEntity): AABB;
+	hitTestEntity(worldPoint: Point): SelectionEntry | null;
 	createEntity(points: Point[]): TEntity;
 	setEntityPoint(entity: TEntity, pointIndex: number, worldPoint: Point): void;
 	reorder(entities: TEntity[]): TEntity[];

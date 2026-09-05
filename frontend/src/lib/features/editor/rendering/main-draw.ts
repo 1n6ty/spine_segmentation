@@ -1,9 +1,57 @@
 import { centroid } from '$lib/shared/geometry/geometry';
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
 import { drawCircle, drawDiamond } from '$lib/shared/canvas/canvas-utils';
-import type { CentralPath } from '../logic/central-path';
+import type { CentralPath } from '$lib/shared/anatomy/central-path';
+import { SIDE_INDICES, type SelectionEntry, type Side } from '../core/selection-state.svelte';
 
-function drawBackground(
+const ALL_SIDES: readonly Side[] = ['left', 'right', 'top', 'bottom'];
+
+interface PolygonSelectionView {
+	/** Whole vertebra selected -- full red outline + all 4 vertices red. */
+	vertebra: boolean;
+	/** Per-vertex red state -- true if that index is covered by ANY selected entry touching this
+	 * polygon (vertebra, a side containing it, or the point itself). An edge is drawn red purely
+	 * by both its endpoints being red here (see `drawPolygons`), not a separate flag -- so two
+	 * independently point-selected corners of the same edge (e.g. two Ctrl+clicks) light up the
+	 * edge between them exactly like an explicit side selection would. */
+	pointRed: [boolean, boolean, boolean, boolean];
+}
+
+const UNSELECTED_VIEW: PolygonSelectionView = {
+	vertebra: false,
+	pointRed: [false, false, false, false]
+};
+
+/** Groups a flat selection into per-polygon views once per frame, rather than re-scanning the
+ * whole selection for every polygon in `drawPolygons`'s loop. */
+function groupSelectionByPolygon(entries: SelectionEntry[]): Map<string, PolygonSelectionView> {
+	const byPolygon = new Map<string, PolygonSelectionView>();
+
+	const viewFor = (polygonUuid: string): PolygonSelectionView => {
+		let view = byPolygon.get(polygonUuid);
+		if (!view) {
+			view = { vertebra: false, pointRed: [false, false, false, false] };
+			byPolygon.set(polygonUuid, view);
+		}
+		return view;
+	};
+
+	for (const entry of entries) {
+		const view = viewFor(entry.polygonUuid);
+		if (entry.kind === 'vertebra') {
+			view.vertebra = true;
+			view.pointRed = [true, true, true, true];
+		} else if (entry.kind === 'side') {
+			for (const i of SIDE_INDICES[entry.side]) view.pointRed[i] = true;
+		} else {
+			view.pointRed[entry.pointIndex] = true;
+		}
+	}
+
+	return byPolygon;
+}
+
+export function drawBackground(
 	ctx: CanvasRenderingContext2D,
 	image: ImageBitmap,
 	offset: Point,
@@ -29,26 +77,43 @@ function drawBackground(
 	ctx.restore();
 }
 
-function drawPolygons(
+export function drawPolygons(
 	ctx: CanvasRenderingContext2D,
 	polygons: Polygon[],
-	isSelected: (poly: Polygon) => boolean,
+	selectedEntries: SelectionEntry[],
 	pointsRadius: number,
 	scale: number
 ): void {
-	// Draw Polygons & Labels
 	const invScale = 1 / scale;
 	ctx.lineWidth = 2 * invScale;
+	const byPolygon = groupSelectionByPolygon(selectedEntries);
 
 	for (const poly of polygons) {
-		const selected = isSelected(poly);
+		const view = byPolygon.get(poly.uuid) ?? UNSELECTED_VIEW;
 
-		// Path
+		// Path -- red only when the WHOLE vertebra is selected; a side-only selection keeps this
+		// lime and draws just its own edge red separately below.
 		ctx.beginPath();
 		poly.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
 		ctx.closePath();
-		ctx.strokeStyle = selected ? 'red' : 'lime';
+		ctx.strokeStyle = view.vertebra ? 'red' : 'lime';
 		ctx.stroke();
+
+		// Any edge whose BOTH endpoints are red gets drawn red too -- covers an explicit side
+		// selection, but just as much two independently point-selected corners that happen to
+		// share an edge (e.g. two separate Ctrl+clicks), which should look identical.
+		if (!view.vertebra && poly.points.length === 4) {
+			for (const side of ALL_SIDES) {
+				const [a, b] = SIDE_INDICES[side];
+				if (!view.pointRed[a] || !view.pointRed[b]) continue;
+
+				ctx.beginPath();
+				ctx.moveTo(poly.points[a].x, poly.points[a].y);
+				ctx.lineTo(poly.points[b].x, poly.points[b].y);
+				ctx.strokeStyle = 'red';
+				ctx.stroke();
+			}
+		}
 
 		// Label
 		const minX = Math.min(...poly.points.map((p) => p.x));
@@ -60,9 +125,9 @@ function drawPolygons(
 		ctx.fillText(poly.id, minX - 5 * invScale, centerY);
 
 		// Vertices
-		for (const p of poly.points) {
-			drawCircle(ctx, p, pointsRadius * invScale, selected ? 'red' : 'lime');
-		}
+		poly.points.forEach((p, i) => {
+			drawCircle(ctx, p, pointsRadius * invScale, view.pointRed[i] ? 'red' : 'lime');
+		});
 	}
 }
 
@@ -138,7 +203,7 @@ export function drawMain(
 	ctx: CanvasRenderingContext2D,
 	bitmap: ImageBitmap,
 	polygons: Polygon[],
-	isSelected: (poly: Polygon) => boolean,
+	selectedEntries: SelectionEntry[],
 	draftPoints: Point[],
 	view: { offset: Point; scale: number },
 	box: { start: Point; current: Point } | null = null,
@@ -151,7 +216,7 @@ export function drawMain(
 	ctx.translate(view.offset.x, view.offset.y);
 	ctx.scale(view.scale, view.scale);
 
-	drawPolygons(ctx, polygons, isSelected, pointsRadius, view.scale);
+	drawPolygons(ctx, polygons, selectedEntries, pointsRadius, view.scale);
 
 	drawCentralLine(ctx, centralPath, pointsRadius, view.scale);
 

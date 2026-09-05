@@ -15,7 +15,7 @@ class Role(TranslatableModel):
         name=models.CharField(max_length=100)
     )
     slug = models.SlugField(unique=True, blank=False, null=False)
-    group = models.OneToOneField(Group, on_delete=models.PROTECT, related_name='role')
+    group = models.OneToOneField(Group, on_delete=models.PROTECT, related_name='role', primary_key=True)
 
     class Meta:
         verbose_name = "Role"
@@ -30,6 +30,7 @@ class Profile(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile',
+        primary_key=True
     )
     company = models.ForeignKey(
         'Company.Company',

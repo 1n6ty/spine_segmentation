@@ -67,6 +67,7 @@ class UserRecentStudiesCRUDTests(APITestCase):
         row = UserRecentStudies.objects.create(
             owner=self.user, study=image.series.study,
             side_polygons=[{'uuid': 'u1', 'id': 'L4', 'points': []}],
+            side_segments=[{'id': 'cervical', 'topId': 'C2', 'bottomId': 'C7'}],
         )
         original_last_accessed = row.last_accessed
 
@@ -76,6 +77,7 @@ class UserRecentStudiesCRUDTests(APITestCase):
         data = response.json()['data']
         self.assertEqual(data['side_sop_instance_uid'], 'SOP-1')
         self.assertEqual(data['side_polygons'], [{'uuid': 'u1', 'id': 'L4', 'points': []}])
+        self.assertEqual(data['side_segments'], [{'id': 'cervical', 'topId': 'C2', 'bottomId': 'C7'}])
         self.assertEqual(data['patient_name'], 'Jane Doe')
 
         row.refresh_from_db()
@@ -193,6 +195,35 @@ class UserRecentStudiesProjectionPatchTests(APITestCase):
         row.refresh_from_db()
         self.assertEqual(row.study.study_instance_uid, 'STUDY-3')
         self.assertEqual(row.side_polygons, [{'uuid': 'u1', 'id': 'L4', 'points': []}])
+
+    def test_patch_updates_segments(self):
+        row = UserRecentStudies.objects.create(owner=self.user)
+
+        response = self.client.patch(
+            f'/api/dcm/recent-studies/{row.pk}/projections/side/',
+            {'segments': [{'id': 'custom', 'topId': 'C4', 'bottomId': 'Th2'}]},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        row.refresh_from_db()
+        self.assertEqual(row.side_segments, [{'id': 'custom', 'topId': 'C4', 'bottomId': 'Th2'}])
+
+    def test_segments_only_patch_leaves_polygons_untouched(self):
+        row = UserRecentStudies.objects.create(
+            owner=self.user, side_polygons=[{'uuid': 'u1', 'id': 'L4', 'points': []}],
+        )
+
+        response = self.client.patch(
+            f'/api/dcm/recent-studies/{row.pk}/projections/side/',
+            {'segments': []},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        row.refresh_from_db()
+        self.assertEqual(row.side_polygons, [{'uuid': 'u1', 'id': 'L4', 'points': []}])
+        self.assertEqual(row.side_segments, [])
 
     def test_polygons_only_patch_leaves_study_untouched(self):
         image = _make_image('SOP-4', 'STUDY-4', 'PAT-4')

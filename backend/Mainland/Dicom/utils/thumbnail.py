@@ -2,8 +2,8 @@ import numpy as np
 import cv2
 from asgiref.sync import sync_to_async
 from django.core.files.base import ContentFile
-from pydicom.pixels import apply_voi_lut
 
+from Dicom.utils.pixels import dicom_to_windowed_float32
 from Dicom.models import DicomImage, DicomThumbnail
 from FileManager.models import CasFile
 from FileManager.utils import build_cas_path, compute_hash
@@ -17,7 +17,7 @@ def _render_thumbnail_jpeg(dcm) -> bytes:
     JPEG -- same fit-and-center math as the frontend's own local preview
     (frontend/src/lib/core/session/session.svelte.ts), so the two look
     identical."""
-    pixel_array = apply_voi_lut(dcm.pixel_array, dcm).astype(np.float32)
+    pixel_array = dicom_to_windowed_float32(dcm)
 
     normalized = pixel_array - pixel_array.min()
     max_val = normalized.max()

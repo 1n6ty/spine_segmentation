@@ -76,7 +76,16 @@
 {#if session}
 	{#if active}
 		<div
-			class="flex cursor-pointer flex-col gap-6 rounded-xl border-2 border-(--primary) bg-(--primary)/5 p-2 text-(--card-foreground) transition-all hover:border-(--primary) hover:shadow-md"
+			onclick={makeActive}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					makeActive();
+				}
+			}}
+			role="button"
+			tabindex="0"
+			class="flex cursor-pointer flex-col gap-6 rounded-xl border-2 border-(--primary) bg-(--primary)/5 p-2 text-(--card-foreground) transition-all outline-none hover:border-(--primary) hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-(--ring)/50"
 		>
 			<div class="flex gap-2">
 				<div class="relative h-26.5 w-16 shrink-0 overflow-hidden rounded bg-gray-900">
@@ -145,7 +154,7 @@
 			}}
 			role="button"
 			tabindex="0"
-			class="flex cursor-pointer flex-col gap-6 rounded-xl border border-(--border) bg-(--card) p-2 text-(--card-foreground) transition-all hover:border-(--primary) hover:shadow-md"
+			class="flex cursor-pointer flex-col gap-6 rounded-xl border border-(--border) bg-(--card) p-2 text-(--card-foreground) transition-all outline-none hover:border-(--primary) hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-(--ring)/50"
 		>
 			<div class="flex gap-2">
 				<div class="relative h-26.5 w-16 shrink-0 overflow-hidden rounded bg-gray-900">

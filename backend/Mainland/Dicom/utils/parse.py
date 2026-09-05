@@ -8,7 +8,11 @@ from django.utils import timezone
 from common.schemas.v1.response import Issue
 from Dicom.models import Patient, Study, Series, DicomImage, DicomFile, Projection
 from Dicom.tasks.segmentation import segment_vertebraes
-from Dicom.utils.constants import DICOM_XRAY_SAGITTAL_ROLE_SLUG
+from Dicom.utils.constants import (
+    DICOM_XRAY_SAGITTAL_ROLE_SLUG,
+    ROLE_SLUG_TO_PROJECTION_SLUG,
+    SEGMENTATION_PIPELINE_VERSION,
+)
 from Dicom.utils.thumbnail import generate_and_store_thumbnail
 from FileManager.models import CasFile, FileRole
 from FileManager.utils import build_cas_path, check_role_max_count
@@ -95,6 +99,86 @@ def get_projection_orientation(ds):
 
 DEFAULT_FILE_ROLE_SLUG = DICOM_XRAY_SAGITTAL_ROLE_SLUG
 
+# SegmentationStatus slugs (seeded by Dicom.management.commands.create_segmentation_statuses):
+# a "settled" result the current pipeline may supersede vs. a run already working the image.
+_STALE_TRIGGER_SLUGS = ('done', 'error')
+_INFLIGHT_SLUGS = ('processing', 'saving')
+
+
+async def _segmentation_is_stale(sop_uid):
+    """True iff this image has a SETTLED segmentation result (done/error) that was
+    produced by a pipeline version other than the current SEGMENTATION_PIPELINE_VERSION.
+
+    The version is compared in Python, not via ``.exclude(...__version=CURRENT)``:
+    Django's ``exclude()`` on a nullable column does NOT match rows where the column
+    IS NULL, and a pre-versioning row (version NULL) is exactly the stale case a
+    re-upload must re-run."""
+    row = (
+        await DicomImage.objects
+        .filter(sop_instance_uid=sop_uid)
+        .select_related('segmentation_status')
+        .afirst()
+    )
+    if row is None or row.segmentation_status_id is None:
+        return False
+    if row.segmentation_status.slug not in _STALE_TRIGGER_SLUGS:
+        return False
+    return row.segmentation_model_version != SEGMENTATION_PIPELINE_VERSION
+
+
+async def _reuse_or_dispatch_segmentation(image, sop_uid, new_file_hash, *, skip_inflight_guard=False):
+    """Borrow an already-``done`` segmentation for byte-identical content that was
+    produced by the CURRENT pipeline version, else queue a fresh ``segment_vertebraes``
+    run. When ``skip_inflight_guard`` is False, a run already ``processing``/``saving``
+    for this image suppresses the dispatch (that run will stamp the current version
+    when it finishes) -- the content-changed caller passes True because genuinely new
+    bytes need a new run regardless of any in-flight run against the old bytes."""
+    reused = (
+        await DicomFile.objects.filter(
+            hash=new_file_hash,
+            image__segmentation_status__slug='done',
+            image__segmentation_model_version=SEGMENTATION_PIPELINE_VERSION,
+        )
+        .exclude(image_id=sop_uid)
+        .select_related('image__segmentation_status')
+        .afirst()
+    )
+
+    if reused is not None:
+        image.reference_points = reused.image.reference_points
+        image.segmentation_status = reused.image.segmentation_status
+        image.segmentation_model_version = reused.image.segmentation_model_version
+        image.segmented_at = reused.image.segmented_at
+        image.segmentation_error = None
+        await image.asave(update_fields=[
+            'reference_points', 'segmentation_status',
+            'segmentation_model_version', 'segmented_at', 'segmentation_error',
+        ])
+        # No broadcast needed -- a client connecting to this SOP instance's SSE
+        # endpoint self-hydrates 'done' + reference_points straight from the DB row
+        # just written (Dicom.v1.views.dcmparse's _segmentation_event_stream), the
+        # same mechanism a real Celery run's own _advance_status() broadcasts rely on.
+        return
+
+    if not skip_inflight_guard:
+        current = (
+            await DicomImage.objects
+            .filter(sop_instance_uid=sop_uid)
+            .select_related('segmentation_status')
+            .afirst()
+        )
+        if (current is not None and current.segmentation_status_id is not None
+                and current.segmentation_status.slug in _INFLIGHT_SLUGS):
+            return
+
+    # No separate "upload accepted" broadcast here -- the Celery task's own first
+    # _advance_status(..., 'processing') call (Dicom.tasks.segmentation) is the sole,
+    # DB-write-then-broadcast source of truth for this image's status. A client
+    # connecting before the task picks up the job just waits on the live SSE tail
+    # for that event, which self-hydration handles correctly on its own.
+    segment_vertebraes.delay(sop_uid)
+
+
 async def parse_and_store_dicom(file_obj, file_role_slug=None):
     """
     Parses an uploaded DICOM file and stores/updates its metadata in the database.
@@ -172,13 +256,16 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
     # 3c. Resolve the caller-declared FileRole (defaulting to sagittal) and enforce its
     # max_count=1-per-Series rule before writing Image -- excluding this SOP Instance
     # UID's own existing row (if any) from the count is what makes re-uploading the
-    # same image a no-op instead of tripping the limit against itself. `projection`
-    # (clinical metadata) is unrelated and always auto-detected from DICOM tags below,
-    # regardless of which role was requested.
-    projection_slug = get_projection_orientation(dcm)
+    # same image a no-op instead of tripping the limit against itself.
+    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
+
+    # `projection` (clinical metadata) is auto-detected from DICOM tags first;
+    # only when those are inconclusive does it fall back to the projection
+    # implied by the declared X-ray role, so segmentation can still route to
+    # the right model instead of erroring on a NULL projection.
+    projection_slug = get_projection_orientation(dcm) or ROLE_SLUG_TO_PROJECTION_SLUG.get(role_slug)
     projection = await Projection.objects.filter(slug=projection_slug).afirst() if projection_slug else None
 
-    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
     role = await FileRole.objects.filter(slug=role_slug).afirst()
     if role is None:
         return Issue(
@@ -220,8 +307,9 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
     )
 
     # CAS-write the file only when its content actually changed -- re-uploading
-    # identical bytes for the same image is a no-op past this point (no redundant
-    # ref_count churn, no redundant segmentation run).
+    # identical bytes for the same image skips the ref_count churn and thumbnail
+    # regen below. Segmentation still re-runs on an identical re-upload if the
+    # stored result came from an older pipeline version (the `elif` further down).
     if content_changed:
         if existing_file_record is not None:
             # Never re-point an existing CasFileMixin row's `.file` at a different
@@ -256,38 +344,23 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
         except Exception:
             _logger.exception(f"Failed to generate thumbnail for {sop_uid}")
 
-        # Reuse an already-*completed* segmentation for this exact content
-        # (e.g. the same physical image re-exported under a different
-        # SOPInstanceUID) instead of re-running the YOLO model -- its output is
-        # a pure function of the pixel bytes, so a fresh run would just
-        # reproduce the same result at real CPU cost. Scoped to `done` only:
-        # borrowing an in-flight or errored run's state would leave this image
-        # stuck, since only the *other* SOP instance's own Celery task ever
-        # advances it further.
-        reused = await DicomFile.objects.filter(
-            hash=new_file_hash, image__segmentation_status__slug='done',
-        ).exclude(image_id=sop_uid).select_related('image__segmentation_status').afirst()
+        # New content -> its stored segmentation result (if any) is definitionally
+        # stale. Borrow a completed result for this exact content produced by the
+        # current pipeline version (e.g. the same physical image re-exported under
+        # a different SOPInstanceUID) instead of re-running the YOLO model, else
+        # queue a run. skip_inflight_guard: genuinely new bytes need a new run even
+        # if a stale run is mid-flight against the old bytes.
+        await _reuse_or_dispatch_segmentation(image, sop_uid, new_file_hash, skip_inflight_guard=True)
 
-        if reused is not None:
-            image.reference_points = reused.image.reference_points
-            image.segmentation_status = reused.image.segmentation_status
-            image.segmentation_error = None
-            await image.asave(update_fields=['reference_points', 'segmentation_status', 'segmentation_error'])
-            # No broadcast needed -- a client connecting to this SOP instance's
-            # SSE endpoint self-hydrates 'done' + reference_points straight
-            # from the DB row just written (Dicom.v1.views.dcmparse's
-            # _segmentation_event_stream), the same mechanism a real Celery
-            # run's own _advance_status() broadcasts rely on.
-        else:
-            # No separate "upload accepted" broadcast here either -- the
-            # Celery task's own first _advance_status(..., 'processing') call
-            # (Dicom.tasks.segmentation) is the sole, DB-write-then-broadcast
-            # source of truth for this image's status. A client connecting
-            # before the task picks up the job just waits on the live SSE tail
-            # for that event, which self-hydration handles correctly on its
-            # own -- an earlier version of this function also fired its own
-            # ad-hoc, DB-unbacked broadcast here, which could show a status the
-            # self-hydration path could never reproduce on reconnect.
-            segment_vertebraes.delay(sop_uid)
+    elif await _segmentation_is_stale(sop_uid):
+        # Byte-identical re-upload: the file is already stored and thumbnailed, but
+        # the stored segmentation result came from an older pipeline version --
+        # re-run and replace it. Same reuse-or-dispatch path, with the in-flight
+        # guard active so an identical re-upload can't pile a duplicate job on a
+        # run that's already going.
+        await _reuse_or_dispatch_segmentation(image, sop_uid, new_file_hash)
+
+    # else: identical bytes, stored result already at the current pipeline version
+    # (or the image was never segmented) -> true no-op.
 
     return patient, study, series, image

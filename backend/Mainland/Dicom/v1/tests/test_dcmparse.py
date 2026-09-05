@@ -6,6 +6,7 @@ import numpy as np
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.utils import timezone
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 from rest_framework.test import APIClient, APITestCase, APITransactionTestCase
@@ -14,6 +15,7 @@ from common.schemas.v1.response import Issue
 from Dicom.models import (
     DicomFile, DicomImage, DicomThumbnail, Patient, Projection, Series, SegmentationStatus, Study,
 )
+from Dicom.utils.constants import SEGMENTATION_PIPELINE_VERSION
 from Dicom.utils.parse import parse_and_store_dicom
 from FileManager.models import CasFile
 
@@ -284,6 +286,11 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         done = SegmentationStatus.objects.create(slug='done')
         original = DicomImage.objects.get(sop_instance_uid='SOP-REUSE-1')
         original.segmentation_status = done
+        # The reuse query only borrows a sibling result stamped with the CURRENT
+        # pipeline version -- a stale-version sibling falls through to a real run
+        # (see test_reuse_query_skips_done_sibling_from_stale_pipeline_version).
+        original.segmentation_model_version = SEGMENTATION_PIPELINE_VERSION
+        original.segmented_at = timezone.now()
         original.reference_points = {
             'vertebraes': [{'name': 'L5', 'points': [[0, 0], [0, 1], [1, 1], [1, 0]]}]
         }
@@ -295,8 +302,12 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         self.assertEqual(self.mock_delay.call_count, 1)
 
         reused = DicomImage.objects.get(sop_instance_uid='SOP-REUSE-2')
+        original.refresh_from_db()
         self.assertEqual(reused.segmentation_status_id, done.pk)
         self.assertEqual(reused.reference_points, original.reference_points)
+        # Provenance is copied verbatim from the borrowed sibling.
+        self.assertEqual(reused.segmentation_model_version, SEGMENTATION_PIPELINE_VERSION)
+        self.assertEqual(reused.segmented_at, original.segmented_at)
 
     def test_does_not_reuse_a_not_yet_completed_segmentation(self):
         # The matching-hash image's segmentation is still in progress (no
@@ -309,6 +320,107 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
 
         self._upload(self._dataset('SOP-PENDING-2', 'STUDY-PENDING-2'), b'still-processing-bytes')
 
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def _mark_segmented(self, sop_uid, slug, version):
+        """Put an image in a settled segmentation state with a given stamped
+        pipeline version, simulating a finished (or failed) Celery run."""
+        status, _ = SegmentationStatus.objects.get_or_create(slug=slug)
+        img = DicomImage.objects.get(sop_instance_uid=sop_uid)
+        img.segmentation_status = status
+        img.segmentation_model_version = version
+        img.segmented_at = timezone.now()
+        img.reference_points = {'vertebraes': [{'name': 'L5', 'points': [[0, 0]]}]}
+        img.save()
+        return img
+
+    def test_identical_reupload_of_stale_done_result_redispatches(self):
+        # Byte-identical re-upload, but the stored `done` result came from an
+        # older pipeline version -> must re-run and replace it.
+        ds = self._dataset('SOP-STALE-DONE', 'STUDY-STALE-DONE')
+        self._upload(ds, b'stale-done-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-STALE-DONE', 'done', 'stale-0')
+        self._upload(ds, b'stale-done-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def test_identical_reupload_of_current_version_done_result_is_noop(self):
+        ds = self._dataset('SOP-FRESH-DONE', 'STUDY-FRESH-DONE')
+        self._upload(ds, b'fresh-done-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-FRESH-DONE', 'done', SEGMENTATION_PIPELINE_VERSION)
+        self._upload(ds, b'fresh-done-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+    def test_identical_reupload_of_stale_error_result_redispatches(self):
+        # A failure left by an older pipeline version (here: NULL) gets one retry
+        # on the next identical re-upload.
+        ds = self._dataset('SOP-STALE-ERR', 'STUDY-STALE-ERR')
+        self._upload(ds, b'stale-err-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-STALE-ERR', 'error', None)
+        self._upload(ds, b'stale-err-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def test_identical_reupload_of_current_version_error_result_is_noop(self):
+        # A failure under the *current* pipeline must not be re-dispatched on
+        # every identical re-upload.
+        ds = self._dataset('SOP-FRESH-ERR', 'STUDY-FRESH-ERR')
+        self._upload(ds, b'fresh-err-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-FRESH-ERR', 'error', SEGMENTATION_PIPELINE_VERSION)
+        self._upload(ds, b'fresh-err-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+    def test_reuse_query_skips_done_sibling_from_stale_pipeline_version(self):
+        # A byte-identical sibling is already `done`, but at an old pipeline
+        # version -> can't be borrowed; the new image gets its own real run.
+        self._upload(self._dataset('SOP-SIB-1', 'STUDY-SIB-1'), b'sibling-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-SIB-1', 'done', 'stale-0')
+        self._upload(self._dataset('SOP-SIB-2', 'STUDY-SIB-2'), b'sibling-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def test_content_changed_redispatches_even_when_run_in_flight(self):
+        # New bytes for an image whose previous run is still in flight must still
+        # queue a fresh run (the content-changed path skips the in-flight guard).
+        ds = self._dataset('SOP-CHG', 'STUDY-CHG')
+        self._upload(ds, b'original-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        self._mark_segmented('SOP-CHG', 'processing', 'stale-0')
+        self._upload(ds, b'different-bytes')
+
+        self.assertEqual(self.mock_delay.call_count, 2)
+
+    def test_inflight_guard_suppresses_duplicate_dispatch_on_stale_path(self):
+        # Direct check of _reuse_or_dispatch_segmentation's in-flight guard: when a
+        # run is already processing/saving, the stale path does not pile on a
+        # second job, but the content-changed caller (skip_inflight_guard=True)
+        # still dispatches.
+        from Dicom.utils.parse import _reuse_or_dispatch_segmentation
+
+        self._upload(self._dataset('SOP-GUARD', 'STUDY-GUARD'), b'guard-bytes')
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        img = self._mark_segmented('SOP-GUARD', 'processing', 'stale-0')
+
+        asyncio.run(_reuse_or_dispatch_segmentation(img, 'SOP-GUARD', 'no-such-hash'))
+        self.assertEqual(self.mock_delay.call_count, 1)
+
+        asyncio.run(_reuse_or_dispatch_segmentation(
+            img, 'SOP-GUARD', 'no-such-hash', skip_inflight_guard=True,
+        ))
         self.assertEqual(self.mock_delay.call_count, 2)
 
     def test_second_distinct_frontal_upload_same_series_is_rejected(self):
@@ -373,6 +485,30 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         file_record = DicomFile.objects.get(image_id='SOP-E2')
         self.assertEqual(file_record.role.slug, 'DICOM_XRAY_SAGITTAL')
 
+    def test_projection_falls_back_to_declared_role_when_tags_inconclusive(self):
+        # DICOM tags can't classify the film (blank ViewPosition, no
+        # PatientOrientation / SeriesDescription), but the uploader filed it
+        # into the sagittal slot -- projection must follow the role rather than
+        # stay NULL, otherwise Dicom.tasks.segmentation refuses to run.
+        ds = self._dataset('SOP-PROJ-FB', 'STUDY-PROJ-FB', view_position='')
+
+        result = self._upload(ds, b'ambiguous-bytes', file_role_slug='DICOM_XRAY_SAGITTAL')
+
+        self.assertNotIsInstance(result, Issue)
+        image = DicomImage.objects.select_related('projection').get(sop_instance_uid='SOP-PROJ-FB')
+        self.assertEqual(image.projection.slug, 'sagittal')
+
+    def test_dicom_tags_win_over_declared_role_for_projection(self):
+        # ViewPosition=LAT is unambiguous -- a mistakenly-frontal role must not
+        # override the actual clinical orientation read off the film.
+        ds = self._dataset('SOP-PROJ-TAG', 'STUDY-PROJ-TAG', view_position='LAT')
+
+        result = self._upload(ds, b'lateral-bytes', file_role_slug='DICOM_XRAY_FRONTAL')
+
+        self.assertNotIsInstance(result, Issue)
+        image = DicomImage.objects.select_related('projection').get(sop_instance_uid='SOP-PROJ-TAG')
+        self.assertEqual(image.projection.slug, 'sagittal')
+
     def test_unknown_file_role_slug_returns_400_issue(self):
         result = self._upload(
             self._dataset('SOP-G', 'STUDY-G'), b'bytes', file_role_slug='NOT_A_REAL_ROLE'
@@ -406,10 +542,15 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         self.assertEqual(self.mock_delay.call_count, 1)
 
         # Simulate the Celery task having completed for the first upload --
-        # segment_vertebraes itself is mocked away in this test entirely.
+        # segment_vertebraes itself is mocked away in this test entirely. Stamp
+        # the current pipeline version too (a real run always does), so the second
+        # identical upload sees an up-to-date result and stays a true no-op rather
+        # than treating a version-NULL row as stale and re-dispatching.
         done = SegmentationStatus.objects.create(slug='done')
         image = DicomImage.objects.get(sop_instance_uid='SOP-DEDUP')
         image.segmentation_status = done
+        image.segmentation_model_version = SEGMENTATION_PIPELINE_VERSION
+        image.segmented_at = timezone.now()
         image.reference_points = {
             'vertebraes': [{'name': 'L5', 'points': [[0, 0], [0, 1], [1, 1], [1, 0]]}]
         }

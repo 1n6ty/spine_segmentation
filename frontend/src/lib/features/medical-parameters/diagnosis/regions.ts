@@ -1,5 +1,6 @@
 import type { Localized } from '$lib/core/i18n/types';
 import { resolve_localized } from '$lib/core/i18n/resolve';
+import type { SegmentDefinition } from '../types';
 
 /**
  * Fixed anatomical regions, matched by vertebra id — not by array position —
@@ -54,5 +55,62 @@ export const REGIONS: RegionDef[] = [
 		ids: ['S1', 'L5', 'L4', 'L3', 'L2', 'L1'],
 		label: resolve_localized('diagnosis.regions.lumbar'),
 		vertebraeLabel: 'L1-S1'
+	}
+];
+
+/**
+ * The measure page's segments tab seeds a brand-new/never-saved session's segment
+ * list with these -- the same 3 ranges as REGIONS, in the id-range shape the
+ * user-manageable segment list uses, so they start out as ordinary (deletable) entries
+ * instead of a hardcoded computed value. See `core/session/session.svelte.ts`.
+ */
+export const DEFAULT_SEGMENT_DEFINITIONS: SegmentDefinition[] = REGIONS.map((region) => ({
+	id: region.id,
+	topId: region.ids.at(-1)!,
+	bottomId: region.ids[0]!
+}));
+
+/**
+ * Sagittal-only sub-split of the thoracic region into 3 clinical sub-arcs
+ * (report tab only — the frontal projection's thoracic region and the
+ * measure tab's default segments, both derived from REGIONS/
+ * DEFAULT_SEGMENT_DEFINITIONS above, are untouched by this).
+ *
+ * Purely additive: not consumed by REGIONS or DEFAULT_SEGMENT_DEFINITIONS,
+ * so it has zero effect on anything but diagnosis-store.svelte.ts's
+ * side-projection thoracic assembly. Ids are ordered inferior->superior,
+ * matching REGIONS' own convention, so match_items_by_ids works unmodified.
+ */
+export type ThoracicSubArcId = 'upper' | 'mid' | 'lower';
+
+export type ThoracicSubRegionDef = {
+	id: string;
+	subArcId: ThoracicSubArcId;
+	ids: string[];
+	label: Localized;
+	vertebraeLabel: string;
+};
+
+export const THORACIC_SUBREGIONS: ThoracicSubRegionDef[] = [
+	{
+		id: 'thoracic-upper',
+		subArcId: 'upper',
+		ids: ['Th5', 'Th4', 'Th3', 'Th2', 'Th1'],
+		label: resolve_localized('diagnosis.regions.thoracicUpper'),
+		vertebraeLabel: 'Th1-Th5'
+	},
+	{
+		id: 'thoracic-mid',
+		subArcId: 'mid',
+		ids: ['Th9', 'Th8', 'Th7', 'Th6'],
+		label: resolve_localized('diagnosis.regions.thoracicMid'),
+		vertebraeLabel: 'Th6-Th9'
+	},
+	{
+		id: 'thoracic-lower',
+		subArcId: 'lower',
+		ids: ['Th12', 'Th11', 'Th10'],
+		label: resolve_localized('diagnosis.regions.thoracicLower'),
+		vertebraeLabel: 'Th10-Th12'
 	}
 ];

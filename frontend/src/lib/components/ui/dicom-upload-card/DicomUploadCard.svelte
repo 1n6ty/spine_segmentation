@@ -12,10 +12,14 @@
 	import { project } from '$lib/core/project.svelte';
 	import { research_url } from '$lib/shared/utils/routing';
 	import type { Projection } from '$lib/features/dicom/types';
+	import LoadingOverlay from '$lib/components/ui/LoadingOverlay.svelte';
 
 	let fileInput: HTMLInputElement;
 	let currentProjection: 'frontal' | 'side';
 	let uploadError = $state<string | null>(null);
+	// The upload+parse round trip happens here, before navigating to the
+	// research -- so the destination page's SessionLoadingGate can't cover it.
+	let uploading = $state(false);
 
 	const handleFileChange = async (event: Event) => {
 		const input = event.target as HTMLInputElement;
@@ -26,6 +30,7 @@
 		if (!file) return;
 
 		uploadError = null;
+		uploading = true;
 
 		try {
 			await project.session.uploadFile(file, currentProjection);
@@ -35,6 +40,8 @@
 			// had even been attempted.
 			uploadError = err instanceof Error ? err.message : String(err);
 			return;
+		} finally {
+			uploading = false;
 		}
 
 		// Always navigate to this research's URL -- tracks it into the
@@ -128,6 +135,10 @@
 	onchange={handleFileChange}
 	class="hidden"
 />
+
+{#if uploading}
+	<LoadingOverlay label={$t('main.DICOM_upload_card.parsing')} />
+{/if}
 
 <div
 	class="bg-card flex flex-col gap-6 rounded-xl border border-(--border) p-6 text-(--card-foreground)"

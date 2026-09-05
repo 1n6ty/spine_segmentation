@@ -105,8 +105,11 @@
 					return;
 				case 'a':
 					e.preventDefault();
-					projectionContainer.tools.selection.replaceWith(
-						project.session.projections[projection].polygons.map((p) => p.uuid)
+					projectionContainer.tools.selection.replaceWithMany(
+						project.session.projections[projection].polygons.map((p) => ({
+							kind: 'vertebra' as const,
+							polygonUuid: p.uuid
+						}))
 					);
 					return;
 				case '0':
@@ -129,6 +132,23 @@
 					projectionContainer.tools.deleteSelected();
 				}
 				return;
+			case 'ArrowUp':
+			case 'ArrowDown':
+			case 'ArrowLeft':
+			case 'ArrowRight': {
+				if (projectionContainer.tools.selection.isEmpty) return;
+				e.preventDefault();
+				const step = e.shiftKey ? 10 : 1;
+				const deltaByKey: Record<string, [number, number]> = {
+					ArrowUp: [0, -step],
+					ArrowDown: [0, step],
+					ArrowLeft: [-step, 0],
+					ArrowRight: [step, 0]
+				};
+				const [dx, dy] = deltaByKey[e.key];
+				projectionContainer.tools.nudgeSelected(dx, dy);
+				return;
+			}
 			case 'Escape':
 				if (projectionContainer.tools.activeToolId === 'draw') {
 					projectionContainer.tools.setActiveTool('select');
@@ -219,7 +239,7 @@
 				ctx,
 				project.session.projections[projection].patient?.study.series.sopInstance.bitmap,
 				project.session.projections[projection].polygons,
-				(poly) => tools.selection.has(poly.uuid),
+				tools.selection.all,
 				tools.draftPoints,
 				nav.view,
 				tools.selectionBox,

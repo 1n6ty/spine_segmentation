@@ -52,9 +52,15 @@ class UserRecentStudies_Item_Schema(UserRecentStudies_Ref_Schema):
     side_polygons: List[Any] = Field(
         default_factory=list, description="Current (possibly manually edited) Polygon[] for the side slot.",
     )
+    side_segments: List[Any] = Field(
+        default_factory=list, description="Current SegmentDefinition[] for the side slot.",
+    )
     frontal_sop_instance_uid: Optional[str] = Field(None, examples=["1.2.840.10008.5.1.4.1.1.7.1.99.887.2"])
     frontal_polygons: List[Any] = Field(
         default_factory=list, description="Current (possibly manually edited) Polygon[] for the frontal slot.",
+    )
+    frontal_segments: List[Any] = Field(
+        default_factory=list, description="Current SegmentDefinition[] for the frontal slot.",
     )
 
     @classmethod
@@ -70,8 +76,10 @@ class UserRecentStudies_Item_Schema(UserRecentStudies_Ref_Schema):
             **ref.model_dump(),
             side_sop_instance_uid=side_sop_instance_uid,
             side_polygons=row.side_polygons or [],
+            side_segments=row.side_segments or [],
             frontal_sop_instance_uid=frontal_sop_instance_uid,
             frontal_polygons=row.frontal_polygons or [],
+            frontal_segments=row.frontal_segments or [],
         )
 
 
@@ -87,6 +95,9 @@ class UserRecentStudies_Projection_PATCH_Schema(BaseModel):
     )
     polygons: Optional[List[Any]] = Field(
         None, description="Replace this slot's current Polygon[] with this value.",
+    )
+    segments: Optional[List[Any]] = Field(
+        None, description="Replace this slot's current SegmentDefinition[] with this value.",
     )
 
 

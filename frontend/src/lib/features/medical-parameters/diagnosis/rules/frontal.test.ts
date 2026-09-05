@@ -3,7 +3,9 @@ import {
 	gradeRegionFrontal,
 	gradeVertebralWedgingFrontal,
 	gradeLateralDisplacement,
-	gradeGCoM
+	gradeGCoM,
+	gradeL5SuperiorEndplateInclinationFrontal,
+	getL5SuperiorEndplateInclinationFrontalRange
 } from './frontal';
 
 describe('gradeRegionFrontal', () => {
@@ -81,5 +83,32 @@ describe('gradeGCoM', () => {
 
 	it('labels positive offset as shifted right', () => {
 		expect(gradeGCoM(80).text['en-US']).toContain('right');
+	});
+});
+
+describe('gradeL5SuperiorEndplateInclinationFrontal', () => {
+	it('is normal within +-89 degrees', () => {
+		expect(gradeL5SuperiorEndplateInclinationFrontal(0).severity).toBe('normal');
+		expect(gradeL5SuperiorEndplateInclinationFrontal(89).severity).toBe('normal');
+	});
+
+	it('flags deviation beyond 89 degrees to the left', () => {
+		const finding = gradeL5SuperiorEndplateInclinationFrontal(-95);
+		expect(finding.severity).toBe('grade1');
+		expect(finding.text['en-US']).toContain('left');
+	});
+
+	it('flags deviation beyond 89 degrees to the right', () => {
+		const finding = gradeL5SuperiorEndplateInclinationFrontal(95);
+		expect(finding.severity).toBe('grade1');
+		expect(finding.text['en-US']).toContain('right');
+	});
+
+	it('range-getter matches the +-89 degree band', () => {
+		expect(getL5SuperiorEndplateInclinationFrontalRange()).toEqual({
+			min: -89,
+			max: 89,
+			center: 0
+		});
 	});
 });

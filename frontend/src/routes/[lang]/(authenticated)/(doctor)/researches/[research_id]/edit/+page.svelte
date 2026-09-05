@@ -2,6 +2,7 @@
 	import { locale, t } from 'svelte-i18n';
 
 	import XrayEditorCard from '$lib/components/ui/editor/EditorCanvas.svelte';
+	import SessionLoadingGate from '$lib/components/ui/sessions/SessionLoadingGate.svelte';
 	import { project } from '$lib/core/project.svelte';
 
 	const instructions: Record<string, string[]> = {
@@ -26,7 +27,7 @@
 	} as const;
 </script>
 
-{#await project.session.loadingPromise then}
+<SessionLoadingGate>
 	<div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
 		{#if project.session.projections.side.patient}
 			<XrayEditorCard projection="side" />
@@ -43,4 +44,4 @@
 			{/each}
 		</ul>
 	</div>
-{/await}
+</SessionLoadingGate>
