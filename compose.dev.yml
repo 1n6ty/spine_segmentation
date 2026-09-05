@@ -66,10 +66,15 @@ x-django-base: &django-base
         ignore:
           - "*/__pycache__/*"
           - "*req*.txt"
-      - action: rebuild
-        path: ./frontend
-        ignore:
-          - "*/node_modules/*"
+      # NOTE: no `./frontend` rebuild rule here. These services only bake in
+      # the built SPA shell (/dist/index.html) at image-build time via the
+      # `frontend-builder` named build context -- they do NOT need to be
+      # recreated when frontend source changes. Rebuilding+recreating `api`
+      # and the one-shot `migration` on every frontend edit also raced the
+      # `depends_on: proxysql: service_healthy` gate (watch's incremental
+      # recreate skips it), which is what surfaced as "proxysql can't be
+      # reached" mid-edit. Frontend changes are now picked up by the
+      # `frontend-builder` and `nginx` watch rules below instead.
 
 services:
   
@@ -160,6 +165,27 @@ services:
       context: ./frontend
     networks:
       - spine-segmentation-net
+    develop:
+      watch:
+        # Rebuilds the SPA (npm run build -> /dist) whenever frontend source
+        # changes, then exits 0 again. `rebuild` here recreates ONLY this
+        # one-shot container -- it does not cascade to services that
+        # `depends_on` it, so nothing that talks to proxysql/redis/es is
+        # touched. `nginx` (below) rebuilds FROM this fresh image to actually
+        # serve the new hashed assets; `api` keeps serving its existing
+        # index.html shell until the stack is rebuilt (that shell only
+        # changes when frontend/src/app.html / the Vite HTML transform does).
+        - action: rebuild
+          path: ./frontend
+          ignore:
+            - node_modules/
+            - dist/
+            - .svelte-kit/
+            - .cache/
+            - coverage/
+            - test-results/
+            - e2e/live/.manifest/
+            - "*.timestamp-*"
 
   nginx:
     build:
@@ -185,9 +211,20 @@ services:
       start_period: 10s
     develop:
       watch:
+        # Serves the built SPA assets (/dist/static) + collectstatic output.
+        # Rebuilds FROM the `frontend-builder` image, so an edit rebuilds
+        # frontend-builder first (its own watch rule above / this build's
+        # `service:` context) and then nginx on top of it.
         - action: rebuild
           path: ./frontend
           ignore:
-            - "*/node_modules/*"
+            - node_modules/
+            - dist/
+            - .svelte-kit/
+            - .cache/
+            - coverage/
+            - test-results/
+            - e2e/live/.manifest/
+            - "*.timestamp-*"
         - action: rebuild
           path: ./backend/Mainland/static
