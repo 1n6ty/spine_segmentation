@@ -6,10 +6,9 @@
 	let { children } = $props();
 
 	/** Last research_id this effect actually synced against -- guards against
-	 * re-running when project.session changes for a reason that has nothing
-	 * to do with the URL (e.g. Manager.svelte's "New research" button, which
-	 * resets to an empty session but deliberately never navigates: per
-	 * product decision, that action leaves the URL exactly where it was). */
+	 * re-running when project.session changes for a reason that has nothing to
+	 * do with the URL (e.g. DicomUploadCard.svelte's "Clear" button, which
+	 * resets to an empty session without navigating away on its own). */
 	let lastSyncedId: string | undefined;
 
 	$effect(() => {
@@ -24,10 +23,7 @@
 		// round trip resolves; requestedUID is set synchronously in the
 		// constructor, so it's what makes the immediately-after-resetSession()
 		// case (sessionUID still '') recognizable without an extra fetch.
-		if (
-			project.session.sessionUID === researchId ||
-			project.session.requestedUID === researchId
-		) {
+		if (project.session.sessionUID === researchId || project.session.requestedUID === researchId) {
 			return;
 		}
 

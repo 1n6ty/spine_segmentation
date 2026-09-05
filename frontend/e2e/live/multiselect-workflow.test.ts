@@ -98,7 +98,11 @@ test('multi-vertebra selection & bulk actions', async ({ page }) => {
 	await page.keyboard.press('Delete');
 	await expect(deleteSelectedBtn).toBeDisabled();
 	await expect(undoBtn).toBeEnabled();
-	await undoBtn.click();
+	// Deliberately NOT undone here (Undo restoring a deletion is already covered by the
+	// mouse-delete case above) -- the canvas is left empty on purpose, since the draw-tool
+	// step below needs room under EditorCanvas.svelte's MAX_VERTEBRAE=24 cap. Autofill
+	// against a fully-detected fixture (see SIDE_FIXTURE) fills all 24 slots, so undoing
+	// this delete back to a full spine would leave nothing to add.
 
 	// --- Pan tool: switching to it and dragging pans the view without error ---
 	await panBtn.click();

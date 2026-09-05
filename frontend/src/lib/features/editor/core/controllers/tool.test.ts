@@ -58,11 +58,29 @@ beforeEach(async () => {
 });
 
 describe('ToolController.setActiveTool', () => {
+	// A bigger polygon than the shared `square()` helper's (h=10) -- at that size, a center
+	// click sits within BOTH the central-line control-point hit radius (12px) and the new side
+	// hit radius (10px), so it's ambiguous which of vertex/side/central-line/body wins. These
+	// tests care about a plain, unambiguous whole-vertebra body click.
+	function big_square(id: string, cx: number, cy: number): Polygon {
+		const h = 40;
+		return {
+			uuid: id,
+			id,
+			points: [
+				{ x: cx - h, y: cy + h },
+				{ x: cx - h, y: cy - h },
+				{ x: cx + h, y: cy - h },
+				{ x: cx + h, y: cy + h }
+			]
+		};
+	}
+
 	it('switches the active tool and clears the selection', () => {
-		const poly = square('C2', 100, 100);
+		const poly = big_square('C2', 100, 100);
 		session.projections.side.polygons = [poly];
 		container.tools.handlePointerDown(fake_pointer_event({ clientX: 100, clientY: 100 }));
-		expect(container.tools.selection.has(poly.uuid)).toBe(true);
+		expect(container.tools.selection.has({ kind: 'vertebra', polygonUuid: poly.uuid })).toBe(true);
 
 		container.tools.setActiveTool('draw');
 
@@ -71,13 +89,13 @@ describe('ToolController.setActiveTool', () => {
 	});
 
 	it('is a no-op when switching to the already-active tool (selection is preserved)', () => {
-		const poly = square('C2', 100, 100);
+		const poly = big_square('C2', 100, 100);
 		session.projections.side.polygons = [poly];
 		container.tools.handlePointerDown(fake_pointer_event({ clientX: 100, clientY: 100 }));
 
 		container.tools.setActiveTool('select');
 
-		expect(container.tools.selection.has(poly.uuid)).toBe(true);
+		expect(container.tools.selection.has({ kind: 'vertebra', polygonUuid: poly.uuid })).toBe(true);
 	});
 
 	it('switching away from draw resets any in-progress draft points', () => {
@@ -150,7 +168,12 @@ describe('ToolController.deleteSelected', () => {
 			square('e', 200, 0)
 		];
 		session.projections.side.polygons = polys;
-		container.tools.selection.replaceWith([polys[1].uuid, polys[2].uuid, polys[4].uuid]);
+		container.tools.selection.replaceWithMany(
+			[polys[1], polys[2], polys[4]].map((p) => ({
+				kind: 'vertebra' as const,
+				polygonUuid: p.uuid
+			}))
+		);
 
 		const history_push = vi.spyOn(container.tools.history, 'push');
 		container.tools.deleteSelected();
@@ -164,7 +187,7 @@ describe('ToolController.deleteSelected', () => {
 	it('a single-item selection deletes exactly that one polygon (parity with single delete)', () => {
 		const c2 = square('C2', 0, 0);
 		session.projections.side.polygons = [c2];
-		container.tools.selection.selectOnly(c2.uuid);
+		container.tools.selection.selectOnly({ kind: 'vertebra', polygonUuid: c2.uuid });
 
 		container.tools.deleteSelected();
 
@@ -205,8 +228,12 @@ describe('ToolController box-select (end-to-end through the controller)', () => 
 
 		container.tools.handlePointerUp(fake_pointer_event({ clientX: 50, clientY: 50 }));
 
-		expect(container.tools.selection.has(inside.uuid)).toBe(true);
-		expect(container.tools.selection.has(outside.uuid)).toBe(false);
+		expect(container.tools.selection.has({ kind: 'vertebra', polygonUuid: inside.uuid })).toBe(
+			true
+		);
+		expect(container.tools.selection.has({ kind: 'vertebra', polygonUuid: outside.uuid })).toBe(
+			false
+		);
 		expect(container.tools.selectionBox).toBeNull();
 	});
 });
@@ -222,12 +249,17 @@ describe('ToolController draw flow (end-to-end through the controller)', () => {
 
 		expect(session.projections.side.polygons).toHaveLength(1);
 		expect(container.tools.activeToolId).toBe('select');
-		expect(container.tools.selection.has(session.projections.side.polygons[0].uuid)).toBe(true);
+		expect(
+			container.tools.selection.has({
+				kind: 'vertebra',
+				polygonUuid: session.projections.side.polygons[0].uuid
+			})
+		).toBe(true);
 	});
 });
 
 describe('ToolController vertex-drag flow (end-to-end through the controller)', () => {
-	it('drags a vertex, then reorders/restores selection by uuid on release', () => {
+	it('drags a single point (selecting only that point, not the whole vertebra), then reorders/saves on release', () => {
 		const poly = square('C2', 100, 100);
 		session.projections.side.polygons = [poly];
 		const target = new FakeElement();
@@ -241,15 +273,16 @@ describe('ToolController vertex-drag flow (end-to-end through the controller)', 
 
 		expect(target.releasePointerCapture).toHaveBeenCalled();
 		expect(session.projections.side.polygons[0].points).toContainEqual({ x: 200, y: 210 });
-		expect(container.tools.selection.has(poly.uuid)).toBe(true);
+		expect(
+			container.tools.selection.has({ kind: 'point', polygonUuid: poly.uuid, pointIndex: 0 })
+		).toBe(true);
 	});
 });
 
 describe('ToolController central-line integration (Mode 1, end-to-end through the controller)', () => {
-	// A single vertebra's 2 midpoints are both spine-outermost and dropped from the structure
-	// entirely (see `computeCentralPath`), so these tests need 2 vertebrae. With `c2` first and
-	// `c3` second in the array, only c2's TOP-plate midpoint (100, 90) and c3's BOTTOM-plate
-	// midpoint (100, 150) are interior/part of the curve.
+	// With `c2` first and `c3` second in the array, control points are: c2 bottom (100, 110),
+	// c2 top (100, 90), c3 bottom (100, 150), c3 top (100, 130) -- every plate midpoint is
+	// part of the curve and hittable, including the spine's outermost points.
 	function two_vertebrae() {
 		return [square('C2', 100, 100), square('C3', 100, 140)];
 	}
@@ -310,13 +343,13 @@ describe('ToolController central-line integration (Mode 1, end-to-end through th
 		expect(container.tools.draftPoints).toHaveLength(1);
 	});
 
-	it('never hits the spine-outermost points -- they are not part of the structure at all', () => {
+	it('also hits the spine-outermost points -- they are part of the structure now', () => {
 		const [c2, c3] = two_vertebrae();
 		session.projections.side.polygons = [c2, c3];
 
 		// c2's bottom-plate midpoint (100, 110) is the spine's outermost bottom point.
 		container.tools.handlePointerDown(fake_pointer_event({ clientX: 100, clientY: 110 }));
-		expect(container.centralLine.isDragging).toBe(false);
+		expect(container.centralLine.isDragging).toBe(true);
 	});
 });
 
@@ -326,7 +359,7 @@ describe('ToolController.clear', () => {
 		session.projections.frontal.polygons = [square('C2', 0, 0)];
 		container.tools.setActiveTool('draw');
 		container.tools.handlePointerDown(fake_pointer_event({ clientX: 1, clientY: 1 }));
-		container.tools.selection.selectOnly('C2');
+		container.tools.selection.selectOnly({ kind: 'vertebra', polygonUuid: 'C2' });
 
 		container.tools.clear();
 

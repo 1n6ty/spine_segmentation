@@ -87,6 +87,16 @@ class DicomImage(models.Model):
     segmentation_status = models.ForeignKey(SegmentationStatus, on_delete=models.PROTECT, null=True, blank=True, related_name='dicom_images')
     segmentation_error = models.TextField(null=True, blank=True)
 
+    # Provenance for `reference_points`, written only by Dicom.tasks.segmentation
+    # (and copied verbatim by Dicom.utils.parse's hash-reuse branch) -- never from
+    # DICOM-tag metadata. `segmentation_model_version` holds the
+    # SEGMENTATION_PIPELINE_VERSION that produced the current result; NULL means
+    # pre-versioning / never run, and is treated as stale so the next
+    # /api/dcm/parse/ re-runs the pipeline. `segmented_at` is the wall-clock time
+    # the pipeline last wrote this row (set explicitly, not auto_now).
+    segmentation_model_version = models.CharField(max_length=64, null=True, blank=True)
+    segmented_at = models.DateTimeField(null=True, blank=True)
+
     # Image Metadata
     rows = models.IntegerField(null=True, blank=True)
     cols = models.IntegerField(null=True, blank=True)
@@ -185,6 +195,12 @@ class UserRecentStudies(models.Model):
     so two different users annotating the same underlying image never clobber
     each other, and so the AI baseline stays recoverable on demand.
 
+    side_segments/frontal_segments hold the frontend's user-managed measurement
+    segment list for that projection, as SegmentDefinition[] JSON
+    (`{id, topId, bottomId}` -- a vertebra id range, not resolved polygons).
+    Independent per projection, same as polygons: a segment added/deleted on
+    the side view has no effect on the frontal view's list.
+
     No thumbnail field here -- the session's preview is derived at read time
     from its side (falling back to frontal) DicomImage's own DicomThumbnail
     (see Dicom/v1/utils/session_images.py), the same way side/frontal
@@ -196,6 +212,8 @@ class UserRecentStudies(models.Model):
     study = models.ForeignKey(Study, on_delete=models.SET_NULL, null=True, blank=True, related_name='recent_studies')
     side_polygons = models.JSONField(default=list, blank=True)
     frontal_polygons = models.JSONField(default=list, blank=True)
+    side_segments = models.JSONField(default=list, blank=True)
+    frontal_segments = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     last_accessed = models.DateTimeField(auto_now=True)

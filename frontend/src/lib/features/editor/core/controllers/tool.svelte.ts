@@ -1,10 +1,11 @@
+import { SvelteSet } from 'svelte/reactivity';
 import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
-import { aabb_of_points, distance, screen_to_world } from '$lib/shared/geometry/geometry';
-import { getPointAndPolygonUnderCursor } from '../../logic/selection';
+import { distance, screen_to_world } from '$lib/shared/geometry/geometry';
+import { getEntityUnderCursor, getPointAndPolygonUnderCursor } from '../../logic/selection';
 import { orderAndName } from '../../logic/orderer';
 import { HistoryController } from './history.svelte';
 import type { InstanceContainer } from '../instance-container.svelte';
-import { SelectionState } from '../selection-state.svelte';
+import { PolygonSelectionState, pointKeysOf } from '../selection-state.svelte';
 import { SelectTool } from '../tools/select-tool.svelte';
 import { DrawTool } from '../tools/draw-tool.svelte';
 import { PanTool } from '../tools/pan-tool.svelte';
@@ -12,20 +13,25 @@ import type { CursorStyle, Tool, ToolContext, ToolId } from '../tools/tool.type'
 
 const POINTS_PER_VERTEBRA = 4;
 const MIDDLE_MOUSE_BUTTON = 1;
+/** Slightly smaller than the vertex hit radius (12px) so a click near a corner still prefers the
+ * vertex over the edge, but large enough to feel forgiving now that the side band straddles each
+ * edge symmetrically (in and out of the polygon body) rather than only its inward half -- see
+ * `getEntityUnderCursor`'s doc comment. */
+const SIDE_HIT_RADIUS_PX = 10;
 
 /**
- * Polygon-concrete orchestrator: composes the generic tools + a `SelectionState<Polygon>` +
+ * Polygon-concrete orchestrator: composes the tools + a `PolygonSelectionState` +
  * `HistoryController`, owns tool-switching, and is the single pointer-dispatch entry point.
- * Deliberately not generic itself -- the app has exactly one entity type today, and pushing
- * genericity through this layer too would be overbuilding; genericity lives one level down, in
- * `tools/` and `SelectionState`.
+ * Deliberately not generic itself -- the app has exactly one entity type today. `SelectTool` is
+ * now Polygon-concrete too (side/point selection is inherently vertebra-shaped); `DrawTool`/
+ * `PanTool` remain generic since they never touch points/sides at all.
  */
 export class ToolController {
 	activeToolId = $state<ToolId>('select');
-	selection = new SelectionState<Polygon>();
+	selection = new PolygonSelectionState();
 	history: HistoryController;
 
-	private selectTool = new SelectTool<Polygon>();
+	private selectTool = new SelectTool();
 	private drawTool = new DrawTool<Polygon>(POINTS_PER_VERTEBRA);
 	private panTool = new PanTool<Polygon>();
 	private tools: Record<ToolId, Tool<Polygon>>;
@@ -132,19 +138,45 @@ export class ToolController {
 		this.activeTool.onPointerUp(e, this.buildContext());
 	}
 
+	/** If any part of a vertebra is selected -- itself, a side, or a single point -- Delete
+	 * removes the entire vertebra. No partial-polygon deletion. */
 	deleteSelected = (): void => {
 		if (this.selection.isEmpty) return;
 
 		this.history.push();
 
+		const touchedUuids = new SvelteSet(this.selection.all.map((entry) => entry.polygonUuid));
+
 		const { projection } = this.parent;
 		this.parent.session.projections[projection].polygons = orderAndName(
-			this.parent.session.projections[projection].polygons.filter(
-				(p) => !this.selection.has(p.uuid)
-			)
+			this.parent.session.projections[projection].polygons.filter((p) => !touchedUuids.has(p.uuid))
 		);
 
 		this.selection.clear();
+		this.parent.session.requestSave();
+	};
+
+	/** Arrow-key nudge: translates every point referenced by the current selection (at whatever
+	 * mix of vertebra/side/point granularity) by `(dx, dy)` world units. One history entry per
+	 * keypress, not coalesced -- matches `deleteSelected`'s one-push-per-discrete-action
+	 * convention. No-op with an empty selection. */
+	nudgeSelected = (dx: number, dy: number): void => {
+		if (this.selection.isEmpty) return;
+
+		this.history.push();
+
+		const { projection } = this.parent;
+		const polygons = this.parent.session.projections[projection].polygons;
+		const keys = pointKeysOf(this.selection.all);
+
+		for (const { polygonUuid, pointIndex } of keys) {
+			const poly = polygons.find((p) => p.uuid === polygonUuid);
+			if (!poly) continue;
+			const p = poly.points[pointIndex];
+			poly.points[pointIndex] = { x: p.x + dx, y: p.y + dy };
+		}
+
+		this.parent.session.projections[projection].polygons = orderAndName(polygons);
 		this.parent.session.requestSave();
 	};
 
@@ -192,16 +224,16 @@ export class ToolController {
 			history: this.history,
 			viewport: this.parent.nav,
 			worldPointFromEvent: (e) => this.worldPointFromEvent(e),
-			hitTest: (worldPoint) => {
+			hitTestEntity: (worldPoint) => {
 				const worldHitRadius = 12 / nav.view.scale;
-				const hit = getPointAndPolygonUnderCursor(
+				const worldSideHitRadius = SIDE_HIT_RADIUS_PX / nav.view.scale;
+				return getEntityUnderCursor(
 					worldPoint,
 					this.parent.session.projections[projection].polygons,
-					worldHitRadius
+					worldHitRadius,
+					worldSideHitRadius
 				);
-				return { entity: hit.polygon, pointIndex: hit.indexInPolygon };
 			},
-			boundsOf: (poly) => aabb_of_points(poly.points),
 			createEntity: (points) => ({ uuid: crypto.randomUUID(), id: '', points: [...points] }),
 			setEntityPoint: (poly, i, p) => {
 				poly.points[i] = { ...p };

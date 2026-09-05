@@ -38,8 +38,8 @@ async function* empty_stream() {
 	// uploadFile's background seedInitialAiPolygons() just ends quietly.
 }
 
-const { get, post, post_json, patch, patch_json, parseDicom, stream_segmentation_events } = vi.hoisted(
-	() => ({
+const { get, post, post_json, patch, patch_json, parseDicom, stream_segmentation_events } =
+	vi.hoisted(() => ({
 		// Sane default so registry.svelte's eager, constructor-time refresh()
 		// (fired the moment that module is first imported, via session.svelte's
 		// own import of it -- before any beforeEach() has run) doesn't crash on
@@ -51,8 +51,7 @@ const { get, post, post_json, patch, patch_json, parseDicom, stream_segmentation
 		patch_json: vi.fn(),
 		parseDicom: vi.fn(),
 		stream_segmentation_events: vi.fn()
-	})
-);
+	}));
 
 vi.mock('$lib/core/network/client', () => ({ get, post, post_json, patch, patch_json }));
 vi.mock('$lib/core/network/segmentation-events', () => ({ stream_segmentation_events }));
@@ -107,6 +106,7 @@ async function flush_microtasks() {
 
 import { SessionService } from './session.svelte';
 import { registry } from './registry.svelte';
+import { DEFAULT_SEGMENT_DEFINITIONS } from '$lib/features/medical-parameters/diagnosis/regions';
 
 function fake_dataset(string_overrides: Record<string, string> = {}) {
 	const strings: Record<string, string> = {
@@ -182,6 +182,43 @@ describe('SessionService construction', () => {
 		expect(session.projections.side.patient?.patientUID).toBe('PID1');
 		expect(session.projections.frontal.sopInstanceUid).toBe('');
 		expect(session.projections.frontal.patient).toBeNull();
+	});
+
+	it('restores a stored session with previously-saved segments verbatim', async () => {
+		const savedSegments = [{ id: 'custom', topId: 'C4', bottomId: 'Th2' }];
+		mock_get_routes({
+			id: 1,
+			side_sop_instance_uid: 'SOP1',
+			side_polygons: [],
+			side_segments: savedSegments,
+			frontal_sop_instance_uid: null,
+			frontal_polygons: [],
+			frontal_segments: []
+		});
+		parseDicom.mockReturnValue(fake_dataset());
+
+		const session = new SessionService('1');
+		await session.loadingPromise;
+
+		expect(session.projections.side.segments).toEqual(savedSegments);
+	});
+
+	it('seeds the 3 default segment definitions when a restored slot never saved any (empty array)', async () => {
+		mock_get_routes({
+			id: 1,
+			side_sop_instance_uid: 'SOP1',
+			side_polygons: [],
+			side_segments: [],
+			frontal_sop_instance_uid: null,
+			frontal_polygons: [],
+			frontal_segments: []
+		});
+		parseDicom.mockReturnValue(fake_dataset());
+
+		const session = new SessionService('1');
+		await session.loadingPromise;
+
+		expect(session.projections.side.segments).toEqual(DEFAULT_SEGMENT_DEFINITIONS);
 	});
 
 	it("throws (rejecting loadingPromise) when an explicit, known session id isn't found", async () => {
@@ -263,9 +300,9 @@ describe('SessionService.uploadFile', () => {
 
 	it('rejects a frontal upload whose Series differs from the already-attached side image, without any network call', async () => {
 		post_json.mockResolvedValue({ data: { id: 7 } });
-		parseDicom.mockReturnValueOnce(fake_dataset()).mockReturnValueOnce(
-			fake_dataset({ x0020000e: 'SERIES-OTHER', x00080018: 'SOP-OTHER' })
-		);
+		parseDicom
+			.mockReturnValueOnce(fake_dataset())
+			.mockReturnValueOnce(fake_dataset({ x0020000e: 'SERIES-OTHER', x00080018: 'SOP-OTHER' }));
 
 		const session = new SessionService(null);
 		await session.loadingPromise;
@@ -283,17 +320,15 @@ describe('SessionService.uploadFile', () => {
 
 	it('allows a frontal upload from the same Series as the already-attached side image', async () => {
 		post_json.mockResolvedValue({ data: { id: 7 } });
-		parseDicom.mockReturnValueOnce(fake_dataset()).mockReturnValueOnce(
-			fake_dataset({ x00080018: 'SOP-FRONTAL' })
-		);
+		parseDicom
+			.mockReturnValueOnce(fake_dataset())
+			.mockReturnValueOnce(fake_dataset({ x00080018: 'SOP-FRONTAL' }));
 
 		const session = new SessionService(null);
 		await session.loadingPromise;
 		await session.uploadFile(new File(['a'], 'a.dcm'), 'side');
 
-		await expect(
-			session.uploadFile(new File(['b'], 'b.dcm'), 'frontal')
-		).resolves.toBeUndefined();
+		await expect(session.uploadFile(new File(['b'], 'b.dcm'), 'frontal')).resolves.toBeUndefined();
 		expect(session.projections.frontal.sopInstanceUid).toBe('SOP-FRONTAL');
 	});
 
@@ -316,7 +351,19 @@ describe('SessionService.uploadFile', () => {
 		async function* done_stream() {
 			yield {
 				status: 'done',
-				ref_points: { vertebraes: [{ name: 'L5', points: [[0, 0], [0, 1], [1, 1], [1, 0]] }] }
+				ref_points: {
+					vertebraes: [
+						{
+							name: 'L5',
+							points: [
+								[0, 0],
+								[0, 1],
+								[1, 1],
+								[1, 0]
+							]
+						}
+					]
+				}
 			};
 		}
 		stream_segmentation_events.mockReturnValue(done_stream());
@@ -356,7 +403,8 @@ describe('SessionService.requestSave', () => {
 			await vi.advanceTimersByTimeAsync(1);
 
 			expect(patch_json).toHaveBeenCalledWith('/api/dcm/recent-studies/7/projections/side/', {
-				polygons: [{ uuid: 'u1', id: 'L4', points: [] }]
+				polygons: [{ uuid: 'u1', id: 'L4', points: [] }],
+				segments: DEFAULT_SEGMENT_DEFINITIONS
 			});
 			// frontal slot has no sopInstanceUid yet -- never PATCHed.
 			expect(patch_json).not.toHaveBeenCalledWith(
@@ -397,7 +445,8 @@ describe('SessionService.requestSave', () => {
 
 			expect(patch_json).toHaveBeenCalledTimes(1);
 			expect(patch_json).toHaveBeenCalledWith('/api/dcm/recent-studies/7/projections/side/', {
-				polygons: [{ uuid: 'u3', id: 'L3', points: [] }]
+				polygons: [{ uuid: 'u3', id: 'L3', points: [] }],
+				segments: DEFAULT_SEGMENT_DEFINITIONS
 			});
 		} finally {
 			vi.useRealTimers();

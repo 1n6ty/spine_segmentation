@@ -1,31 +1,48 @@
 import { project } from '$lib/core/project.svelte';
+import {
+	expand_vertebra_id_range,
+	sort_segments_by_vertebra
+} from '$lib/shared/anatomy/segment-range';
 import { getGapParams } from './calculators/gaps';
 import { getSegmentParams } from './calculators/segments';
 import { getSpineParams } from './calculators/spine';
 import { getVertebraeParams } from './calculators/vertebrae';
-import { REGIONS, match_items_by_ids } from './diagnosis/regions';
-import type { Segment, Vertebrae } from './types';
+import { match_items_by_ids } from './diagnosis/regions';
+import type { SegmentDefinition, Vertebrae } from './types';
 
 /**
- * 3 standard segments shown on the `measure` page, gated INDEPENDENTLY of each
- * other and of the full 24-vertebra spine: each one appears as soon as its own
- * vertebrae are present, by matching `id` (not array position/index). Reuses
- * `regions.ts`'s `REGIONS` id lists — the report's diagnosis engine gates on
- * the full 24-vertebra spine before considering any region, but the underlying
- * anatomical groupings (and their id lists, including lumbar = L1-S1) are the
- * same ones used here.
+ * Resolves a projection's user-managed `SegmentDefinition[]` (persisted id-ranges)
+ * against its live polygons, gated INDEPENDENTLY per definition: a definition only
+ * appears once every vertebra in its range is annotated, by matching `id` (not array
+ * position/index) — same gating principle the report's diagnosis engine uses via
+ * `match_items_by_ids`.
  *
- * Caveat: this relies on `editor/logic/orderer.ts`'s naming being correct,
- * which itself assumes vertebrae are annotated contiguously from S1 upward.
- * Annotating an isolated region with nothing below it (e.g. only cervical,
- * with no thoracic/lumbar/sacral vertebrae at all) will mis-name the
- * bottommost one "S1" rather than recognizing it as cervical — a limitation
- * of the naming algorithm itself, not of this gating logic.
+ * Always returns definitions pre-sorted by anatomical position (superior first) —
+ * this is the "sorted for display" step: it re-sorts on every read rather than
+ * relying on the underlying list's insertion order, so a newly added segment lands in
+ * its canonically sorted position regardless of where it was inserted. Pairs each
+ * resolved polygon list with its originating definition's `id` (needed by the table's
+ * delete action) in the same pass, rather than zipping two independently-filtered
+ * arrays back together afterwards.
+ *
+ * Caveat: this relies on `editor/logic/orderer.ts`'s naming being correct, which
+ * itself assumes vertebrae are annotated contiguously from S1 upward. Annotating an
+ * isolated region with nothing below it (e.g. only cervical, with no
+ * thoracic/lumbar/sacral vertebrae at all) will mis-name the bottommost one "S1"
+ * rather than recognizing it as cervical — a limitation of the naming algorithm
+ * itself, not of this resolution logic.
  */
-function getFixedSegments(polygons: Vertebrae[]): Segment[] {
-	return REGIONS.map((region) => match_items_by_ids(polygons, region.ids)).filter(
-		(s): s is Vertebrae[] => s !== null
-	);
+function resolve_segments(
+	polygons: Vertebrae[],
+	definitions: SegmentDefinition[]
+): { definitionId: string; polygons: Vertebrae[] }[] {
+	return sort_segments_by_vertebra(definitions)
+		.map((def) => {
+			const ids = expand_vertebra_id_range(def.topId, def.bottomId);
+			const matched = ids ? match_items_by_ids(polygons, ids) : null;
+			return matched ? { definitionId: def.id, polygons: matched } : null;
+		})
+		.filter((r): r is { definitionId: string; polygons: Vertebrae[] } => r !== null);
 }
 
 function make_projection_structures(projection: 'side' | 'frontal') {
@@ -41,7 +58,10 @@ function make_projection_structures(projection: 'side' | 'frontal') {
 			}));
 		},
 		get segments() {
-			return getFixedSegments(project.session.projections[projection].polygons);
+			return resolve_segments(
+				project.session.projections[projection].polygons,
+				project.session.projections[projection].segments
+			);
 		}
 	};
 }
@@ -69,7 +89,10 @@ export const params = $state({
 		return {
 			vertebrae: structures[projection].vertebrae.map((v) => getVertebraeParams(projection, v, mm)),
 			gaps: structures[projection].gaps.map((g) => getGapParams(projection, g, mm)),
-			segments: structures[projection].segments.map((s) => getSegmentParams(projection, s, mm)),
+			segments: structures[projection].segments.map((r) => ({
+				...getSegmentParams(projection, r.polygons, mm),
+				definitionId: r.definitionId
+			})),
 			overall: getSpineParams(projection, structures[projection].vertebrae, mm)
 		};
 	}

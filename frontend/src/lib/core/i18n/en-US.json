@@ -19,7 +19,8 @@
 			"p_under_button": "Upload files in DICOM format by clicking one of the buttons above.",
 			"p_under_button_accepted": "All files uploaded. Clear or create a new session to upload new files.",
 			"clear_session": "Clear Session",
-			"upload_failed": "Upload failed"
+			"upload_failed": "Upload failed",
+			"parsing": "Uploading and parsing DICOM..."
 		},
 		"welcome_h2": "Welcome to Spine Segmentation project",
 		"p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
@@ -114,7 +115,12 @@
 		"head": "Part",
 		"one": "part",
 		"plural_1": "parts",
-		"plural_2": "parts"
+		"plural_2": "parts",
+		"add": "Add segment",
+		"modal_title": "Select vertebra range",
+		"select_range_instructions": "Drag the handles along the spine, or click a starting vertebra and Shift+click an ending vertebra to select a contiguous range.",
+		"create": "Create segment",
+		"not_enough_vertebrae": "Add at least 2 annotated vertebrae on this projection before creating a segment."
 	},
 	"parameters": {
 		"linear": "Linear Parameters",
@@ -136,7 +142,8 @@
 		"head": "Researches",
 		"active": "active",
 		"delete_all": "Clear all",
-		"create_new": "New research"
+		"create_new": "New research",
+		"loading": "Loading research..."
 	},
 	"not_found": "Not found",
 	"not_enough": "Not enough data",

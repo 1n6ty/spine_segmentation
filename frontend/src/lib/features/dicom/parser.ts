@@ -34,6 +34,19 @@ export function parse_dicom_date(dicom_date: string | null | undefined): Date | 
 	}
 }
 
+/**
+ * Parses a DICOM DS (decimal string) element that may be multi-valued
+ * (backslash-separated, e.g. multiple windowing presets on WindowCenter/
+ * WindowWidth). dataSet.string() returns the raw backslash-joined string for
+ * these, and Number() on that is NaN -- take the first value, matching the
+ * backend's get_dcm_value handling of pydicom.multival.MultiValue.
+ */
+function parse_first_ds_value(raw: string | undefined, fallback: number): number {
+	if (!raw) return fallback;
+	const first = Number(raw.split('\\')[0]);
+	return Number.isNaN(first) ? fallback : first;
+}
+
 function create_pixel_array(
 	buffer: ArrayBuffer,
 	is_signed: boolean,
@@ -82,8 +95,8 @@ export function extract_dicom_data(dataSet: any) {
 		cols: dataSet.uint16('x00280011'),
 		slope: Number(dataSet.string('x00281053') || 1),
 		intercept: Number(dataSet.string('x00281052') || 0),
-		windowCenter: Number(dataSet.string('x00281050') || 0),
-		windowWidth: Number(dataSet.string('x00281051') || 0),
+		windowCenter: parse_first_ds_value(dataSet.string('x00281050'), 0),
+		windowWidth: parse_first_ds_value(dataSet.string('x00281051'), 0),
 		isSigned: is_signed,
 		mmPerPixel: spacing[0] || 1.0
 	};

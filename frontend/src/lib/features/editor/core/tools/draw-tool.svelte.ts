@@ -48,7 +48,7 @@ export class DrawTool<TEntity extends { uuid: string }> implements Tool<TEntity>
 		ctx.requestSave();
 
 		this.draftPoints = [];
-		ctx.selection.selectOnly(entity.uuid);
+		ctx.selection.selectOnly({ kind: 'vertebra', polygonUuid: entity.uuid });
 		ctx.requestToolSwitch('select');
 	}
 }

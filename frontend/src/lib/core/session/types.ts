@@ -1,9 +1,11 @@
 import type { Projection } from '$lib/features/dicom/types';
+import type { SegmentDefinition } from '$lib/features/medical-parameters/types';
 import type { Polygon } from '$lib/shared/geometry/geometry.type';
 
 export type SessionProjection = {
 	sopInstanceUid: string;
 	polygons: Polygon[];
+	segments: SegmentDefinition[];
 };
 
 // Mirrors backend/Mainland/Dicom/v1/schemas/user_recent_studies.py's

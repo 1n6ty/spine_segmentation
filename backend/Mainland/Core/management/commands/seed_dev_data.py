@@ -84,7 +84,7 @@ class Command(BaseCommand):
         if not created and profile.company_id != self.company.id:
             profile.company = self.company
             update_fields.append('company')
-        if not created and profile.role_id != doctor_role.id:
+        if not created and profile.role_id != doctor_role.pk:
             profile.role = doctor_role
             update_fields.append('role')
         if update_fields:

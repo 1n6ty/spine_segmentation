@@ -3,15 +3,22 @@
 	import type { LocaleKey } from '$lib/core/i18n/types';
 	import { resolve_localized } from '$lib/core/i18n/resolve';
 	import type { Projection } from '$lib/features/dicom/types';
+	import type { Polygon } from '$lib/shared/geometry/geometry.type';
 	import { parametersConfig } from '$lib/features/medical-parameters/config';
-	import { params } from '$lib/features/medical-parameters/parameters-store.svelte';
+	import { params, structures } from '$lib/features/medical-parameters/parameters-store.svelte';
+	import { remove_segment, can_add_segment } from '$lib/features/medical-parameters/segments';
 	import { t } from 'svelte-i18n';
 	import { project } from '$lib/core/project.svelte';
+	import addSVG from '$lib/assets/icons/add.svg';
+	import deleteSVG from '$lib/assets/icons/delete.svg';
+	import RowPreviewCard from '$lib/components/ui/measurements/RowPreviewCard.svelte';
 
 	let {
-		projection = 'side'
+		projection = 'side',
+		onAddSegment = () => {}
 	}: {
 		projection: Projection;
+		onAddSegment?: (projection: Projection) => void;
 	} = $props();
 
 	let head = $derived.by(() => {
@@ -34,9 +41,28 @@
 	interface ParameterRow {
 		name: string;
 		params: Record<string, { val: number | string; type: string }>;
+		definitionId?: string;
 	}
 
-	let rows = $derived.by(() => {
+	interface Row {
+		cells: string[];
+		definitionId?: string;
+		regionPolygons: Polygon[];
+	}
+
+	let isSegments = $derived(params.activeStructure === 'segments');
+	let canAddSegment = $derived(can_add_segment(projection));
+
+	let hoveredRow = $state<{ polygons: Polygon[]; anchorRect: DOMRect } | null>(null);
+
+	function onRowHover(e: MouseEvent, regionPolygons: Polygon[]) {
+		hoveredRow = {
+			polygons: regionPolygons,
+			anchorRect: (e.currentTarget as HTMLElement).getBoundingClientRect()
+		};
+	}
+
+	let rows = $derived.by((): Row[] => {
 		$inspect(project.session.projections[projection].polygons);
 		const currentProjection = params[projection];
 
@@ -45,6 +71,30 @@
 		const targetData = currentProjection[activeKey] as unknown as ParameterRow[];
 
 		if (!targetData) return [];
+
+		// Raw, index-aligned source for `targetData` -- `structures[projection][activeKey]`
+		// is mapped 1:1 into `params[projection][activeKey]` by `parameters-store.svelte.ts`,
+		// so row `i`'s underlying polygon(s) are always `rawItems[i]`. Shape depends on
+		// `activeKey`: a single `Polygon` for vertebrae, `{top, bottom}` for gaps, or
+		// `{definitionId, polygons}` for segments.
+		const rawItems = (structures[projection] as unknown as Record<ValidKeys, unknown[]>)[
+			activeKey
+		] as (
+			| Polygon
+			| { top: Polygon; bottom: Polygon }
+			| { definitionId: string; polygons: Polygon[] }
+		)[];
+
+		function regionPolygonsFor(raw: (typeof rawItems)[number]): Polygon[] {
+			if (activeKey === 'gaps') {
+				const gap = raw as { top: Polygon; bottom: Polygon };
+				return [gap.top, gap.bottom];
+			}
+			if (activeKey === 'segments') {
+				return (raw as { definitionId: string; polygons: Polygon[] }).polygons;
+			}
+			return [raw as Polygon];
+		}
 
 		// Values must be ordered the same way the headers are grouped below (linear columns
 		// first, then angular), using `head`'s own type declarations as the single source of
@@ -60,20 +110,26 @@
 				.map(([k]) => k)
 		];
 
-		return targetData
-			.map((e) => {
-				const roundedValues = orderedKeys.map((key) => {
-					const pv = (e.params as Record<string, { val: number | string | null; type: string }>)[
-						key
-					];
-					if (!pv || pv.val === null) return '';
-					const valStr = typeof pv.val === 'number' ? Number(pv.val.toFixed(2)) : pv.val;
-					return `${valStr} ${$t('units.' + pv.type)}`;
-				});
+		const mapped = targetData.map((e, i) => {
+			const roundedValues = orderedKeys.map((key) => {
+				const pv = (e.params as Record<string, { val: number | string | null; type: string }>)[key];
+				if (!pv || pv.val === null) return '';
+				const valStr = typeof pv.val === 'number' ? Number(pv.val.toFixed(2)) : pv.val;
+				return `${valStr} ${$t('units.' + pv.type)}`;
+			});
 
-				return [e.name, ...roundedValues];
-			})
-			.reverse();
+			return {
+				cells: [e.name, ...roundedValues],
+				definitionId: e.definitionId,
+				regionPolygons: regionPolygonsFor(rawItems[i])
+			};
+		});
+
+		// Segments already come pre-sorted anatomically (superior first) from the store, and
+		// that sorted order IS the intended display order (per the requirement's example:
+		// "C2–C6, then C4–Th2, then Th4–Th12") — so, unlike vertebrae/gaps, segments are not
+		// reversed.
+		return isSegments ? mapped : mapped.reverse();
 	});
 
 	let struct_form = $derived(
@@ -105,6 +161,8 @@
 				return e.type == 'angular';
 			})
 		);
+
+	let totalColumns = $derived(1 + linearHead.length + angularHead.length + (isSegments ? 1 : 0));
 </script>
 
 <div>
@@ -148,11 +206,12 @@
 							class="h-10 border-r border-(--border) px-2 text-center align-middle font-medium whitespace-nowrap text-(--foreground) [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-0.5"
 							>{$t('parameters.angular')}</th
 						>
-						<th
-							rowspan="2"
-							class="h-10 border-r border-(--border) px-2 text-center align-middle font-medium whitespace-nowrap text-(--foreground) [&:has([role=checkbox])]:pr-0 *:[[role=checkbox]]:translate-y-0.5"
-							>{$t('parameters.observation')}</th
-						>
+						{#if isSegments}
+							<th
+								rowspan="2"
+								class="h-10 px-2 text-center align-middle font-medium whitespace-nowrap text-(--foreground)"
+							></th>
+						{/if}
 					</tr>
 					<tr
 						class="border-b border-(--border) bg-(--muted)/50 transition-colors hover:bg-(--muted)/50 data-[state=selected]:bg-(--muted)"
@@ -181,18 +240,57 @@
 					{#each rows as row}
 						<tr
 							class="border-b border-(--border) transition-colors hover:bg-(--muted)/50 data-[state=selected]:bg-(--muted)"
+							onmouseenter={(e) => onRowHover(e, row.regionPolygons)}
+							onmouseleave={() => (hoveredRow = null)}
 						>
-							{#each row as cell, i}
+							{#each row.cells as cell, i}
 								<td
 									class:font-medium={i == 0}
 									class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [[role=checkbox]]:translate-y-0.5"
 									>{cell}</td
 								>
 							{/each}
+							{#if isSegments}
+								<td class="p-2 text-center align-middle whitespace-nowrap">
+									<button
+										onclick={() => row.definitionId && remove_segment(projection, row.definitionId)}
+										class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md p-0 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 disabled:pointer-events-none disabled:opacity-50 has-[>img]:px-1.5 aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [&_img]:pointer-events-none [&_img]:shrink-0"
+									>
+										<img
+											src={deleteSVG}
+											alt="Delete"
+											class="h-4 w-4"
+											style="filter: invert(26%) sepia(85%) saturate(2227%) hue-rotate(331deg) brightness(90%) contrast(105%);"
+										/>
+									</button>
+								</td>
+							{/if}
 						</tr>
 					{/each}
+					{#if isSegments}
+						<tr class="border-b border-(--border) transition-colors hover:bg-(--muted)/50">
+							<td colspan={totalColumns} class="align-middle">
+								<button
+									onclick={() => onAddSegment(projection)}
+									disabled={!canAddSegment}
+									title={canAddSegment ? undefined : $t('segments.not_enough_vertebrae')}
+									class="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md p-2 text-sm font-medium whitespace-nowrap text-(--muted-foreground) transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<img src={addSVG} alt="Add" class="h-4 w-4" />
+									{$t('segments.add')}
+								</button>
+							</td>
+						</tr>
+					{/if}
 				</tbody>
 			</table>
 		</div>
 	</div>
+	{#if hoveredRow}
+		<RowPreviewCard
+			{projection}
+			polygons={hoveredRow.polygons}
+			anchorRect={hoveredRow.anchorRect}
+		/>
+	{/if}
 </div>

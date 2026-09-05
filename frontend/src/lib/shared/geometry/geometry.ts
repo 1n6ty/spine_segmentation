@@ -101,4 +101,26 @@ export function aabb_overlaps(a: AABB, b: AABB): boolean {
 	return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
+/** Inclusive point-in-box test -- both operands already in the same coordinate space (world),
+ * so this is exact containment, not an approximation. */
+export function point_in_aabb(point: Point, box: AABB): boolean {
+	return point.x >= box.minX && point.x <= box.maxX && point.y >= box.minY && point.y <= box.maxY;
+}
+
+/** Shortest distance from `point` to the segment `a`-`b` (not the infinite line through them) --
+ * used for the editor's side hit-testing (nearest of a vertebra's two side edges). */
+export function distance_to_segment(point: Point, a: Point, b: Point): number {
+	const abx = b.x - a.x;
+	const aby = b.y - a.y;
+	const lengthSq = abx * abx + aby * aby;
+
+	if (lengthSq === 0) return distance(point, a);
+
+	let t = ((point.x - a.x) * abx + (point.y - a.y) * aby) / lengthSq;
+	t = Math.max(0, Math.min(1, t));
+
+	const closest: Point = { x: a.x + t * abx, y: a.y + t * aby };
+	return distance(point, closest);
+}
+
 export { centroid, get_signed_angle, distance, vector_sub, dot_product, to_degrees };

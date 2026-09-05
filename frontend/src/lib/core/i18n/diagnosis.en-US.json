@@ -70,6 +70,9 @@
 	"regions": {
 		"cervical": "Cervical region",
 		"thoracic": "Thoracic region",
+		"thoracicUpper": "Upper thoracic region",
+		"thoracicMid": "Mid thoracic region",
+		"thoracicLower": "Lower thoracic region",
 		"lumbar": "Lumbar region"
 	},
 	"narrative": {
@@ -79,7 +82,11 @@
 		"sentence": "{identity}: {clauses}.",
 		"labeledText": "{label}: {text}",
 		"regionIdentity": "Segment from {start} to {end}",
-		"noFindings": "No reliable signs of spinal shape/orientation abnormality detected"
+		"noFindings": "No reliable signs of spinal shape/orientation abnormality detected",
+		"rangeSymmetric": "normal {center} ± {tolerance}{unit}",
+		"rangeBetween": "normal {min} to {max}{unit}",
+		"rangeAbove": "normal > {min}{unit}",
+		"rangeBelow": "normal < {max}{unit}"
 	},
 	"rules": {
 		"sagittal": {
@@ -133,8 +140,74 @@
 				"grade3": "L5 spondylolisthesis grade 3",
 				"grade4": "L5 spondylolisthesis grade 4-5 / spondyloptosis"
 			},
+			"wedging": {
+				"normal": "No vertebral body wedging detected",
+				"posterior": "Vertebral body wedge-deformed, base posterior, angle {angle}°",
+				"anterior": "Vertebral body wedge-deformed, base anterior, angle {angle}°"
+			},
 			"scheuermann": "Scheuermann's disease grade {grade}",
-			"vertebralFracture": "Possible vertebral body fracture (wedging angle {angle}°)"
+			"vertebralFracture": "Possible vertebral body fracture (wedging angle {angle}°)",
+			"thoracicSubArc": {
+				"upper": {
+					"lordosisGrade2": "Upper-thoracic lordosis-flattening grade 2",
+					"lordosisGrade1": "Upper-thoracic lordosis-flattening grade 1",
+					"normal": "Upper-thoracic kyphosis unchanged",
+					"kyphosisGrade1": "Upper-thoracic kyphosis increased grade 1",
+					"kyphosisGrade2": "Upper-thoracic kyphosis increased grade 2",
+					"kyphosisGrade3": "Upper-thoracic kyphosis increased grade 3",
+					"kyphosisGrade4": "Upper-thoracic kyphosis increased grade 4"
+				},
+				"mid": {
+					"lordosisGrade2": "Mid-thoracic lordosis-flattening grade 2",
+					"lordosisGrade1": "Mid-thoracic lordosis-flattening grade 1",
+					"normal": "Mid-thoracic kyphosis unchanged",
+					"kyphosisGrade1": "Mid-thoracic kyphosis increased grade 1",
+					"kyphosisGrade2": "Mid-thoracic kyphosis increased grade 2",
+					"kyphosisGrade3": "Mid-thoracic kyphosis increased grade 3",
+					"kyphosisGrade4": "Mid-thoracic kyphosis increased grade 4"
+				},
+				"lower": {
+					"lordosisGrade2": "Lower-thoracic lordosis-flattening grade 2",
+					"lordosisGrade1": "Lower-thoracic lordosis-flattening grade 1",
+					"normal": "Lower-thoracic kyphosis unchanged",
+					"kyphosisGrade1": "Lower-thoracic kyphosis increased grade 1",
+					"kyphosisGrade2": "Lower-thoracic kyphosis increased grade 2",
+					"kyphosisGrade3": "Lower-thoracic kyphosis increased grade 3"
+				}
+			},
+			"lumbarChordTilt": {
+				"backward": "Lumbar segment chord tilted posteriorly",
+				"normal": "Lumbar segment chord tilt unchanged",
+				"forwardGrade1": "Lumbar segment chord tilted anteriorly grade 1",
+				"forwardGrade2": "Lumbar segment chord tilted anteriorly grade 2",
+				"forwardGrade3": "Lumbar segment chord tilted anteriorly grade 3"
+			},
+			"thoracicChordTilt": {
+				"backward": "Mid/lower-thoracic segment chord tilted posteriorly",
+				"normal": "Mid/lower-thoracic segment chord tilt unchanged",
+				"forward": "Mid/lower-thoracic segment chord tilted anteriorly"
+			},
+			"discAngle": {
+				"normal": "Intervertebral angle within normal range",
+				"abnormal": "Intervertebral angle outside normal range, {angle}°"
+			},
+			"displacement": {
+				"normal": "No anteroposterior vertebral displacement detected",
+				"displaced": "Vertebral body displaced {mm}mm {direction}"
+			},
+			"discWedging": {
+				"normal": "No disc wedging detected",
+				"abnormal": "Disc wedging detected, angle {angle}°"
+			},
+			"l5InferiorEndplate": {
+				"normal": "L5 inferior endplate inclination unchanged",
+				"posterior": "L5 inferior endplate tilted posteriorly",
+				"anterior": "L5 inferior endplate tilted anteriorly"
+			},
+			"direction": {
+				"anterior": "anteriorly",
+				"posterior": "posteriorly"
+			}
 		},
 		"frontal": {
 			"side": {
@@ -161,6 +234,10 @@
 			"gcom": {
 				"normal": "GCoM position within normal range, {mm}mm",
 				"shifted": "GCoM position significantly shifted {direction}, {mm}mm"
+			},
+			"l5SuperiorEndplate": {
+				"normal": "L5 superior endplate inclination unchanged",
+				"deviated": "L5 superior endplate deviated {direction}"
 			}
 		}
 	}

@@ -30,13 +30,22 @@ export const DOCTOR2 = {
 	password: manifest?.doctor2?.password ?? 'Qz8-Vector-DoctorSeed-42'
 };
 
-// Verified (by hand, via direct API calls) to make the YOLO model detect all
-// 24 vertebrae (S1-C2) on the lateral/side projection -- required for the
-// report page's diagnosis engine to produce real findings instead of
-// "insufficient annotation". Other fixtures in this set, and every frontal
-// fixture tried, only got partial detections (model/data limitation, not an
-// app bug) -- so specs needing a full detection deliberately use this one.
-export const SIDE_FIXTURE = path.join(__dirname, '../../../Data/spine-segmentation/dicom/side/2.dcm');
+// Verified (by hand, via a direct model probe against the built api-celery
+// image) to make the YOLO model detect exactly the 24 real vertebrae (S1-C2)
+// on the lateral/side projection, with zero spurious extra detections --
+// required for the report page's diagnosis engine to produce real findings
+// instead of "insufficient annotation" (needs all 24), and for
+// multiselect-workflow.test.ts's draw-tool step (needs to stay under
+// EditorCanvas.svelte's MAX_VERTEBRAE=24 cap after undoing a delete, which a
+// noisier fixture blows past). The previously-used 2.dcm also detects all 24
+// real vertebrae, but the segmentation heal/reveal pipeline additionally
+// fabricates ~17 extra unnamed polygons for it specifically (41 total) --
+// harmless for specs that only care about the named 24, but it permanently
+// pins polygons.length above the cap for any spec that expects room to draw
+// one more. Other fixtures in this set, and every frontal fixture tried,
+// only got partial detections (model/data limitation, not an app bug) -- so
+// specs needing a full detection deliberately use this one.
+export const SIDE_FIXTURE = path.join(__dirname, '../../../Data/spine-segmentation/dicom/side/0.dcm');
 
 export async function assertBackendReachable(request: {
 	get: (url: string) => Promise<{ ok(): boolean }>;
@@ -76,7 +85,38 @@ export async function uploadSideDicom(page: Page, fixture: string = SIDE_FIXTURE
  * already has points, which it doesn't on a fresh upload).
  */
 export async function waitForAutofillDone(page: Page) {
-	await page.getByRole('button', { name: 'Autofill' }).click();
+	const autofillBtn = page.getByRole('button', { name: 'Autofill' });
+	await autofillBtn.click();
+
+	// A real click() (mousedown -> mouseup -> click, what Playwright sends) has, empirically,
+	// sometimes failed to reach this button's Svelte handler at all in this headless/docker
+	// environment -- root cause not fully isolated, but confirmed via direct instrumentation
+	// that when it happens, handleMagicClick() never runs. Left unguarded, that's a silent
+	// false pass: the loader below would never have attached, and
+	// waitFor({state:'detached'}) resolves immediately for an element that was never present,
+	// same as one that appeared and disappeared -- so the test would sail through as if
+	// autofill had run when nothing ever started.
+	//
+	// Guard against that here: the button disables itself synchronously the instant its click
+	// handler runs (see EditorCanvas.svelte's `disabled={magicStatus !== 'idle' ...}`), before
+	// any network round trip -- so it reliably goes disabled fast regardless of how quickly the
+	// pipeline itself then resolves (a fresh run drives real CPU YOLO inference and can take up
+	// to ~110s; re-running against an already-segmented fixture can resolve near-instantly). If
+	// it doesn't disable, the first click didn't register -- dispatch a real 'click' event
+	// directly on the DOM node as a fallback, which has reliably worked when locator.click()
+	// didn't, and confirm again before trusting anything downstream.
+	try {
+		await expect(autofillBtn).toBeDisabled({ timeout: 3_000 });
+	} catch {
+		await page.evaluate(() => {
+			const btn = [...document.querySelectorAll('button')].find(
+				(b) => b.textContent?.trim() === 'Autofill'
+			);
+			btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		});
+		await expect(autofillBtn).toBeDisabled({ timeout: 5_000 });
+	}
+
 	// Re-running against the same fixture hits the DB cache-check and resolves
 	// near-instantly; a fresh run drives real CPU YOLO inference, which has
 	// taken up to ~110s in manual verification -- the loader disappearing is

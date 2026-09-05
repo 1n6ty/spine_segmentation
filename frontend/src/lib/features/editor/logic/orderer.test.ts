@@ -58,4 +58,26 @@ describe('orderAndName', () => {
 		const shuffled_points = result_shuffled.find((p) => p.id === 'L5')?.points;
 		expect(shuffled_points).toEqual(original_points);
 	});
+
+	it('preserves the left=[0,1]/right=[2,3] side mapping after a moderate single-side drag', () => {
+		// Regression guard for the editor's new side-drag feature (`select-tool.svelte.ts`):
+		// dragging just one side of a vertebra (rather than the whole polygon or a single vertex)
+		// is new exposure to this angle-sort re-deriving point order -- confirms a plausible,
+		// moderate one-side drag doesn't flip which indices are "left" vs "right".
+		const bottom = square_at('a', 0, 400);
+		const middle = square_at('b', 0, 200); // consistently named 'L5' per the tests above
+		const top = square_at('c', 0, 0);
+
+		// Drag the middle polygon's left side (points[0], points[1], per this file's own
+		// [bottom-left, top-left, top-right, bottom-right] point layout) further left.
+		middle.points[0] = { x: middle.points[0].x - 3, y: middle.points[0].y };
+		middle.points[1] = { x: middle.points[1].x - 3, y: middle.points[1].y };
+
+		const result = orderAndName([top, middle, bottom]);
+		const draggedMiddle = result.find((p) => p.id === 'L5')!;
+
+		const leftAvgX = (draggedMiddle.points[0].x + draggedMiddle.points[1].x) / 2;
+		const rightAvgX = (draggedMiddle.points[2].x + draggedMiddle.points[3].x) / 2;
+		expect(leftAvgX).toBeLessThan(rightAvgX);
+	});
 });

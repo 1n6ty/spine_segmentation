@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { DrawTool } from './draw-tool.svelte';
-import { SelectionState } from '../selection-state.svelte';
+import { PolygonSelectionState } from '../selection-state.svelte';
 import type { ToolContext } from './tool.type';
 
 type Item = { uuid: string };
@@ -9,12 +9,11 @@ function fake_ctx(overrides: Partial<ToolContext<Item>> = {}): ToolContext<Item>
 	return {
 		entities: [],
 		setEntities: vi.fn(),
-		selection: new SelectionState<Item>(),
+		selection: new PolygonSelectionState(),
 		history: { push: vi.fn() } as unknown as ToolContext<Item>['history'],
 		viewport: { isDragging: false, beginDrag: vi.fn(), updateDrag: vi.fn(), endDrag: vi.fn() },
 		worldPointFromEvent: (e) => ({ x: (e as any).clientX, y: (e as any).clientY }),
-		hitTest: vi.fn(),
-		boundsOf: vi.fn(),
+		hitTestEntity: vi.fn(),
 		createEntity: vi.fn((points) => ({ uuid: 'new-uuid', points })) as any,
 		setEntityPoint: vi.fn(),
 		reorder: (entities) => entities,
@@ -55,7 +54,7 @@ describe('DrawTool.addPoint / commit', () => {
 		expect(setEntities).toHaveBeenCalledTimes(1);
 		expect(setEntities.mock.calls[0][0]).toEqual([{ uuid: 'new-uuid', points: expect.any(Array) }]);
 		expect(tool.draftPoints).toEqual([]);
-		expect(ctx.selection.has('new-uuid')).toBe(true);
+		expect(ctx.selection.has({ kind: 'vertebra', polygonUuid: 'new-uuid' })).toBe(true);
 		expect(requestToolSwitch).toHaveBeenCalledWith('select');
 	});
 
