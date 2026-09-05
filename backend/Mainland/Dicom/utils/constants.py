@@ -19,7 +19,13 @@ SEGMENTATION_MODEL_WEIGHTS = {
 # DicomImage.segmentation_model_version by Dicom.tasks.segmentation.segment_vertebraes;
 # a stored value other than this makes /api/dcm/parse/ re-run segmentation and replace
 # the result even for a byte-identical re-upload (Dicom.utils.parse._segmentation_is_stale).
-SEGMENTATION_PIPELINE_VERSION = "1"
+#
+# "2": frontal weights (yolo26m-seg-fro.onnx) added + projection routing hardened
+#      -- a film whose projection couldn't be read from DICOM tags used to be
+#      silently run through the frontal model; it now follows the declared X-ray
+#      role, or errors. Re-run so any sagittal image mis-segmented by the frontal
+#      model gets replaced.
+SEGMENTATION_PIPELINE_VERSION = "2"
 
 # SegmentationStatus.slug -> wire "status" string sent to the frontend over SSE.
 # Kept distinct from the DB slug so the wire contract (matching the frontend's
@@ -62,3 +68,14 @@ DICOM_XRAY_FRONTAL_ROLE_SLUG = "DICOM_XRAY_FRONTAL"
 # of each independently re-typing 'side'/'frontal'.
 SIDE_PROJECTION_SLUG = "side"
 FRONTAL_PROJECTION_SLUG = "frontal"
+
+# Fallback used only when a film's clinical projection can't be read off its
+# DICOM tags (Dicom.utils.parse.get_projection_orientation -> None): the
+# caller-declared X-ray FileRole -> the Dicom.models.Projection.slug it implies
+# ('frontal'/'sagittal', seeded by Dicom.management.commands.create_projections).
+# Consumed at ingest by Dicom.utils.parse and, as a last-resort guard for rows
+# ingested before that fallback existed, by Dicom.tasks.segmentation.
+ROLE_SLUG_TO_PROJECTION_SLUG = {
+    DICOM_XRAY_FRONTAL_ROLE_SLUG: "frontal",
+    DICOM_XRAY_SAGITTAL_ROLE_SLUG: "sagittal",
+}

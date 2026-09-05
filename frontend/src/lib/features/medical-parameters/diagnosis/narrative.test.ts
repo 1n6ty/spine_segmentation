@@ -80,16 +80,24 @@ describe('withRangeBadge', () => {
 		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 0 ± 5°');
 	});
 
-	it('formats a non-symmetric range as min–max', () => {
+	it('formats a non-symmetric range as a worded "min to max"', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
 		const badged = withRangeBadge(narrative, 'p3', 'grade1', { min: 39, max: 65 });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 39–65°');
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 39 to 65°');
+		expect(badged.clauses[0].badge?.display['ru-RU']).toBe('норма от 39 до 65°');
+	});
+
+	it('renders negative bounds with a real minus sign, no dash collision', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -41, max: -15 });
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal −41 to −15°');
+		expect(badged.clauses[0].badge?.display['ru-RU']).toBe('норма от −41 до −15°');
 	});
 
 	it('formats an open-ended range with a bare lower bound', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
 		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -35, max: Infinity });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal > -35°');
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal > −35°');
 	});
 
 	it('is a no-op when no clause has the given key', () => {
@@ -112,6 +120,6 @@ describe('withRangeBadge', () => {
 	it('rounds a plain min-max range to 2 decimals', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
 		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: 1.005, max: 2.0049999 });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 1–2°');
+		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 1 to 2°');
 	});
 });

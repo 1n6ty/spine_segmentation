@@ -485,6 +485,30 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
         file_record = DicomFile.objects.get(image_id='SOP-E2')
         self.assertEqual(file_record.role.slug, 'DICOM_XRAY_SAGITTAL')
 
+    def test_projection_falls_back_to_declared_role_when_tags_inconclusive(self):
+        # DICOM tags can't classify the film (blank ViewPosition, no
+        # PatientOrientation / SeriesDescription), but the uploader filed it
+        # into the sagittal slot -- projection must follow the role rather than
+        # stay NULL, otherwise Dicom.tasks.segmentation refuses to run.
+        ds = self._dataset('SOP-PROJ-FB', 'STUDY-PROJ-FB', view_position='')
+
+        result = self._upload(ds, b'ambiguous-bytes', file_role_slug='DICOM_XRAY_SAGITTAL')
+
+        self.assertNotIsInstance(result, Issue)
+        image = DicomImage.objects.select_related('projection').get(sop_instance_uid='SOP-PROJ-FB')
+        self.assertEqual(image.projection.slug, 'sagittal')
+
+    def test_dicom_tags_win_over_declared_role_for_projection(self):
+        # ViewPosition=LAT is unambiguous -- a mistakenly-frontal role must not
+        # override the actual clinical orientation read off the film.
+        ds = self._dataset('SOP-PROJ-TAG', 'STUDY-PROJ-TAG', view_position='LAT')
+
+        result = self._upload(ds, b'lateral-bytes', file_role_slug='DICOM_XRAY_FRONTAL')
+
+        self.assertNotIsInstance(result, Issue)
+        image = DicomImage.objects.select_related('projection').get(sop_instance_uid='SOP-PROJ-TAG')
+        self.assertEqual(image.projection.slug, 'sagittal')
+
     def test_unknown_file_role_slug_returns_400_issue(self):
         result = self._upload(
             self._dataset('SOP-G', 'STUDY-G'), b'bytes', file_role_slug='NOT_A_REAL_ROLE'

@@ -84,7 +84,7 @@
 		"regionIdentity": "Segment from {start} to {end}",
 		"noFindings": "No reliable signs of spinal shape/orientation abnormality detected",
 		"rangeSymmetric": "normal {center} ± {tolerance}{unit}",
-		"rangeBetween": "normal {min}–{max}{unit}",
+		"rangeBetween": "normal {min} to {max}{unit}",
 		"rangeAbove": "normal > {min}{unit}",
 		"rangeBelow": "normal < {max}{unit}"
 	},

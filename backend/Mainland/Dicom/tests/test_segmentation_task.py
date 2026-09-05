@@ -8,7 +8,8 @@ from django.test import TestCase
 
 from Dicom.models import DicomFile, DicomImage, Patient, Projection, Series, Study
 from Dicom.tasks.segmentation import segment_vertebraes
-from Dicom.utils.constants import SEGMENTATION_PIPELINE_VERSION
+from Dicom.utils.constants import DICOM_XRAY_SAGITTAL_ROLE_SLUG, SEGMENTATION_PIPELINE_VERSION
+from FileManager.models import FileRole
 
 
 def _vertebra(name):
@@ -40,13 +41,16 @@ class SegmentVertebraesStampingTests(TestCase):
         mocks = [p.start() for p in self._patches]
         self.addCleanup(patch.stopall)
         self.mock_advance = mocks[0]
+        self.mock_get_model = mocks[1]
         self.mock_segment = mocks[4]
 
-    def _make_image(self, sop_uid, projection):
+    def _make_image(self, sop_uid, projection, role=None):
         image = DicomImage.objects.create(
             sop_instance_uid=sop_uid, series=self.series, projection=projection,
         )
-        file_record = DicomFile(image=image, series=self.series, name=f'{sop_uid}.dcm', size=0, hash='0' * 128)
+        file_record = DicomFile(
+            image=image, series=self.series, name=f'{sop_uid}.dcm', size=0, hash='0' * 128, role=role,
+        )
         file_record.file.name = f'private/dicom_files/{sop_uid}.dcm'
         file_record.save()
         return image
@@ -88,10 +92,33 @@ class SegmentVertebraesStampingTests(TestCase):
         # last _advance_status call was the 'error' transition
         self.assertEqual(self.mock_advance.call_args[0][2], 'error')
 
-    def test_null_projection_still_stamps_version(self):
-        self._make_image('SOP-NOPROJ', None)
+    def test_null_projection_with_no_role_errors_without_guessing_a_model(self):
+        # An unresolved projection must NOT fall through to some default model
+        # (routing a sagittal film through the frontal model, or vice versa,
+        # yields plausible-looking but wrong landmarks). It errors instead --
+        # and still stamps the version so an identical re-upload doesn't loop.
+        self._make_image('SOP-NOPROJ', None, role=None)
 
-        segment_vertebraes('SOP-NOPROJ')
+        with self.assertRaises(ValueError):
+            segment_vertebraes('SOP-NOPROJ')
 
         row = DicomImage.objects.get(sop_instance_uid='SOP-NOPROJ')
+        self.assertIn('projection', row.segmentation_error)
+        self.assertEqual(row.segmentation_model_version, SEGMENTATION_PIPELINE_VERSION)
+        self.assertIsNotNone(row.segmented_at)
+        self.assertEqual(self.mock_advance.call_args[0][2], 'error')
+        self.mock_segment.assert_not_called()
+
+    def test_null_projection_falls_back_to_persisted_xray_role(self):
+        # A row stored before parse's role fallback existed can have projection
+        # NULL; a stale-version re-dispatch re-runs only this task (not parse),
+        # so the task recovers the projection from the persisted X-ray role.
+        role = FileRole.objects.create(slug=DICOM_XRAY_SAGITTAL_ROLE_SLUG)
+        self._make_image('SOP-ROLE-FB', None, role=role)
+
+        segment_vertebraes('SOP-ROLE-FB')
+
+        self.mock_get_model.assert_called_once_with('sagittal')
+        row = DicomImage.objects.get(sop_instance_uid='SOP-ROLE-FB')
+        self.assertEqual(row.reference_points['vertebraes'][0]['name'], 'L5')
         self.assertEqual(row.segmentation_model_version, SEGMENTATION_PIPELINE_VERSION)

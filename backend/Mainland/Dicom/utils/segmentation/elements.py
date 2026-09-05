@@ -66,6 +66,17 @@ class Vertebrae:
                 central_point_type (Literal["up", "down"])
                     Position of central point relative to the current vertebrae `up` or `down`
         """
+        # Contract: reference_points is a 4-point quad. Callers upstream
+        # (get_instances' point-count filter, _cut_vertebrae's degenerate-mask
+        # guard, reveal's fixed 4-point construction) all enforce this; a
+        # violation here would otherwise surface as an opaque
+        # "kth(=2) out of bounds" from np.argpartition below.
+        if self.reference_points.ndim != 2 or self.reference_points.shape[0] < 4:
+            raise ValueError(
+                f"order_reference_points needs a >=4-point quad, got "
+                f"{self.reference_points.shape} for vertebra {self.name!r}"
+            )
+
         nearest_indexes: np.ndarray = np.argpartition(np.linalg.norm(self.reference_points - np.average(nearest_vertebrae.reference_points, axis=0), axis=1), 2)[:2]
 
         if pos == "up":

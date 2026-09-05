@@ -40,6 +40,19 @@ function round2(n: number): number {
 	return Math.round(n * 100) / 100;
 }
 
+/** Swaps a formatted number's leading hyphen-minus for a true minus sign
+ * (U+2212). Without this, a negative bound ("-41") is visually
+ * indistinguishable from a hyphen or the range separator — see the "-41–-15°"
+ * soup this was introduced to fix. */
+function withMinus(s: string): string {
+	return s.replace('-', '−');
+}
+
+/** Number formatted for display: at most 2 decimals, real minus sign. */
+function fmtNum(n: number): string {
+	return withMinus(String(round2(n)));
+}
+
 /**
  * Formats a clinical reference range for the narrative's "(normal ...)"
  * badge. Three shapes, depending on the range:
@@ -48,26 +61,29 @@ function round2(n: number): number {
  *    shaped (zero-centered thresholds, mean±SD tables), not for every range
  *    that happens to have a midpoint.
  *  - open-ended (`min === -Infinity` or `max === Infinity`) -> "> {min}{unit}" / "< {max}{unit}".
- *  - otherwise -> "{min}–{max}{unit}".
+ *  - otherwise -> "от {min} до {max}{unit}" / "{min} to {max}{unit}" — worded,
+ *    not "{min}–{max}", so the separator is never confused with a value's sign.
+ *
+ * Negative bounds are rendered with a real minus sign (see fmtNum).
  */
 function formatRange(range: Range, type: string): Localized {
 	const unit = unitFor(type);
 	if (range.center !== undefined) {
 		return resolve_localized('diagnosis.narrative.rangeSymmetric', {
-			center: round2(range.center),
-			tolerance: round2(range.max - range.center),
+			center: fmtNum(range.center),
+			tolerance: fmtNum(range.max - range.center),
 			unit
 		});
 	}
 	if (range.min === -Infinity) {
-		return resolve_localized('diagnosis.narrative.rangeBelow', { max: round2(range.max), unit });
+		return resolve_localized('diagnosis.narrative.rangeBelow', { max: fmtNum(range.max), unit });
 	}
 	if (range.max === Infinity) {
-		return resolve_localized('diagnosis.narrative.rangeAbove', { min: round2(range.min), unit });
+		return resolve_localized('diagnosis.narrative.rangeAbove', { min: fmtNum(range.min), unit });
 	}
 	return resolve_localized('diagnosis.narrative.rangeBetween', {
-		min: round2(range.min),
-		max: round2(range.max),
+		min: fmtNum(range.min),
+		max: fmtNum(range.max),
 		unit
 	});
 }
@@ -96,7 +112,7 @@ export function buildParametersNarrative(
 		const unit = unitFor(entry.type);
 		const text = resolve_localized('diagnosis.narrative.clause', {
 			label,
-			value: entry.val.toFixed(1),
+			value: withMinus(entry.val.toFixed(1)),
 			unit
 		});
 		clauses.push({ key, type: entry.type === 'angular' ? 'angular' : 'linear', text });

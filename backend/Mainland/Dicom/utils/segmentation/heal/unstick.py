@@ -39,16 +39,28 @@ def _cut_vertebrae(init_vertebrae, cut, mode):
     tmp_canvas_2 = np.zeros(max_v[::-1], dtype=np.uint8)
     cv2.fillConvexPoly(tmp_canvas_2, current_cut_points, 255, 0)
 
-    new_mask_xy = np.squeeze(
-        max(
-            cv2.findContours(
-                cv2.bitwise_and(tmp_canvas_1, tmp_canvas_2),
-                cv2.RETR_TREE,
-                cv2.CHAIN_APPROX_NONE
-            )[0],
-            key=cv2.contourArea
-        )
+    cut_contours = cv2.findContours(
+        cv2.bitwise_and(tmp_canvas_1, tmp_canvas_2),
+        cv2.RETR_TREE,
+        cv2.CHAIN_APPROX_NONE
+    )[0]
+
+    new_mask_xy = (
+        np.squeeze(max(cut_contours, key=cv2.contourArea))
+        if cut_contours
+        else np.empty((0, 2), dtype=np.int32)
     )
+
+    # The cut quad and the original mask can overlap in only a thin sliver (a
+    # near-degenerate source vertebra makes cut_length ~0; a cut line almost
+    # parallel to the mask edge does the same). The resulting contour then has
+    # < 4 points, which Vertebrae._compute_reference_points can't turn into a
+    # quad -- and order_reference_points would later crash on it. Leave the
+    # vertebra uncut in that case rather than propagate a broken mask.
+    if new_mask_xy.ndim != 2 or new_mask_xy.shape[0] < 4:
+        _logger.debug("Cut produced a degenerate mask (%r points); leaving vertebra uncut.",
+                      None if new_mask_xy.ndim != 2 else new_mask_xy.shape[0])
+        return deepcopy(init_vertebrae)
 
     return Vertebrae(new_mask_xy)
 

@@ -8,7 +8,11 @@ from django.utils import timezone
 from common.schemas.v1.response import Issue
 from Dicom.models import Patient, Study, Series, DicomImage, DicomFile, Projection
 from Dicom.tasks.segmentation import segment_vertebraes
-from Dicom.utils.constants import DICOM_XRAY_SAGITTAL_ROLE_SLUG, SEGMENTATION_PIPELINE_VERSION
+from Dicom.utils.constants import (
+    DICOM_XRAY_SAGITTAL_ROLE_SLUG,
+    ROLE_SLUG_TO_PROJECTION_SLUG,
+    SEGMENTATION_PIPELINE_VERSION,
+)
 from Dicom.utils.thumbnail import generate_and_store_thumbnail
 from FileManager.models import CasFile, FileRole
 from FileManager.utils import build_cas_path, check_role_max_count
@@ -252,13 +256,16 @@ async def parse_and_store_dicom(file_obj, file_role_slug=None):
     # 3c. Resolve the caller-declared FileRole (defaulting to sagittal) and enforce its
     # max_count=1-per-Series rule before writing Image -- excluding this SOP Instance
     # UID's own existing row (if any) from the count is what makes re-uploading the
-    # same image a no-op instead of tripping the limit against itself. `projection`
-    # (clinical metadata) is unrelated and always auto-detected from DICOM tags below,
-    # regardless of which role was requested.
-    projection_slug = get_projection_orientation(dcm)
+    # same image a no-op instead of tripping the limit against itself.
+    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
+
+    # `projection` (clinical metadata) is auto-detected from DICOM tags first;
+    # only when those are inconclusive does it fall back to the projection
+    # implied by the declared X-ray role, so segmentation can still route to
+    # the right model instead of erroring on a NULL projection.
+    projection_slug = get_projection_orientation(dcm) or ROLE_SLUG_TO_PROJECTION_SLUG.get(role_slug)
     projection = await Projection.objects.filter(slug=projection_slug).afirst() if projection_slug else None
 
-    role_slug = file_role_slug or DEFAULT_FILE_ROLE_SLUG
     role = await FileRole.objects.filter(slug=role_slug).afirst()
     if role is None:
         return Issue(

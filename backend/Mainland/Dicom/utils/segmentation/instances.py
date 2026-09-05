@@ -48,6 +48,16 @@ def get_instances(
 
             main_poly = max(contours, key=cv2.contourArea).reshape(-1, 2)
 
+            # Everything downstream (Vertebrae._compute_reference_points and the
+            # unstick/reveal geometry) assumes a real quad -- it only ever
+            # *reduces* a contour toward 4 points, never pads one up. A mask
+            # that contours to fewer than 4 distinct points (a stray 1-2px
+            # blob, a 1px-wide sliver) is not a vertebra; passing it on makes
+            # order_reference_points blow up with a cryptic
+            # "kth out of bounds" from np.argpartition. Drop it here.
+            if main_poly.shape[0] < 4:
+                continue
+
             instances.append({
                 "mask": bool_mask,
                 "polygon": main_poly,
