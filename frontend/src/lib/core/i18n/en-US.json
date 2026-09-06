@@ -13,6 +13,39 @@
 		"submitting": "Signing in...",
 		"error": "Invalid username or password"
 	},
+	"profile": {
+		"title": "My Profile",
+		"loading": "Loading profile...",
+		"load_error": "Could not load your profile.",
+		"header": {
+			"no_role": "No role assigned",
+			"no_company": "No company"
+		},
+		"personal_info": {
+			"title": "Personal Information",
+			"first_name": "First Name",
+			"last_name": "Last Name",
+			"patronymic": "Patronymic",
+			"email": "Email / Username",
+			"phone": "Phone Number",
+			"save": "Save Changes",
+			"saving": "Saving...",
+			"success": "Profile updated successfully.",
+			"error": "Could not update profile.",
+			"validation": {
+				"first_name_required": "First name is required.",
+				"last_name_required": "Last name is required."
+			}
+		},
+		"account_info": {
+			"title": "Account & Scope",
+			"date_joined": "Date Joined",
+			"last_login": "Last Login",
+			"never_logged_in": "Never",
+			"roles": "Assigned Roles",
+			"managed_companies": "Managed Companies"
+		}
+	},
 	"main": {
 		"DICOM_upload_card": {
 			"h2": "DICOM File Upload",

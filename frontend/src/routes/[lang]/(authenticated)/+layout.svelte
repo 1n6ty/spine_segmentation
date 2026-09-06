@@ -6,9 +6,6 @@
 	import { project } from '$lib/core/project.svelte';
 	import Header from '$lib/components/layout/Header.svelte';
 	import Footer from '$lib/components/layout/Footer.svelte';
-	import DicomUploadCard from '$lib/components/ui/dicom-upload-card/DicomUploadCard.svelte';
-	import Nav from '$lib/components/ui/Nav.svelte';
-	import Manager from '$lib/components/ui/sessions/Manager.svelte';
 
 	let { children } = $props();
 
@@ -22,8 +19,10 @@
 	 * access once the backend confirms the session cookie is still live, so a
 	 * deleted/expired cookie can no longer leave stale protected content on screen.
 	 *
-	 * Rendering is gated on `checked` so protected content (patient sessions, the
-	 * DICOM upload card) never mounts even briefly before the redirect fires.
+	 * Rendering is gated on `checked` so protected content (everything under
+	 * `(authenticated)`, including patient sessions and the DICOM upload card
+	 * further down in `(studies)`) never mounts even briefly before the redirect
+	 * fires.
 	 */
 	let checked = $state(false);
 
@@ -39,16 +38,7 @@
 {#if checked && project.auth.status === 'authenticated'}
 	<Header />
 	<main class="container mx-auto px-4 py-6">
-		<div class="space-y-6">
-			<Manager />
-			<DicomUploadCard />
-			<div class="flex w-full flex-col gap-2">
-				<Nav />
-				<div class="mt-6 flex-1 outline-none">
-					{@render children()}
-				</div>
-			</div>
-		</div>
+		{@render children()}
 	</main>
 	<Footer />
 {/if}

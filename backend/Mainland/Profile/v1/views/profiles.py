@@ -83,7 +83,8 @@ class ProfilesViewSet(StdViewSetMixin):
         qs = User.objects.select_related(
             'profile', 'profile__company'
         ).prefetch_related(
-            'profile__company__translations', 'profile__roles', 'profile__roles__translations'
+            'profile__company__translations', 'profile__roles', 'profile__roles__translations',
+            'profile__managed_companies', 'profile__managed_companies__translations',
         ).order_by('email')
         qs = await sync_to_async(scope_queryset_to_managed_companies)(
             request.user, qs, company_field='profile__company'
@@ -157,10 +158,10 @@ class ProfilesViewSet(StdViewSetMixin):
         return Response(status=204)
 
     @extend_schema(
-        summary="Edit a user's name/email/password/roles/company",
+        summary="Edit a user's name/email/phone/password/roles/company",
         description="Self-edit: any authenticated user may PATCH their own user_id to "
-                    "change first_name, last_name, patronymic, email, password -- always "
-                    "allowed, no permission needed. Editing another profile's basic fields "
+                    "change first_name, last_name, patronymic, phone, email, password -- "
+                    "always allowed, no permission needed. Editing another profile's basic fields "
                     "requires Profile.change_profile. Changing role_slugs (on any profile, "
                     "including your own -- no self-promotion) requires "
                     "Profile.change_profile_role, and every requested slug must be in the "
@@ -210,7 +211,7 @@ class ProfilesViewSet(StdViewSetMixin):
         company_slug_changing = payload.company_slug is not None and payload.company_slug != profile.company.slug
         resetting_other_password = payload.password is not None and not is_self
         editing_other_basic_fields = not is_self and any(
-            v is not None for v in (payload.first_name, payload.last_name, payload.patronymic, payload.email)
+            v is not None for v in (payload.first_name, payload.last_name, payload.patronymic, payload.phone, payload.email)
         )
 
         if role_slugs_changing:
@@ -304,6 +305,8 @@ class ProfilesViewSet(StdViewSetMixin):
 
                 if payload.patronymic is not None:
                     profile.patronymic = payload.patronymic
+                if payload.phone is not None:
+                    profile.phone = payload.phone
                 if new_roles is not None:
                     profile.roles.set(new_roles)
                     user.groups.set([r.group for r in new_roles])
@@ -323,7 +326,8 @@ class ProfilesViewSet(StdViewSetMixin):
         user = await User.objects.select_related(
             'profile', 'profile__company'
         ).prefetch_related(
-            'profile__company__translations', 'profile__roles', 'profile__roles__translations'
+            'profile__company__translations', 'profile__roles', 'profile__roles__translations',
+            'profile__managed_companies', 'profile__managed_companies__translations',
         ).aget(pk=user.pk)
 
         return Profiles_PATCH_Response_OK.from_model(user, extend=extend).drf_response

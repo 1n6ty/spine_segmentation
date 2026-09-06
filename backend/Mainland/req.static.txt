@@ -2,7 +2,15 @@ django==6.0.1
 django-cors-headers==4.7.0
 django-cleanup==9.0.0
 django-filter==26.1
-django-elasticsearch-dsl==9.0
+# Pinned to the 8.x series (not the latest 9.x) because it pulls in an
+# elasticsearch-py client of the matching major version, which sends an
+# `Accept`/`Content-Type` header naming that major as its `compatible-with`
+# version -- the ES server pinned in compose.dev.yml is 8.11.1, which only
+# accepts compatible-with 7 or 8. A 9.x client against this 8.x server fails
+# every bulk/index request with a 400 media_type_header_exception, which
+# surfaces as any Profile M2M change (roles, managed_companies) crashing
+# inside django_elasticsearch_dsl's real-time signal handler.
+django-elasticsearch-dsl==8.2
 django-parler==2.4
 django-phonenumber-field==8.5.0
 phonenumbers==9.0.36

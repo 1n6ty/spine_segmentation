@@ -33,8 +33,9 @@
 
 {#if project.auth.status === 'authenticated'}
 	<div class="flex min-w-0 items-center gap-4">
-		<div
-			class="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-(--border) px-4 py-2"
+		<a
+			href={`/${page.params.lang}/profile`}
+			class="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-(--border) px-4 py-2 transition-colors hover:bg-(--accent)"
 		>
 			<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--muted)">
 				<img src={personIcon} class="h-6 w-6 opacity-50" alt="user" />
@@ -48,7 +49,7 @@
 					{project.researcher.duty}
 				</p>
 			</div>
-		</div>
+		</a>
 
 		<button
 			onclick={handleLogout}

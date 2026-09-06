@@ -13,6 +13,39 @@
 		"submitting": "Вход...",
 		"error": "Неверное имя пользователя или пароль"
 	},
+	"profile": {
+		"title": "Мой профиль",
+		"loading": "Загрузка профиля...",
+		"load_error": "Не удалось загрузить профиль.",
+		"header": {
+			"no_role": "Роль не назначена",
+			"no_company": "Нет компании"
+		},
+		"personal_info": {
+			"title": "Личная информация",
+			"first_name": "Имя",
+			"last_name": "Фамилия",
+			"patronymic": "Отчество",
+			"email": "Email / Имя пользователя",
+			"phone": "Номер телефона",
+			"save": "Сохранить изменения",
+			"saving": "Сохранение...",
+			"success": "Профиль успешно обновлён.",
+			"error": "Не удалось обновить профиль.",
+			"validation": {
+				"first_name_required": "Имя обязательно.",
+				"last_name_required": "Фамилия обязательна."
+			}
+		},
+		"account_info": {
+			"title": "Аккаунт и права доступа",
+			"date_joined": "Дата регистрации",
+			"last_login": "Последний вход",
+			"never_logged_in": "Никогда",
+			"roles": "Назначенные роли",
+			"managed_companies": "Управляемые компании"
+		}
+	},
 	"main": {
 		"DICOM_upload_card": {
 			"h2": "Загрузка DICOM-файла",

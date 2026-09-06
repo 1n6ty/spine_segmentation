@@ -32,6 +32,13 @@ def get_user_roles(user):
     return profile.roles.all() if profile else None
 
 
+def get_user_managed_companies(user):
+    """Returns the Companies the given user's Profile manages
+    (Profile.managed_companies), or None if the user has no Profile."""
+    profile = getattr(user, 'profile', None)
+    return profile.managed_companies.all() if profile else None
+
+
 def resolve_managed_company_slug_filter(user, slug):
     """Resolves a `company_slug` request filter against the caller's
     Profile.managed_companies -- the sole company-scoping mechanism, no

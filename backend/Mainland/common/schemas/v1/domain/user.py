@@ -1,10 +1,11 @@
+from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING, Union
 
 from pydantic import BaseModel, Field
 
 from common.schemas.v1.domain.company import Company_Item_Schema, Company_Ref_Schema
 from common.schemas.v1.domain.role import Role_Item_Schema, Role_Ref_Schema
-from common.utils.company import get_user_company, get_user_roles
+from common.utils.company import get_user_company, get_user_managed_companies, get_user_roles
 from common.utils.extend import extend_field_description
 
 if TYPE_CHECKING:
@@ -18,6 +19,8 @@ class User_Ref_Schema(BaseModel):
     patronymic: str = Field('', description="Patronymic/middle name, if set on the user's Profile.", examples=[""])
     email: str = Field(description="User's email address (also the login username).", examples=["alex@example.com"])
     is_active: bool = Field(description="Whether the account can currently authenticate.", examples=[True])
+    date_joined: datetime = Field(description="When the account was created.")
+    last_login: Optional[datetime] = Field(None, description="Most recent successful login, if any.")
 
     @classmethod
     def from_model(cls, user: "User", profile=None) -> "User_Ref_Schema":
@@ -30,6 +33,8 @@ class User_Ref_Schema(BaseModel):
             patronymic=profile.patronymic if profile else '',
             email=user.email,
             is_active=user.is_active,
+            date_joined=user.date_joined,
+            last_login=user.last_login,
         )
 
 
@@ -40,6 +45,12 @@ class User_Item_Schema(User_Ref_Schema):
     )
     roles: List[Union[Role_Ref_Schema, Role_Item_Schema]] = Field(
         default_factory=list, description=extend_field_description('roles'),
+    )
+    managed_companies: List[Company_Ref_Schema] = Field(
+        default_factory=list,
+        description="Companies this profile has role-scoped access to (Profile.managed_companies). "
+                    "Always populated, unlike `permissions`.",
+        examples=[[{"slug": "acme-corp", "name": "Acme Corp"}]],
     )
     permissions: List[str] = Field(
         default_factory=list,
@@ -56,6 +67,7 @@ class User_Item_Schema(User_Ref_Schema):
             profile = getattr(user, 'profile', None)
         company = get_user_company(user)
         roles = get_user_roles(user)
+        managed_companies = get_user_managed_companies(user)
         company_schema = Company_Item_Schema if 'company' in extend else Company_Ref_Schema
         role_schema = Role_Item_Schema if 'roles' in extend else Role_Ref_Schema
         ref = User_Ref_Schema.from_model(user, profile=profile)
@@ -64,5 +76,6 @@ class User_Item_Schema(User_Ref_Schema):
             phone=str(profile.phone) if profile and profile.phone else None,
             company=company_schema.from_model(company) if company is not None else None,
             roles=[role_schema.from_model(role) for role in roles] if roles is not None else [],
+            managed_companies=[Company_Ref_Schema.from_model(c) for c in managed_companies] if managed_companies is not None else [],
             permissions=permissions if permissions is not None else [],
         )

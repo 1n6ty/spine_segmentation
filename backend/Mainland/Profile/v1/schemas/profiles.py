@@ -88,6 +88,7 @@ class Profile_PATCH_Request(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New first name, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Jane"])
     last_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New last name, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Doe"])
     patronymic: Optional[str] = Field(None, max_length=150, description="New patronymic, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Ivanovna"])
+    phone: Optional[str] = Field(None, description="New phone number, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["+79991234567"])
     email: Optional[str] = Field(None, max_length=150, description="New email address, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["jane.doe@example.com"])
     password: Optional[str] = Field(None, min_length=8, description="New password, if changing. Resetting another profile's password requires Profile.reset_profile_password.", examples=["hunter22"])
     role_slugs: Optional[List[str]] = Field(None, description="Full replacement set of role slugs, if changing (Profile.roles is M2M). Requires Profile.change_profile_role, and every slug must be in the caller's own roles' assignable set.", examples=[["doctor"]])

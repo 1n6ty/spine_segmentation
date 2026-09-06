@@ -51,6 +51,8 @@ class TestProfilesViewSet(APITestCase):
         # User_Ref_Schema consolidation: /me now includes id (it didn't before).
         self.assertEqual(response_json["data"]["id"], user.pk)
         self.assertEqual(response_json["data"]["permissions"], [])
+        self.assertEqual(response_json["data"]["managed_companies"], [])
+        self.assertIsNotNone(response_json["data"]["date_joined"])
         assert_matches_schema(response_json["data"], User_Item_Schema)
 
     def test_me_includes_patronymic_and_phone(self):
@@ -68,6 +70,47 @@ class TestProfilesViewSet(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response_json["data"]["patronymic"], "Ivanovich")
         self.assertEqual(response_json["data"]["phone"], "+15551234567")
+
+    def test_me_includes_date_joined_and_last_login(self):
+        """Test /me's date_joined is always present, and last_login reflects the most
+        recent login (both force_login and client.login() trigger Django's
+        user_logged_in signal, which populates last_login)."""
+        user = User.objects.create_user(username='joineduser', email='joineduser@example.com', password='pw12345678')
+        self.assertIsNone(user.last_login)
+
+        self.client.force_login(user)
+        response = self.client.get(reverse("Profile-me"))
+        response_json = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response_json["data"]["date_joined"])
+        self.assertIsNotNone(response_json["data"]["last_login"])
+
+    def test_me_includes_managed_companies(self):
+        """Test /me's managed_companies reflects Profile.managed_companies (seeded to
+        {company} at creation)."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        user = User.objects.create_user(username='manageduser', email='manageduser@example.com', password='pw')
+        Profile.objects.create(user=user, company=company)
+
+        self.client.force_login(user)
+        response = self.client.get(reverse("Profile-me"))
+        response_json = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response_json["data"]["managed_companies"], [{"slug": "acme", "name": "Acme"}])
+
+    def test_me_managed_companies_empty_when_cleared(self):
+        """Test managed_companies serializes as [] (not null/omitted) when cleared."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        user = User.objects.create_user(username='clearedcompanies', email='clearedcompanies@example.com', password='pw')
+        profile = Profile.objects.create(user=user, company=company)
+        profile.managed_companies.clear()
+
+        self.client.force_login(user)
+        response = self.client.get(reverse("Profile-me"))
+
+        self.assertEqual(response.json()["data"]["managed_companies"], [])
 
     def test_me_includes_role(self):
         """Test /me returns the user's roles (slug + translated name) via Profile.roles."""
@@ -191,6 +234,62 @@ class TestProfilesViewSet(APITestCase):
 
         user.refresh_from_db()
         self.assertEqual(user.username, "selfedit-new@example.com")
+
+    def test_patch_self_edit_phone_success(self):
+        """Self-edit of phone is allowed with no special permission."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        user = User.objects.create_user(username='phoneedit@example.com', email='phoneedit@example.com', password='pw12345678')
+        Profile.objects.create(user=user, company=company)
+
+        self.client.force_login(user)
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': user.pk}),
+            {'phone': '+15551234567'},
+            format='json',
+        )
+        response_json = response.json()
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response_json["data"]["phone"], "+15551234567")
+
+    def test_patch_other_user_phone_rejected_without_permission(self):
+        """A plain user cannot change another user's phone without Profile.change_profile
+        -- regression test: phone must be included in editing_other_basic_fields."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        actor = User.objects.create_user(username='phoneactor@example.com', email='phoneactor@example.com', password='pw12345678')
+        Profile.objects.create(user=actor, company=company)
+        target = User.objects.create_user(username='phonetarget@example.com', email='phonetarget@example.com', password='pw12345678')
+        Profile.objects.create(user=target, company=company, phone='+15550000000')
+
+        self.client.force_login(actor)
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'phone': '+15559999999'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403, response.content)
+        target.refresh_from_db()
+        self.assertEqual(str(target.profile.phone), '+15550000000')
+
+    def test_patch_change_profile_permission_allows_phone_edit(self):
+        """A holder of Profile.change_profile can edit another user's phone."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        actor = User.objects.create_user(username='phoneeditor@example.com', email='phoneeditor@example.com', password='pw12345678')
+        actor.user_permissions.add(Permission.objects.get(codename='change_profile', content_type__app_label='Profile'))
+        Profile.objects.create(user=actor, company=company)
+        target = User.objects.create_user(username='phoneeditortarget@example.com', email='phoneeditortarget@example.com', password='pw12345678')
+        Profile.objects.create(user=target, company=company)
+
+        self.client.force_login(actor)
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'phone': '+15551112222'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["data"]["phone"], "+15551112222")
 
     def test_patch_self_edit_password_keeps_session_alive(self):
         """Changing your own password must not log you out mid-request."""

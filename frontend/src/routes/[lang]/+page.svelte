@@ -14,7 +14,10 @@
 
 	// This landing page is reachable without logging in, so the Researches/
 	// DICOM upload cards must only render once the backend actually confirms
-	// a live session -- not from a locally-cached "was logged in" flag.
+	// a live session -- not from a locally-cached "was logged in" flag. They're
+	// also gated on Dicom.access_studies (same permission Nav.svelte and the
+	// (studies) route group check) -- Admin holds no such permission and must
+	// not see study-related UI anywhere, including this landing page.
 	onMount(() => {
 		project.auth.verify();
 		project.enterBareRoute();
@@ -24,7 +27,7 @@
 <Header />
 <main class="container mx-auto px-4 py-6">
 	<div class="space-y-6">
-		{#if project.auth.status === 'authenticated'}
+		{#if project.auth.status === 'authenticated' && project.hasPermission('Dicom.access_studies')}
 			<Manager />
 			<DicomUploadCard />
 		{/if}

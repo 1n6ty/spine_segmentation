@@ -129,6 +129,7 @@ class ListProfilesTests(APITestCase):
 
         self.assertEqual(row['company'], {"slug": "acme", "name": "Acme"})
         self.assertEqual(row['roles'], [{"slug": "list-profiles-test-role", "name": "Nurse"}])
+        self.assertEqual(row['managed_companies'], [{"slug": "acme", "name": "Acme"}])
         assert_matches_schema(row, User_Item_Schema)
 
     def test_filter_by_company_slug(self):
