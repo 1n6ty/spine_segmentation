@@ -1,5 +1,6 @@
 {
 	"header": {
+		"name": "Digital Spondylography",
 		"p": "Vertebralogical System for Spinal Disorder Diagnosis",
 		"logout": "Logout",
 		"login": "Log in",
@@ -55,7 +56,7 @@
 			"upload_failed": "Upload failed",
 			"parsing": "Uploading and parsing DICOM..."
 		},
-		"welcome_h2": "Welcome to Spine Segmentation project",
+		"welcome_h2": "Welcome to Digital Spondylography project",
 		"p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
 		"key_features": {
 			"h3": "Key features:"
@@ -125,7 +126,7 @@
 		"disclaimer": "This report is generated automatically from the annotated X-ray markup and is intended for educational and screening purposes only. All findings must be confirmed by a qualified radiologist or orthopedist. This tool does not replace professional medical diagnosis."
 	},
 	"footer": {
-		"p_up": "Spine Segmentation project - Advanced Vertebralogical Platform",
+		"p_up": "Digital Spondylography project - Advanced Vertebralogical Platform",
 		"p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
 	},
 	"no_file_loaded": {

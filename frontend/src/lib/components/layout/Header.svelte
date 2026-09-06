@@ -12,7 +12,7 @@
 			<a href={`/${page.params.lang}`} class="mr-4 flex items-center">
 				<img src={favicon} class="mr-4 h-10 w-10 shrink-0" alt="favicon" />
 				<div class="mr-4 hidden min-w-0 sm:block">
-					<h1 class="text-3xl font-bold">Spine Segmentation</h1>
+					<h1 class="text-3xl font-bold">{ $t('header.name') }</h1>
 					<p class="text-sm text-(--muted-foreground)">
 						{$t('header.p')}
 					</p>
