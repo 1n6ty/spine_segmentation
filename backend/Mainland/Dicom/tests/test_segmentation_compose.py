@@ -39,7 +39,11 @@ class SegmentSpineFromS1ToC2Tests(SimpleTestCase):
     @patch("Dicom.utils.segmentation.compose.segment_spine_from_S1_to_C2_masks")
     @patch("Dicom.utils.segmentation.compose.get_instances")
     def test_passes_through_unchanged_when_at_or_under_the_cap(self, mock_get_instances, mock_masks):
-        mock_get_instances.return_value = [_instance(confidence=i, tag=i) for i in range(22)]
+        # confidence=i+1, not i: segment_spine_from_S1_to_C2's default threshold is
+        # 0.5, so a confidence of 0 (i=0) would get filtered out before the cap is
+        # even applied -- this test is only about the sort-and-cap step, not the
+        # threshold filter, so every instance here must clear 0.5 on its own.
+        mock_get_instances.return_value = [_instance(confidence=i + 1, tag=i) for i in range(22)]
         mock_masks.return_value = []
 
         segment_spine_from_S1_to_C2(pixel_array=np.zeros((10, 10)), detection_model=object())

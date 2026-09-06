@@ -117,14 +117,20 @@ def get_missing_t_estimates(
         gap `i` in the other.
 
         A gap is only treated as containing missing points when *both*
-        series independently round to the same integer multiple of their
-        own local scale (see `_adaptive_local_scale`). Corroboration across
-        the two series stands in for a single-series distance-to-nearest-
-        integer tolerance: measured on real detections, one side's ratio
-        can land meaningfully off-round (noisy reference-point placement)
-        while still agreeing with the other side on the rounded answer --
-        a fixed per-side tolerance rejects that agreement instead of using
-        it, silently dropping real gaps.
+        series independently round to at least 1 missing point at their
+        own local scale (see `_adaptive_local_scale`) *and* independently
+        clear `outlier_ratio` -- that dual pass is what guards against the
+        old over-insertion bug (a single noisy series can no longer manufacture
+        a gap on its own). Requiring the two rounded counts to match exactly
+        on top of that was too strict: at larger multiples (3-4x normal
+        spacing, i.e. 2-3 missing vertebraes) a few pixels of reference-point
+        noise is enough to push one series across a `.5` rounding boundary
+        the other doesn't cross, so two series that both loudly agree
+        "something is missing here" could still disagree on the exact count
+        and have the whole gap thrown out. Once both series clear the bar,
+        `min(mb, mu)` is used as the count instead -- the more conservative
+        of the two agreeing-in-spirit estimates, rather than an all-or-nothing
+        exact match.
     """
     db, dt = np.diff(tb), np.diff(tu)
     n = len(db)
@@ -136,13 +142,13 @@ def get_missing_t_estimates(
         rb, ru = _gap_ratio(db, i), _gap_ratio(dt, i)
         mb, mu = int(round(rb)) - 1, int(round(ru)) - 1
 
-        confident = mb == mu and mb >= 1 and rb > outlier_ratio and ru > outlier_ratio
+        confident = mb >= 1 and mu >= 1 and rb > outlier_ratio and ru > outlier_ratio
         if not confident:
             miss_b.append(np.array([], dtype=np.float32))
             miss_u.append(np.array([], dtype=np.float32))
             continue
 
-        m = min(mb, max_per_gap)
+        m = min(mb, mu, max_per_gap)
         miss_b.append(_interpolate_gap(tb, i, m))
         miss_u.append(_interpolate_gap(tu, i, m))
 
@@ -175,9 +181,10 @@ def reveal(vertebraes: list[Vertebrae], vpath: CentralPath, max_total: int | Non
     offset = 0  # shift from insertions made at earlier gaps, so later gap indexes stay correct
 
     for m1, m2, i in zip(miss_tb, miss_tu, range(len(miss_tb))):
-        # miss_tb/miss_tu are always paired to equal length per gap by
-        # get_missing_t_estimates -- both sides agreeing on the count is
-        # exactly what makes a gap confident in the first place.
+        # miss_tb/miss_tu are always paired to equal length per gap --
+        # get_missing_t_estimates uses min(mb, mu) as a single shared count
+        # for both series once a gap is confident, rather than requiring
+        # mb == mu.
         for mp1, mp2, j in zip(m1, m2, range(m1.shape[0])):
             if inserted >= budget:
                 _logger.warning(f"Reveal insertion budget ({max_total}) exhausted, stopping early.")
