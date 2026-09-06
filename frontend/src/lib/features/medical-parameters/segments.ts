@@ -19,18 +19,13 @@ export function remove_segment(projection: Projection, id: string): void {
  * existing id-generation convention (`editor/core/controllers/tool.svelte.ts`,
  * `autofill/ref-points.ts`).
  *
- * If an auto-detected (`generated: true`) segment already covers this exact same range, it's
- * dropped in favor of the new manual one rather than left alongside it -- otherwise the table
- * would show the same vertebra range twice (once generated, once manual) until the next
- * `sync_generated_segments` recompute, which wouldn't even remove the duplicate, since the
- * range is still one it would generate.
+ * A Computed Region already covering this exact same range is not a concern here -- it
+ * dedups itself out at read time against the live `segments` list (see
+ * `computed-segments.ts`'s `excludeRanges`), so no special-casing is needed on write.
  */
 export function add_segment(projection: Projection, topId: string, bottomId: string): void {
 	const slot = project.session.projections[projection];
-	const withoutMatchingGenerated = slot.segments.filter(
-		(s) => !(s.generated && s.topId === topId && s.bottomId === bottomId)
-	);
-	slot.segments = [...withoutMatchingGenerated, { id: crypto.randomUUID(), topId, bottomId }];
+	slot.segments = [...slot.segments, { id: crypto.randomUUID(), topId, bottomId }];
 	project.session.requestSave();
 }
 

@@ -106,7 +106,6 @@ async function flush_microtasks() {
 
 import { SessionService } from './session.svelte';
 import { registry } from './registry.svelte';
-import { DEFAULT_SEGMENT_DEFINITIONS } from '$lib/features/medical-parameters/diagnosis/regions';
 
 function fake_dataset(string_overrides: Record<string, string> = {}) {
 	const strings: Record<string, string> = {
@@ -203,7 +202,7 @@ describe('SessionService construction', () => {
 		expect(session.projections.side.segments).toEqual(savedSegments);
 	});
 
-	it('seeds the 3 default segment definitions when a restored slot never saved any (empty array)', async () => {
+	it('defaults to an empty array when a restored slot never saved any segments', async () => {
 		mock_get_routes({
 			id: 1,
 			side_sop_instance_uid: 'SOP1',
@@ -218,7 +217,31 @@ describe('SessionService construction', () => {
 		const session = new SessionService('1');
 		await session.loadingPromise;
 
-		expect(session.projections.side.segments).toEqual(DEFAULT_SEGMENT_DEFINITIONS);
+		expect(session.projections.side.segments).toEqual([]);
+	});
+
+	it('strips legacy default-region and generated entries from previously-saved segments', async () => {
+		mock_get_routes({
+			id: 1,
+			side_sop_instance_uid: 'SOP1',
+			side_polygons: [],
+			side_segments: [
+				{ id: 'cervical', topId: 'C2', bottomId: 'C7' },
+				{ id: 'generated:S1-L3', topId: 'L3', bottomId: 'S1', generated: true },
+				{ id: 'custom-uuid', topId: 'C4', bottomId: 'Th2' }
+			],
+			frontal_sop_instance_uid: null,
+			frontal_polygons: [],
+			frontal_segments: []
+		});
+		parseDicom.mockReturnValue(fake_dataset());
+
+		const session = new SessionService('1');
+		await session.loadingPromise;
+
+		expect(session.projections.side.segments).toEqual([
+			{ id: 'custom-uuid', topId: 'C4', bottomId: 'Th2' }
+		]);
 	});
 
 	it("throws (rejecting loadingPromise) when an explicit, known session id isn't found", async () => {
@@ -404,7 +427,7 @@ describe('SessionService.requestSave', () => {
 
 			expect(patch_json).toHaveBeenCalledWith('/api/dcm/recent-studies/7/projections/side/', {
 				polygons: [{ uuid: 'u1', id: 'L4', points: [] }],
-				segments: DEFAULT_SEGMENT_DEFINITIONS
+				segments: []
 			});
 			// frontal slot has no sopInstanceUid yet -- never PATCHed.
 			expect(patch_json).not.toHaveBeenCalledWith(
@@ -446,7 +469,7 @@ describe('SessionService.requestSave', () => {
 			expect(patch_json).toHaveBeenCalledTimes(1);
 			expect(patch_json).toHaveBeenCalledWith('/api/dcm/recent-studies/7/projections/side/', {
 				polygons: [{ uuid: 'u3', id: 'L3', points: [] }],
-				segments: DEFAULT_SEGMENT_DEFINITIONS
+				segments: []
 			});
 		} finally {
 			vi.useRealTimers();

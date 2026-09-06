@@ -81,30 +81,14 @@ describe('add_segment', () => {
 		expect(project.session.projections.frontal.segments).toHaveLength(0);
 	});
 
-	it('replaces a generated segment covering the exact same range instead of duplicating it', () => {
-		project.session.projections.side.segments = [
-			{ id: 'generated:C7-C2', topId: 'C2', bottomId: 'C7', generated: true }
-		];
-
-		add_segment('side', 'C2', 'C7');
-
-		const segments = project.session.projections.side.segments;
-		expect(segments).toHaveLength(1);
-		expect(segments[0].generated).toBeFalsy();
-		expect(segments[0].topId).toBe('C2');
-		expect(segments[0].bottomId).toBe('C7');
-	});
-
-	it('leaves an unrelated generated segment alone', () => {
-		project.session.projections.side.segments = [
-			{ id: 'generated:Th12-Th1', topId: 'Th1', bottomId: 'Th12', generated: true }
-		];
+	it('leaves existing segments alone when appending a new one', () => {
+		project.session.projections.side.segments = [{ id: 'a', topId: 'Th1', bottomId: 'Th12' }];
 
 		add_segment('side', 'C2', 'C7');
 
 		const segments = project.session.projections.side.segments;
 		expect(segments).toHaveLength(2);
-		expect(segments.some((s) => s.id === 'generated:Th12-Th1')).toBe(true);
+		expect(segments.some((s) => s.id === 'a')).toBe(true);
 	});
 });
 

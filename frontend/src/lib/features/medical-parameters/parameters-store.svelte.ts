@@ -8,7 +8,9 @@ import { getSegmentParams } from './calculators/segments';
 import { getSpineParams } from './calculators/spine';
 import { getVertebraeParams } from './calculators/vertebrae';
 import { match_items_by_ids } from './diagnosis/regions';
-import type { SegmentDefinition, Vertebrae } from './types';
+import { DEFAULT_REGION_DEFINITIONS, resolve_default_regions } from './default-segments';
+import { resolve_computed_regions } from './computed-segments';
+import type { ResolvedSegmentRow, SegmentDefinition, Vertebrae } from './types';
 
 /**
  * Resolves a projection's user-managed `SegmentDefinition[]` (persisted id-ranges)
@@ -35,14 +37,14 @@ import type { SegmentDefinition, Vertebrae } from './types';
 function resolve_segments(
 	polygons: Vertebrae[],
 	definitions: SegmentDefinition[]
-): { definitionId: string; polygons: Vertebrae[] }[] {
+): ResolvedSegmentRow[] {
 	return sort_segments_by_vertebra(definitions)
-		.map((def) => {
+		.map((def): ResolvedSegmentRow | null => {
 			const ids = expand_vertebra_id_range(def.topId, def.bottomId);
 			const matched = ids ? match_items_by_ids(polygons, ids) : null;
-			return matched ? { definitionId: def.id, polygons: matched } : null;
+			return matched ? { definitionId: def.id, polygons: matched, kind: 'user' } : null;
 		})
-		.filter((r): r is { definitionId: string; polygons: Vertebrae[] } => r !== null);
+		.filter((r): r is ResolvedSegmentRow => r !== null);
 }
 
 function make_projection_structures(projection: 'side' | 'frontal') {
@@ -57,11 +59,26 @@ function make_projection_structures(projection: 'side' | 'frontal') {
 				bottom: v
 			}));
 		},
-		get segments() {
-			return resolve_segments(
-				project.session.projections[projection].polygons,
-				project.session.projections[projection].segments
-			);
+		/**
+		 * Fixed render order: Default Regions, then Computed Regions, then User-Defined --
+		 * matches the Segments subtab's top-to-bottom group layout directly, so `Table.svelte`
+		 * never needs to re-sort/re-group this array itself. Default and Computed rows are
+		 * derived purely from live polygons on every read (never persisted); only the
+		 * user-defined subset comes from -- and is ever written back to -- session state.
+		 */
+		get segments(): ResolvedSegmentRow[] {
+			const polygons = project.session.projections[projection].polygons;
+			const userDefs = project.session.projections[projection].segments;
+
+			const defaultRows = resolve_default_regions(polygons);
+			const userRows = resolve_segments(polygons, userDefs);
+			const excludeRanges = [...DEFAULT_REGION_DEFINITIONS, ...userDefs].map((d) => ({
+				topId: d.topId,
+				bottomId: d.bottomId
+			}));
+			const computedRows = resolve_computed_regions(polygons, excludeRanges);
+
+			return [...defaultRows, ...computedRows, ...userRows];
 		}
 	};
 }

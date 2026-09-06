@@ -7,6 +7,7 @@
 	import { parametersConfig } from '$lib/features/medical-parameters/config';
 	import { params, structures } from '$lib/features/medical-parameters/parameters-store.svelte';
 	import { remove_segment, can_add_segment } from '$lib/features/medical-parameters/segments';
+	import type { ResolvedSegmentRow } from '$lib/features/medical-parameters/types';
 	import { t } from 'svelte-i18n';
 	import { project } from '$lib/core/project.svelte';
 	import addSVG from '$lib/assets/icons/add.svg';
@@ -48,7 +49,15 @@
 		cells: string[];
 		definitionId?: string;
 		regionPolygons: Polygon[];
+		kind?: ResolvedSegmentRow['kind'];
+		/** Default Regions only -- e.g. "Cervical" or "Upper Thoracic", rendered as a badge
+		 * inline with the row's name cell rather than as a separate header row. */
+		badgeLabel?: string;
 	}
+
+	type DisplayRow =
+		| { type: 'group-header'; key: string; label: string }
+		| { type: 'data'; row: Row };
 
 	let isSegments = $derived(params.activeStructure === 'segments');
 	let canAddSegment = $derived(can_add_segment(projection));
@@ -75,15 +84,11 @@
 		// Raw, index-aligned source for `targetData` -- `structures[projection][activeKey]`
 		// is mapped 1:1 into `params[projection][activeKey]` by `parameters-store.svelte.ts`,
 		// so row `i`'s underlying polygon(s) are always `rawItems[i]`. Shape depends on
-		// `activeKey`: a single `Polygon` for vertebrae, `{top, bottom}` for gaps, or
-		// `{definitionId, polygons}` for segments.
+		// `activeKey`: a single `Polygon` for vertebrae, `{top, bottom}` for gaps, or a full
+		// `ResolvedSegmentRow` (polygons + group metadata) for segments.
 		const rawItems = (structures[projection] as unknown as Record<ValidKeys, unknown[]>)[
 			activeKey
-		] as (
-			| Polygon
-			| { top: Polygon; bottom: Polygon }
-			| { definitionId: string; polygons: Polygon[] }
-		)[];
+		] as (Polygon | { top: Polygon; bottom: Polygon } | ResolvedSegmentRow)[];
 
 		function regionPolygonsFor(raw: (typeof rawItems)[number]): Polygon[] {
 			if (activeKey === 'gaps') {
@@ -91,7 +96,7 @@
 				return [gap.top, gap.bottom];
 			}
 			if (activeKey === 'segments') {
-				return (raw as { definitionId: string; polygons: Polygon[] }).polygons;
+				return (raw as ResolvedSegmentRow).polygons;
 			}
 			return [raw as Polygon];
 		}
@@ -118,10 +123,25 @@
 				return `${valStr} ${$t('units.' + pv.type)}`;
 			});
 
+			const raw = isSegments ? (rawItems[i] as ResolvedSegmentRow) : undefined;
+			// Default Regions get an anatomical badge next to their plain vertebra-range name --
+			// e.g. "[Cervical] C2-C7" or "[Upper Thoracic] Th1-Th5" -- combining the row's own
+			// label with its sub-header when both exist (the Thoracic rows), or just the
+			// sub-header alone (Cervical/Lumbar, which have no `rowLabelKey`). Computed/User rows
+			// carry no badge and render their plain vertebra-range name unchanged.
+			const badgeLabel =
+				raw?.kind === 'default' && raw.subHeaderKey
+					? raw.rowLabelKey
+						? `${$t('segments.groups.' + raw.rowLabelKey)} ${$t('segments.groups.' + raw.subHeaderKey)}`
+						: $t('segments.groups.' + raw.subHeaderKey)
+					: undefined;
+
 			return {
 				cells: [e.name, ...roundedValues],
 				definitionId: e.definitionId,
-				regionPolygons: regionPolygonsFor(rawItems[i])
+				regionPolygons: regionPolygonsFor(rawItems[i]),
+				kind: raw?.kind,
+				badgeLabel
 			};
 		});
 
@@ -130,6 +150,32 @@
 		// "C2–C6, then C4–Th2, then Th4–Th12") — so, unlike vertebrae/gaps, segments are not
 		// reversed.
 		return isSegments ? mapped : mapped.reverse();
+	});
+
+	// The Segments subtab's fixed top-to-bottom group order: Default Regions, then Computed
+	// Regions, then User-Defined. `rows` (built above) already arrives in this exact order --
+	// `structures[projection].segments` returns `[...defaultRows, ...computedRows, ...userRows]`
+	// -- so this only needs to insert one header row per group boundary, not sort. Default
+	// Regions' anatomical grouping (Cervical/Thoracic/Lumbar) renders as an inline badge on each
+	// row itself (see `badgeLabel` above), not as its own header row.
+	const SEGMENT_GROUP_ORDER: NonNullable<Row['kind']>[] = ['default', 'computed', 'user'];
+
+	let displayRows = $derived.by((): DisplayRow[] => {
+		if (!isSegments) return rows.map((row) => ({ type: 'data', row }));
+
+		const out: DisplayRow[] = [];
+		for (const kind of SEGMENT_GROUP_ORDER) {
+			const groupRows = rows.filter((r) => r.kind === kind);
+			// Default/Computed scaffolding stays hidden until it has something to show; the
+			// User-Defined header always renders, since it also anchors the "+ Add" row.
+			if (groupRows.length === 0 && kind !== 'user') continue;
+
+			out.push({ type: 'group-header', key: kind, label: $t(`segments.groups.${kind}Title`) });
+			for (const row of groupRows) {
+				out.push({ type: 'data', row });
+			}
+		}
+		return out;
 	});
 
 	let struct_form = $derived(
@@ -237,35 +283,55 @@
 					</tr>
 				</thead>
 				<tbody class="[&_tr:last-child]:border-0">
-					{#each rows as row}
-						<tr
-							class="border-b border-(--border) transition-colors hover:bg-(--muted)/50 data-[state=selected]:bg-(--muted)"
-							onmouseenter={(e) => onRowHover(e, row.regionPolygons)}
-							onmouseleave={() => (hoveredRow = null)}
-						>
-							{#each row.cells as cell, i}
+					{#each displayRows as displayRow (displayRow.type === 'data' ? (displayRow.row.definitionId ?? displayRow.row.cells[0]) : displayRow.key)}
+						{#if displayRow.type === 'group-header'}
+							<tr class="border-b border-(--border) bg-(--muted)/40">
 								<td
-									class:font-medium={i == 0}
-									class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [[role=checkbox]]:translate-y-0.5"
-									>{cell}</td
+									colspan={totalColumns}
+									class="px-2 py-2 text-xs font-semibold tracking-wide text-(--foreground)"
+									>{displayRow.label}</td
 								>
-							{/each}
-							{#if isSegments}
-								<td class="p-2 text-center align-middle whitespace-nowrap">
-									<button
-										onclick={() => row.definitionId && remove_segment(projection, row.definitionId)}
-										class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md p-0 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 disabled:pointer-events-none disabled:opacity-50 has-[>img]:px-1.5 aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [&_img]:pointer-events-none [&_img]:shrink-0"
+							</tr>
+						{:else}
+							{@const row = displayRow.row}
+							<tr
+								class="border-b border-(--border) transition-colors hover:bg-(--muted)/50 data-[state=selected]:bg-(--muted)"
+								onmouseenter={(e) => onRowHover(e, row.regionPolygons)}
+								onmouseleave={() => (hoveredRow = null)}
+							>
+								{#each row.cells as cell, i}
+									<td
+										class:font-medium={i == 0}
+										class="p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [[role=checkbox]]:translate-y-0.5"
 									>
-										<img
-											src={deleteSVG}
-											alt="Delete"
-											class="h-4 w-4"
-											style="filter: invert(26%) sepia(85%) saturate(2227%) hue-rotate(331deg) brightness(90%) contrast(105%);"
-										/>
-									</button>
-								</td>
-							{/if}
-						</tr>
+										{#if i == 0 && row.badgeLabel}
+											<span
+												class="mr-1.5 inline-flex items-center justify-center rounded-md border border-(--border) px-2 py-0.5 text-xs font-medium"
+												>{row.badgeLabel}</span
+											>
+										{/if}{cell}</td
+									>
+								{/each}
+								{#if isSegments}
+									<td class="p-2 text-center align-middle whitespace-nowrap">
+										{#if row.kind === 'user'}
+											<button
+												onclick={() =>
+													row.definitionId && remove_segment(projection, row.definitionId)}
+												class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md p-0 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:border-(--ring) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 disabled:pointer-events-none disabled:opacity-50 has-[>img]:px-1.5 aria-invalid:border-(--destructive) aria-invalid:ring-(--destructive)/20 [&_img]:pointer-events-none [&_img]:shrink-0"
+											>
+												<img
+													src={deleteSVG}
+													alt="Delete"
+													class="h-4 w-4"
+													style="filter: invert(26%) sepia(85%) saturate(2227%) hue-rotate(331deg) brightness(90%) contrast(105%);"
+												/>
+											</button>
+										{/if}
+									</td>
+								{/if}
+							</tr>
+						{/if}
 					{/each}
 					{#if isSegments}
 						<tr class="border-b border-(--border) transition-colors hover:bg-(--muted)/50">

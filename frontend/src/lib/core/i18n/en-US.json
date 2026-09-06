@@ -120,7 +120,19 @@
 		"modal_title": "Select vertebra range",
 		"select_range_instructions": "Drag the handles along the spine, or click a starting vertebra and Shift+click an ending vertebra to select a contiguous range.",
 		"create": "Create segment",
-		"not_enough_vertebrae": "Add at least 2 annotated vertebrae on this projection before creating a segment."
+		"not_enough_vertebrae": "Add at least 2 annotated vertebrae on this projection before creating a segment.",
+		"groups": {
+			"defaultTitle": "Default Regions",
+			"computedTitle": "Computed Regions",
+			"userTitle": "User-Defined Regions",
+			"cervical": "Cervical",
+			"thoracic": "Thoracic",
+			"lumbar": "Lumbar / Sacral",
+			"upper": "Upper",
+			"central": "Central",
+			"lower": "Lower",
+			"total": "Total"
+		}
 	},
 	"parameters": {
 		"linear": "Linear Parameters",

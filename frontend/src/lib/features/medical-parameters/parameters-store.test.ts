@@ -61,45 +61,50 @@ describe('structures.gaps', () => {
 });
 
 describe('structures.segments', () => {
-	it('is empty when no default segment definition is fully annotated', () => {
+	it('is empty when nothing is annotated', () => {
 		project.session.projections.side.polygons = [make_vertebra('C2')];
 		expect(structures.side.segments).toEqual([]);
 	});
 
-	it('includes a default definition once every one of its vertebra ids is present, regardless of array order', () => {
+	it('includes a Default Region once every one of its vertebra ids is present, regardless of array order', () => {
 		const cervical = [...CERVICAL_IDS].reverse().map((id, i) => make_vertebra(id, 0, i * 40));
 		project.session.projections.side.polygons = cervical;
 
-		expect(structures.side.segments).toHaveLength(1);
-		expect(structures.side.segments[0].polygons.map((v) => v.id).sort()).toEqual(
-			[...CERVICAL_IDS].sort()
-		);
+		// Filtered to `kind: 'default'` rather than asserting on the array as a whole -- this
+		// fixture's vertebrae are collinear squares, which (per `circle-fit.ts`'s least-squares
+		// solve) can still produce spurious low-confidence Computed Region arcs alongside the one
+		// real Default row; that's the BIC/DP pipeline's actual behavior, not a defect in the
+		// Default Region resolution this test targets.
+		const defaultRows = structures.side.segments.filter((s) => s.kind === 'default');
+		expect(defaultRows).toHaveLength(1);
+		expect(defaultRows[0].polygons.map((v) => v.id).sort()).toEqual([...CERVICAL_IDS].sort());
 	});
 
-	it('resolves a custom (non-default) segment definition', () => {
+	it('resolves a custom (user-defined) segment definition', () => {
 		project.session.projections.side.segments = [{ id: 'x', topId: 'C4', bottomId: 'Th2' }];
 		project.session.projections.side.polygons = [
 			...['C4', 'C5', 'C6', 'C7'].map((id, i) => make_vertebra(id, 0, i * 40)),
 			...['Th1', 'Th2'].map((id, i) => make_vertebra(id, 0, (i + 4) * 40))
 		];
 
-		expect(structures.side.segments).toHaveLength(1);
-		expect(structures.side.segments[0].definitionId).toBe('x');
-		expect(structures.side.segments[0].polygons.map((v) => v.id).sort()).toEqual(
+		const userRows = structures.side.segments.filter((s) => s.kind === 'user');
+		expect(userRows).toHaveLength(1);
+		expect(userRows[0].definitionId).toBe('x');
+		expect(userRows[0].polygons.map((v) => v.id).sort()).toEqual(
 			['C4', 'C5', 'C6', 'C7', 'Th1', 'Th2'].sort()
 		);
 	});
 
-	it('is empty when the segments list is explicitly empty, with no implicit fallback', () => {
+	it('produces no user-defined rows when the segments list is explicitly empty, with no implicit fallback', () => {
 		project.session.projections.side.segments = [];
 		project.session.projections.side.polygons = [...CERVICAL_IDS].map((id, i) =>
 			make_vertebra(id, 0, i * 40)
 		);
 
-		expect(structures.side.segments).toEqual([]);
+		expect(structures.side.segments.filter((s) => s.kind === 'user')).toEqual([]);
 	});
 
-	it('always returns definitions sorted by their most-inferior endpoint, regardless of list order', () => {
+	it('always returns user-defined segments sorted by their most-inferior endpoint, regardless of list order', () => {
 		const thoracicIds = [
 			'Th12',
 			'Th11',
@@ -123,10 +128,8 @@ describe('structures.segments', () => {
 			...thoracicIds.map((id, i) => make_vertebra(id, 100, i * 40))
 		];
 
-		expect(structures.side.segments.map((s) => s.definitionId)).toEqual([
-			'cervical-second',
-			'thoracic-first'
-		]);
+		const userRows = structures.side.segments.filter((s) => s.kind === 'user');
+		expect(userRows.map((s) => s.definitionId)).toEqual(['cervical-second', 'thoracic-first']);
 	});
 });
 
@@ -145,7 +148,7 @@ describe('params.calculate', () => {
 		expect(result.overall).toBeDefined();
 	});
 
-	it('names segments by their vertebra id range, sorted anatomically regardless of definition order', () => {
+	it('names user-defined segments by their vertebra id range, sorted anatomically regardless of definition order', () => {
 		const thoracicIds = [
 			'Th12',
 			'Th11',
@@ -171,7 +174,17 @@ describe('params.calculate', () => {
 
 		const result = params.calculate('side');
 
-		expect(result.segments.map((s) => s.name)).toEqual(['C2-C7', 'Th1-Th12']);
+		// `params.calculate`'s output doesn't itself carry `kind` (Table.svelte reads that off
+		// `structures[...].segments` directly) -- so correlate by definitionId against the raw,
+		// kind-tagged structures to isolate just the two user-defined rows this test seeded.
+		const userIds = structures.side.segments
+			.filter((s) => s.kind === 'user')
+			.map((s) => s.definitionId);
+		const userNames = result.segments
+			.filter((s) => userIds.includes(s.definitionId))
+			.map((s) => s.name);
+
+		expect(userNames).toEqual(['C2-C7', 'Th1-Th12']);
 	});
 
 	it('does not throw when the projection has no attached patient (defaults mmPerPixel to 1)', () => {

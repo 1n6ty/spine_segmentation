@@ -1,9 +1,9 @@
 import { get, patch_json, post, post_json } from '$lib/core/network/client';
 import { PROJECTION_TO_FILE_ROLE_SLUG } from '$lib/features/dicom/types';
 import type { Patient, Projection, Series, Study } from '$lib/features/dicom/types';
-import { DEFAULT_SEGMENT_DEFINITIONS } from '$lib/features/medical-parameters/diagnosis/regions';
 import { PatientService } from './patient.svelte';
 import { registry } from './registry.svelte';
+import { sanitize_persisted_segments } from './sanitize-legacy-segments';
 import type { SeriesService } from './series.svelte';
 import type { StudyService } from './study.svelte';
 import type { SessionProjection } from './types';
@@ -77,14 +77,14 @@ export class SessionService {
 			arrayBuffer: null,
 			patient: null,
 			polygons: [],
-			segments: DEFAULT_SEGMENT_DEFINITIONS
+			segments: []
 		},
 		frontal: {
 			sopInstanceUid: '',
 			arrayBuffer: null,
 			patient: null,
 			polygons: [],
-			segments: DEFAULT_SEGMENT_DEFINITIONS
+			segments: []
 		}
 	});
 
@@ -111,19 +111,13 @@ export class SessionService {
 					key: 'side',
 					sopInstanceUid: detail.side_sop_instance_uid,
 					polygons: (detail.side_polygons ?? []) as SessionProjection['polygons'],
-					segments:
-						(detail.side_segments ?? []).length > 0
-							? (detail.side_segments as SessionProjection['segments'])
-							: DEFAULT_SEGMENT_DEFINITIONS
+					segments: sanitize_persisted_segments(detail.side_segments ?? [])
 				},
 				{
 					key: 'frontal',
 					sopInstanceUid: detail.frontal_sop_instance_uid,
 					polygons: (detail.frontal_polygons ?? []) as SessionProjection['polygons'],
-					segments:
-						(detail.frontal_segments ?? []).length > 0
-							? (detail.frontal_segments as SessionProjection['segments'])
-							: DEFAULT_SEGMENT_DEFINITIONS
+					segments: sanitize_persisted_segments(detail.frontal_segments ?? [])
 				}
 			];
 
