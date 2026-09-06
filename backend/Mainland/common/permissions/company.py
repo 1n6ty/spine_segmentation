@@ -1,19 +1,20 @@
 from rest_framework.permissions import BasePermission
 
-from common.utils.company import get_user_company
 
+class ManagedCompanyPermission(BasePermission):
+    """Object-level check scoped to `Profile.managed_companies` -- the sole
+    company-scoping mechanism; no role carries scope itself, and there is no
+    unscoped "any company" bypass tier.
 
-class IsOwnCompanyPermission(BasePermission):
-    """Object-level check for a view whose object *is* a Company (not an entity
-    that merely belongs to one). Bypassed by holders of `any_company_perm`
-    (set as a class attribute on a subclass, e.g.
-    `any_company_perm = 'Company.view_company_any_company'`); otherwise the
-    object must be the caller's own company, via their Profile."""
+    `is_company_row=True` checks the object itself (a Company row); otherwise
+    the object is assumed to carry a `company_id` FK (e.g. a Profile)."""
 
-    any_company_perm: str = ""
+    def __init__(self, is_company_row: bool = False):
+        self.is_company_row = is_company_row
 
     def has_object_permission(self, request, view, obj):
-        if self.any_company_perm and request.user.has_perm(self.any_company_perm):
-            return True
-        company = get_user_company(request.user)
-        return company is not None and obj.pk == company.pk
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return False
+        target_id = obj.pk if self.is_company_row else obj.company_id
+        return profile.managed_companies.filter(pk=target_id).exists()

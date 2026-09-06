@@ -1,11 +1,11 @@
 from common.schemas.v1.response import Issue, OkResponse
 from common.schemas.v1.errors import BadRequestResponse, NotFoundResponse, UnauthorizedResponse
 from common.mixins.v1.viewset import StdViewSetMixin
+from common.permissions.base import HasPermCodename
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.request import Request
-from rest_framework.permissions import IsAuthenticated
 
 from django.http import HttpResponse, StreamingHttpResponse
 
@@ -65,7 +65,7 @@ class DcmViewSet(StdViewSetMixin):
     lookup_value_regex = r'[^/]+'
     
     def get_permissions(self):
-        return [IsAuthenticated()]
+        return [HasPermCodename('Dicom.access_studies')]
 
     @extend_schema(
         summary="Method to parse a dicom file",

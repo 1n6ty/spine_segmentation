@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from common.schemas.v1.domain.company import Company_Item_Schema, Company_Ref_Schema
 from common.schemas.v1.domain.role import Role_Item_Schema, Role_Ref_Schema
-from common.utils.company import get_user_company, get_user_role
+from common.utils.company import get_user_company, get_user_roles
 from common.utils.extend import extend_field_description
 
 if TYPE_CHECKING:
@@ -38,8 +38,8 @@ class User_Item_Schema(User_Ref_Schema):
     company: Optional[Union[Company_Ref_Schema, Company_Item_Schema]] = Field(
         None, description=extend_field_description('company'),
     )
-    role: Optional[Union[Role_Ref_Schema, Role_Item_Schema]] = Field(
-        None, description=extend_field_description('role'),
+    roles: List[Union[Role_Ref_Schema, Role_Item_Schema]] = Field(
+        default_factory=list, description=extend_field_description('roles'),
     )
     permissions: List[str] = Field(
         default_factory=list,
@@ -55,14 +55,14 @@ class User_Item_Schema(User_Ref_Schema):
         if profile is None:
             profile = getattr(user, 'profile', None)
         company = get_user_company(user)
-        role = get_user_role(user)
+        roles = get_user_roles(user)
         company_schema = Company_Item_Schema if 'company' in extend else Company_Ref_Schema
-        role_schema = Role_Item_Schema if 'role' in extend else Role_Ref_Schema
+        role_schema = Role_Item_Schema if 'roles' in extend else Role_Ref_Schema
         ref = User_Ref_Schema.from_model(user, profile=profile)
         return cls(
             **ref.model_dump(),
             phone=str(profile.phone) if profile and profile.phone else None,
             company=company_schema.from_model(company) if company is not None else None,
-            role=role_schema.from_model(role) if role is not None else None,
+            roles=[role_schema.from_model(role) for role in roles] if roles is not None else [],
             permissions=permissions if permissions is not None else [],
         )

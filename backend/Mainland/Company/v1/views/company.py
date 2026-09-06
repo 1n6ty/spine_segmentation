@@ -6,11 +6,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from common.mixins.v1.viewset import StdViewSetMixin
-from common.permissions.base import HasPermCodename
+from common.permissions.company import ManagedCompanyPermission
 from common.schemas.v1.errors import BadRequestResponse, PermissionDeniedResponse, UnauthorizedResponse
+from common.utils.company import scope_queryset_to_managed_companies
 from Company.v1.utils.constants import COMPANY_ID_URL_KWARG, COMPANY_ID_URL_REGEX
 from Company.models import Company
-from Company.permissions import CompanyRetrievePermission
 from Company.v1.filters.company import CompanyFilterSet
 from Company.v1.paginations.company import Companies_Pagination
 from Company.v1.schemas.docs.company import Company_LIST_Parameters
@@ -31,17 +31,13 @@ class CompanyViewSet(StdViewSetMixin):
 
     def get_permissions(self):
         if self.action == 'retrieve':
-            return [IsAuthenticated(), CompanyRetrievePermission()]
-        elif self.action == 'list':
-            return [IsAuthenticated(), HasPermCodename('Company.view_company_any_company')]
+            return [IsAuthenticated(), ManagedCompanyPermission(is_company_row=True)]
         return [IsAuthenticated()]
 
     @extend_schema(
         summary="List all companies",
-        description="Returns every Company in the system. Requires the "
-                    "'view_company_any_company' permission or "
-                    "superuser -- unlike Order/Product's company-scoped listing, there "
-                    "is no same-company fallback here.",
+        description="Returns companies in the requesting user's managed_companies -- "
+                    "scoped purely by managed_companies membership, no bypass tier.",
         parameters=Company_LIST_Parameters,
         responses={
             200: Company_LIST_Response_OK,
@@ -57,6 +53,7 @@ class CompanyViewSet(StdViewSetMixin):
             return BadRequestResponse.from_pydantic_errors(e.errors()).drf_response
 
         qs = Company.objects.prefetch_related('translations').order_by('id')
+        qs = await sync_to_async(scope_queryset_to_managed_companies)(request.user, qs, company_field='pk')
         filtered_qs = await sync_to_async(
             lambda: CompanyFilterSet(request.query_params, queryset=qs, request=request).qs
         )()
@@ -69,8 +66,7 @@ class CompanyViewSet(StdViewSetMixin):
     @extend_schema(
         summary="Retrieve a company",
         description="Returns the full detail of a single company. Requires the "
-                    "'view_company_any_company' permission or "
-                    "superuser, or the requesting user's own company.",
+                    "company to be in the requesting user's managed_companies.",
         responses={
             200: Company_RETRIEVE_Response_OK,
             401: UnauthorizedResponse,

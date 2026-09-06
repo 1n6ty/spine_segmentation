@@ -44,7 +44,7 @@ class TestProfilesViewSet(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response_json["status"], "ok")
         self.assertEqual(response_json["data"]["email"], email)
-        self.assertIsNone(response_json["data"]["role"])
+        self.assertEqual(response_json["data"]["roles"], [])
         # This user has no Profile at all -- both fields must default cleanly.
         self.assertEqual(response_json["data"]["patronymic"], "")
         self.assertIsNone(response_json["data"]["phone"])
@@ -70,25 +70,26 @@ class TestProfilesViewSet(APITestCase):
         self.assertEqual(response_json["data"]["phone"], "+15551234567")
 
     def test_me_includes_role(self):
-        """Test /me returns the user's role (slug + translated name) via Profile.role."""
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        """Test /me returns the user's roles (slug + translated name) via Profile.roles."""
+        call_command('sync_roles', verbosity=0)
         role = Role.objects.get(slug='doctor')
 
         company = Company.objects.create(name='Acme', slug='acme')
         user = User.objects.create_user(username='roleduser', email='roleduser@example.com', password='pw')
-        Profile.objects.create(user=user, company=company, role=role)
+        profile = Profile.objects.create(user=user, company=company)
+        profile.roles.set([role])
 
         self.client.force_login(user)
         response = self.client.get(reverse("Profile-me"))
         response_json = response.json()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response_json["data"]["role"], {"slug": "doctor", "name": "Doctor"})
+        self.assertEqual(response_json["data"]["roles"], [{"slug": "doctor", "name": "Doctor"}])
 
     def test_me_includes_direct_permission(self):
         """Test /me's permissions field includes a permission assigned directly to the user."""
         user = User.objects.create_user(username='directperm', email='directperm@example.com', password='pw')
-        perm = Permission.objects.get(codename='view_company_any_company', content_type__app_label='Company')
+        perm = Permission.objects.get(codename='view_company', content_type__app_label='Company')
         user.user_permissions.add(perm)
 
         self.client.force_login(user)
@@ -96,11 +97,11 @@ class TestProfilesViewSet(APITestCase):
         response_json = response.json()
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Company.view_company_any_company', response_json["data"]["permissions"])
+        self.assertIn('Company.view_company', response_json["data"]["permissions"])
 
     def test_me_includes_group_inherited_permission(self):
         """Test /me's permissions field includes a permission held only via a group."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
         user = User.objects.create_user(username='groupperm', email='groupperm@example.com', password='pw')
         user.groups.add(Group.objects.get(name='Admin'))
 
@@ -112,7 +113,7 @@ class TestProfilesViewSet(APITestCase):
         # This user was never assigned any permission directly -- everything in
         # the response must have come from the group.
         self.assertEqual(user.user_permissions.count(), 0)
-        self.assertIn('Company.view_company_any_company', response_json["data"]["permissions"])
+        self.assertIn('Company.view_company', response_json["data"]["permissions"])
 
     def test_me_superuser_sees_all_permissions(self):
         """Test /me's permissions field includes every permission in the system for a superuser."""
@@ -130,7 +131,7 @@ class TestProfilesViewSet(APITestCase):
         """Test GET /profiles/ list response items carry an empty `permissions` list -- User_Item_Schema
         declares the field with a `[]` default, and only the /me action's from_model call ever
         populates it, so list rows get the (present but empty) default instead of a real lookup."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
         company = Company.objects.create(name='Acme', slug='acme')
         manager = User.objects.create_user(username='listmanager', email='listmanager@example.com', password='pw')
         manager.groups.add(Group.objects.get(name='Admin'))
@@ -213,7 +214,7 @@ class TestProfilesViewSet(APITestCase):
 
     def test_patch_self_edit_role_rejected_without_sensitive_permission(self):
         """A plain user cannot change their own role_slug/company_slug."""
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
         company = Company.objects.create(name='Acme', slug='acme')
         user = User.objects.create_user(username='noselfrole@example.com', email='noselfrole@example.com', password='pw12345678')
         Profile.objects.create(user=user, company=company)
@@ -221,7 +222,7 @@ class TestProfilesViewSet(APITestCase):
         self.client.force_login(user)
         response = self.client.patch(
             reverse('Profile-detail', kwargs={'user_id': user.pk}),
-            {'role_slug': 'doctor'},
+            {'role_slugs': ['doctor']},
             format='json',
         )
         response_json = response.json()
@@ -230,21 +231,22 @@ class TestProfilesViewSet(APITestCase):
         self.assertEqual(response_json["status"], "error")
 
     def test_patch_self_edit_unchanged_role_and_company_does_not_require_sensitive_permission(self):
-        """Resubmitting your own current role_slug/company_slug unchanged (e.g. from
+        """Resubmitting your own current role_slugs/company_slug unchanged (e.g. from
         a form or Swagger's pre-filled example values) must not be treated as a
-        role/company change -- it shouldn't require change_sensitive_profile_data."""
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        role/company change -- it shouldn't require change_profile_role/change_profile_company."""
+        call_command('sync_roles', verbosity=0)
         role = Role.objects.get(slug='doctor')
         company = Company.objects.create(name='Acme', slug='acme')
         user = User.objects.create_user(username='sameval@example.com', email='sameval@example.com', password='pw12345678')
-        Profile.objects.create(user=user, company=company, role=role)
+        profile = Profile.objects.create(user=user, company=company)
+        profile.roles.set([role])
 
         self.client.force_login(user)
         response = self.client.patch(
             reverse('Profile-detail', kwargs={'user_id': user.pk}),
             {
                 'first_name': 'Same',
-                'role_slug': 'doctor',
+                'role_slugs': ['doctor'],
                 'company_slug': 'acme',
             },
             format='json',
@@ -253,24 +255,24 @@ class TestProfilesViewSet(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response_json["data"]["first_name"], "Same")
-        self.assertEqual(response_json["data"]["role"], {"slug": "doctor", "name": "Doctor"})
+        self.assertEqual(response_json["data"]["roles"], [{"slug": "doctor", "name": "Doctor"}])
         self.assertEqual(response_json["data"]["company"]["slug"], "acme")
 
     def test_patch_self_edit_role_change_rejected_without_sensitive_permission_even_with_existing_role(self):
         """A user who already has a role cannot self-promote/demote to a DIFFERENT
-        role without change_sensitive_profile_data -- only resubmitting the same
+        role without change_profile_role -- only resubmitting the same
         value is exempt from the gate."""
-        call_command('create_viewer_role_if_not_exists', verbosity=0)
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
         viewer_role = Role.objects.get(slug='viewer')
         company = Company.objects.create(name='Acme', slug='acme')
         user = User.objects.create_user(username='rolechange@example.com', email='rolechange@example.com', password='pw12345678')
-        Profile.objects.create(user=user, company=company, role=viewer_role)
+        profile = Profile.objects.create(user=user, company=company)
+        profile.roles.set([viewer_role])
 
         self.client.force_login(user)
         response = self.client.patch(
             reverse('Profile-detail', kwargs={'user_id': user.pk}),
-            {'role_slug': 'doctor'},
+            {'role_slugs': ['doctor']},
             format='json',
         )
         response_json = response.json()
@@ -298,22 +300,27 @@ class TestProfilesViewSet(APITestCase):
         self.assertNotEqual(target.first_name, 'Hacked')
 
     def test_patch_manager_can_edit_other_user_including_role_and_company(self):
-        """Profile.change_sensitive_profile_data lets a manager edit any user, including
-        role/company, and role reassignment swaps Django group membership."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
-        call_command('create_viewer_role_if_not_exists', verbosity=0)
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        """Profile.change_profile_role/change_profile_company let a manager edit any user
+        in their managed_companies, including role/company, and role reassignment swaps
+        Django group membership. The new role must be in the manager's own roles'
+        assignable set, and the new company must be in the manager's managed_companies."""
+        call_command('sync_roles', verbosity=0)
 
         old_company = Company.objects.create(name='Acme', slug='acme')
         new_company = Company.objects.create(name='Beta', slug='beta')
+        admin_role = Role.objects.select_related('group').get(slug='admin')
         viewer_role = Role.objects.select_related('group').get(slug='viewer')
         doctor_role = Role.objects.select_related('group').get(slug='doctor')
 
         manager = User.objects.create_user(username='manager@example.com', email='manager@example.com', password='pw12345678')
         manager.groups.add(Group.objects.get(name='Admin'))
+        manager_profile = Profile.objects.create(user=manager, company=old_company)
+        manager_profile.roles.set([admin_role])
+        manager_profile.managed_companies.add(new_company)
 
         target = User.objects.create_user(username='target2@example.com', email='target2@example.com', password='pw12345678')
-        target_profile = Profile.objects.create(user=target, company=old_company, role=viewer_role)
+        target_profile = Profile.objects.create(user=target, company=old_company)
+        target_profile.roles.set([viewer_role])
         target.groups.add(viewer_role.group)
 
         self.client.force_login(manager)
@@ -321,7 +328,7 @@ class TestProfilesViewSet(APITestCase):
             reverse('Profile-detail', kwargs={'user_id': target.pk}),
             {
                 'email': 'target2-new@example.com',
-                'role_slug': 'doctor',
+                'role_slugs': ['doctor'],
                 'company_slug': 'beta',
             },
             format='json',
@@ -330,21 +337,77 @@ class TestProfilesViewSet(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response_json["data"]["email"], "target2-new@example.com")
-        self.assertEqual(response_json["data"]["role"], {"slug": "doctor", "name": "Doctor"})
+        self.assertEqual(response_json["data"]["roles"], [{"slug": "doctor", "name": "Doctor"}])
         self.assertEqual(response_json["data"]["company"]["slug"], "beta")
 
         target.refresh_from_db()
         target_profile.refresh_from_db()
         self.assertEqual(target_profile.company_id, new_company.id)
-        self.assertEqual(target_profile.role_id, doctor_role.pk)
+        self.assertEqual(list(target_profile.roles.values_list('pk', flat=True)), [doctor_role.pk])
         self.assertFalse(target.groups.filter(pk=viewer_role.group_id).exists())
         self.assertTrue(target.groups.filter(pk=doctor_role.group_id).exists())
 
+    def test_patch_change_profile_permission_allows_basic_fields_but_not_password_reset(self):
+        """A holder of only Profile.change_profile (not reset_profile_password) can edit
+        another user's basic fields but not reset their password -- the two permissions
+        are independently checked."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        actor = User.objects.create_user(username='basiceditor@example.com', email='basiceditor@example.com', password='pw12345678')
+        actor.user_permissions.add(Permission.objects.get(codename='change_profile', content_type__app_label='Profile'))
+        Profile.objects.create(user=actor, company=company)
+
+        target = User.objects.create_user(username='basictarget@example.com', email='basictarget@example.com', password='pw12345678')
+        Profile.objects.create(user=target, company=company)
+
+        self.client.force_login(actor)
+
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'first_name': 'Edited'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'password': 'newpassword123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_patch_reset_profile_password_permission_allows_password_but_not_basic_fields(self):
+        """A holder of only Profile.reset_profile_password (not change_profile) can reset
+        another user's password but not edit their basic fields."""
+        company = Company.objects.create(name='Acme', slug='acme')
+        actor = User.objects.create_user(username='resetter@example.com', email='resetter@example.com', password='pw12345678')
+        actor.user_permissions.add(Permission.objects.get(codename='reset_profile_password', content_type__app_label='Profile'))
+        Profile.objects.create(user=actor, company=company)
+
+        target = User.objects.create_user(username='resettarget@example.com', email='resettarget@example.com', password='pw12345678')
+        Profile.objects.create(user=target, company=company)
+
+        self.client.force_login(actor)
+
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'password': 'newpassword123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        target.refresh_from_db()
+        self.assertTrue(target.check_password('newpassword123'))
+
+        response = self.client.patch(
+            reverse('Profile-detail', kwargs={'user_id': target.pk}),
+            {'first_name': 'Edited'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
     def test_patch_not_found(self):
-        """A manager PATCHing a nonexistent user_id gets 404 (not 403 -- they hold
-        change_sensitive_profile_data, so the permission gate passes and the view's
-        own Profile.DoesNotExist handling is what's under test here)."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+        """A manager PATCHing a nonexistent user_id gets 404 (not 403 -- the profile
+        lookup itself 404s before any permission-body checks run)."""
+        call_command('sync_roles', verbosity=0)
         manager = User.objects.create_user(username='manager404@example.com', email='manager404@example.com', password='pw12345678')
         manager.groups.add(Group.objects.get(name='Admin'))
 
@@ -377,13 +440,19 @@ class TestProfilesViewSet(APITestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response_json["status"], "error")
 
-    def test_patch_manager_unknown_role_slug_returns_400(self):
-        """A manager PATCHing a role_slug that doesn't exist gets 400 (Role.DoesNotExist)."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+    def test_patch_manager_unassignable_role_slug_returns_403(self):
+        """A role slug not in the manager's own assignable set -- including one that
+        doesn't exist at all -- is rejected as "not assignable" before the view ever
+        checks whether the role exists, since a nonexistent slug can never be in
+        anyone's assignable set (assignable only ever holds real Role rows)."""
+        call_command('sync_roles', verbosity=0)
         company = Company.objects.create(name='Acme', slug='acme')
+        admin_role = Role.objects.select_related('group').get(slug='admin')
 
         manager = User.objects.create_user(username='rolemanager@example.com', email='rolemanager@example.com', password='pw12345678')
         manager.groups.add(Group.objects.get(name='Admin'))
+        manager_profile = Profile.objects.create(user=manager, company=company)
+        manager_profile.roles.set([admin_role])
 
         target = User.objects.create_user(username='roletarget@example.com', email='roletarget@example.com', password='pw12345678')
         Profile.objects.create(user=target, company=company)
@@ -391,21 +460,26 @@ class TestProfilesViewSet(APITestCase):
         self.client.force_login(manager)
         response = self.client.patch(
             reverse('Profile-detail', kwargs={'user_id': target.pk}),
-            {'role_slug': 'does-not-exist'},
+            {'role_slugs': ['does-not-exist']},
             format='json',
         )
         response_json = response.json()
 
-        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response_json["status"], "error")
 
-    def test_patch_manager_unknown_company_slug_returns_400(self):
-        """A manager PATCHing a company_slug that doesn't exist gets 400 (Company.DoesNotExist)."""
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+    def test_patch_manager_unmanaged_company_slug_returns_403(self):
+        """A company_slug outside the manager's managed_companies -- including one that
+        doesn't exist at all -- is rejected as "not in managed_companies" before the
+        view ever checks whether the company exists, same rationale as
+        resolve_managed_company_slug_filter: never leak slug existence to a caller
+        who wouldn't be allowed to use it anyway."""
+        call_command('sync_roles', verbosity=0)
         company = Company.objects.create(name='Acme', slug='acme')
 
         manager = User.objects.create_user(username='companymanager@example.com', email='companymanager@example.com', password='pw12345678')
         manager.groups.add(Group.objects.get(name='Admin'))
+        Profile.objects.create(user=manager, company=company)
 
         target = User.objects.create_user(username='companytarget@example.com', email='companytarget@example.com', password='pw12345678')
         Profile.objects.create(user=target, company=company)
@@ -418,7 +492,7 @@ class TestProfilesViewSet(APITestCase):
         )
         response_json = response.json()
 
-        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response_json["status"], "error")
 
     def test_patch_duplicate_email_rejected(self):

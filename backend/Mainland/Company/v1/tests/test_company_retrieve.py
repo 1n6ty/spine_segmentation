@@ -15,7 +15,7 @@ class CompanyRetrieveTests(APITestCase):
         cls.company = Company.objects.create(name='Acme', slug='acme')
         cls.other_company = Company.objects.create(name='Globex', slug='globex')
 
-        cls.manager = create_company_user('manager', cls.company, can_view_any_company=True)
+        cls.manager = create_company_user('manager', cls.company, also_manages=[cls.other_company])
         cls.plain_user = create_company_user('plain', cls.company)
         cls.other_company_user = create_company_user('other', cls.other_company)
 
@@ -24,7 +24,7 @@ class CompanyRetrieveTests(APITestCase):
     def test_url_shape(self):
         self.assertEqual(self.url, f'/api/company/{self.company.pk}/')
 
-    def test_manager_can_retrieve_any_company(self):
+    def test_manager_can_retrieve_every_managed_company(self):
         self.client.force_login(self.manager)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200, response.content)

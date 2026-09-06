@@ -1,11 +1,11 @@
 from unittest.mock import patch
 
-from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 from rest_framework.test import APIClient, APITestCase
 
 from Dicom.models import DicomFile, DicomImage, DicomThumbnail, Patient, Series, Study, UserRecentStudies
+from Dicom.v1.tests.base import create_doctor_user
 from FileManager.models import FileRole
 
 
@@ -33,7 +33,7 @@ class UserRecentStudiesCRUDTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='doctor-a', password='pw')
+        self.user = create_doctor_user(username='doctor-a', password='pw')
         call_command('create_xray_file_roles_if_not_exists', verbosity=0)
 
     def test_unauthenticated_returns_401(self):
@@ -49,7 +49,7 @@ class UserRecentStudiesCRUDTests(APITestCase):
         self.assertEqual(row.owner_id, self.user.pk)
 
     def test_list_returns_only_own_rows_as_ref_shape(self):
-        other = User.objects.create_user(username='doctor-b', password='pw')
+        other = create_doctor_user(username='doctor-b', password='pw')
         UserRecentStudies.objects.create(owner=self.user)
         UserRecentStudies.objects.create(owner=other)
 
@@ -100,7 +100,7 @@ class UserRecentStudiesCRUDTests(APITestCase):
         self.assertTrue(DicomImage.objects.filter(pk='SOP-2').exists())
 
     def test_clear_all_only_deletes_own_rows(self):
-        other = User.objects.create_user(username='doctor-c', password='pw')
+        other = create_doctor_user(username='doctor-c', password='pw')
         UserRecentStudies.objects.create(owner=self.user)
         UserRecentStudies.objects.create(owner=self.user)
         other_row = UserRecentStudies.objects.create(owner=other)
@@ -120,7 +120,7 @@ class UserRecentStudiesLatestTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='doctor-a', password='pw')
+        self.user = create_doctor_user(username='doctor-a', password='pw')
         self.client.force_login(self.user)
         call_command('create_xray_file_roles_if_not_exists', verbosity=0)
 
@@ -157,7 +157,7 @@ class UserRecentStudiesLatestTests(APITestCase):
         self.assertEqual(response.json()['data']['id'], first.pk)
 
     def test_scoped_to_the_requesting_user_only(self):
-        other = User.objects.create_user(username='doctor-b', password='pw')
+        other = create_doctor_user(username='doctor-b', password='pw')
         UserRecentStudies.objects.create(owner=other)
 
         response = self.client.get('/api/dcm/recent-studies/latest/')
@@ -177,7 +177,7 @@ class UserRecentStudiesProjectionPatchTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='doctor-a', password='pw')
+        self.user = create_doctor_user(username='doctor-a', password='pw')
         self.client.force_login(self.user)
         call_command('create_xray_file_roles_if_not_exists', verbosity=0)
 
@@ -307,7 +307,7 @@ class UserRecentStudiesProjectionPatchTests(APITestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_patch_on_unowned_row_returns_404(self):
-        other = User.objects.create_user(username='doctor-d', password='pw')
+        other = create_doctor_user(username='doctor-d', password='pw')
         other_row = UserRecentStudies.objects.create(owner=other)
 
         response = self.client.patch(
@@ -329,7 +329,7 @@ class UserRecentStudiesThumbnailTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='doctor-a', password='pw')
+        self.user = create_doctor_user(username='doctor-a', password='pw')
         self.client.force_login(self.user)
         call_command('create_xray_file_roles_if_not_exists', verbosity=0)
         patch(
@@ -382,8 +382,8 @@ class UserRecentStudiesCrossUserIsolationTests(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.owner = User.objects.create_user(username='owner', password='pw')
-        self.intruder = User.objects.create_user(username='intruder', password='pw')
+        self.owner = create_doctor_user(username='owner', password='pw')
+        self.intruder = create_doctor_user(username='intruder', password='pw')
         self.row = UserRecentStudies.objects.create(owner=self.owner)
 
     def test_intruder_cannot_retrieve(self):

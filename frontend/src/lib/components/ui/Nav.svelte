@@ -18,27 +18,23 @@
 			: `/${page.params.lang}`
 	);
 
-	const links = $derived([
-		`${base}/patient`,
-		`${base}/edit`,
-		`${base}/measure`,
-		`${base}/report`
-	]);
+	const links = $derived([`${base}/patient`, `${base}/edit`, `${base}/measure`, `${base}/report`]);
 
 	let activeIndex = $derived(links.findIndex((link) => page.url.pathname.includes(link)));
 </script>
 
-<nav
-	class="main-nav grid h-9 w-full grid-cols-4 items-center justify-center rounded-xl bg-(--muted) p-0.75 text-(--muted-foreground)"
->
-	{#each menu[$locale as (typeof supportedLocales)[number]] as choice, i}
-		<a
-			href={links[i]}
-			onclick={(e) => {
-				activeIndex = i;
-			}}
-			data-state={i == activeIndex ? 'active' : 'unactive'}
-			class="
+{#if project.hasPermission('Dicom.access_studies')}
+	<nav
+		class="main-nav grid h-9 w-full grid-cols-4 items-center justify-center rounded-xl bg-(--muted) p-0.75 text-(--muted-foreground)"
+	>
+		{#each menu[$locale as (typeof supportedLocales)[number]] as choice, i}
+			<a
+				href={links[i]}
+				onclick={(e) => {
+					activeIndex = i;
+				}}
+				data-state={i == activeIndex ? 'active' : 'unactive'}
+				class="
                 main-nav inline-flex h-[calc(100%-1px)]
                 flex-1
                 cursor-pointer
@@ -59,11 +55,12 @@
                 [&_svg]:pointer-events-none [&_svg]:shrink-0
                 [&_svg:not([class*='size-'])]:size-4
             "
-		>
-			<span class="truncate">{choice}</span>
-		</a>
-	{/each}
-</nav>
+			>
+				<span class="truncate">{choice}</span>
+			</a>
+		{/each}
+	</nav>
+{/if}
 
 <style>
 	.main-nav {

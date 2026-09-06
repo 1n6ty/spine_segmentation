@@ -1,9 +1,9 @@
 from common.schemas.v1.response import OkResponse
 from common.schemas.v1.errors import BadRequestResponse, UnauthorizedResponse
 from common.mixins.v1.viewset import StdViewSetMixin
+from common.permissions.base import HasPermCodename
 
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -52,7 +52,7 @@ class UserRecentStudiesViewSet(StdViewSetMixin):
     pagination_class = UserRecentStudies_Pagination
     
     def get_permissions(self):
-        return [IsAuthenticated()]
+        return [HasPermCodename('Dicom.access_studies')]
 
     @staticmethod
     async def _item_response(row: UserRecentStudies) -> Response:

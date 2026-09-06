@@ -40,6 +40,11 @@ class Study(models.Model):
     institution_address = models.CharField(max_length=255, null=True, blank=True)
     station_name = models.CharField(max_length=255, null=True, blank=True)
 
+    class Meta:
+        permissions = [
+            ("access_studies", "Can access, upload, and manage DICOM studies and segmentation sessions"),
+        ]
+
     def __str__(self):
         return self.study_instance_uid
 

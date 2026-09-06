@@ -19,16 +19,15 @@ class ProfilesExtendTests(APITestCase):
 
     @classmethod
     def setUpTestData(cls):
-        call_command('create_admin_role_if_not_exists', verbosity=0)
-        call_command('create_viewer_role_if_not_exists', verbosity=0)
-        call_command('create_doctor_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
 
         cls.company = Company.objects.create(name='Acme', slug='acme')
         cls.role = Role.objects.get(slug='doctor')
 
         cls.manager = User.objects.create_user(username='manager', password='pw')
         cls.manager.groups.add(Group.objects.get(name='Admin'))
-        Profile.objects.create(user=cls.manager, company=cls.company, role=cls.role)
+        profile = Profile.objects.create(user=cls.manager, company=cls.company)
+        profile.roles.set([cls.role])
 
         cls.list_url = reverse('Profile-list')
         cls.me_url = reverse('Profile-me')
@@ -44,17 +43,17 @@ class ProfilesExtendTests(APITestCase):
         for field in _COMPANY_ITEM_ONLY_FIELDS:
             self.assertNotIn(field, user['company'], f'Unexpected full-shape field: {field}')
         for field in _ROLE_ITEM_ONLY_FIELDS:
-            self.assertNotIn(field, user['role'], f'Unexpected full-shape field: {field}')
+            self.assertNotIn(field, user['roles'][0], f'Unexpected full-shape field: {field}')
 
     def test_list_extend_company_and_role_return_full_shape(self):
         self.client.force_login(self.manager)
-        response = self.client.get(self.list_url, {'extend': 'company,role'})
+        response = self.client.get(self.list_url, {'extend': 'company,roles'})
         self.assertEqual(response.status_code, 200, response.content)
         user = next(u for u in response.json()['data']['users'] if u['id'] == self.manager.pk)
         for field in _COMPANY_ITEM_ONLY_FIELDS:
             self.assertIn(field, user['company'], f'Missing full-shape field: {field}')
         for field in _ROLE_ITEM_ONLY_FIELDS:
-            self.assertIn(field, user['role'], f'Missing full-shape field: {field}')
+            self.assertIn(field, user['roles'][0], f'Missing full-shape field: {field}')
 
     def test_list_extend_unknown_field_is_400(self):
         self.client.force_login(self.manager)
@@ -86,17 +85,17 @@ class ProfilesExtendTests(APITestCase):
 
     def test_partial_update_extend_role_returns_full_shape(self):
         self.client.force_login(self.manager)
-        response = self.client.patch(f'{self.detail_url}?extend=role', {'patronymic': 'Ivanovich'}, format='json')
+        response = self.client.patch(f'{self.detail_url}?extend=roles', {'patronymic': 'Ivanovich'}, format='json')
         self.assertEqual(response.status_code, 200, response.content)
         for field in _ROLE_ITEM_ONLY_FIELDS:
-            self.assertIn(field, response.json()['data']['role'], f'Missing full-shape field: {field}')
+            self.assertIn(field, response.json()['data']['roles'][0], f'Missing full-shape field: {field}')
 
     def test_partial_update_default_role_is_ref_shape(self):
         self.client.force_login(self.manager)
         response = self.client.patch(self.detail_url, {'patronymic': 'Ivanovich'}, format='json')
         self.assertEqual(response.status_code, 200, response.content)
         for field in _ROLE_ITEM_ONLY_FIELDS:
-            self.assertNotIn(field, response.json()['data']['role'], f'Unexpected full-shape field: {field}')
+            self.assertNotIn(field, response.json()['data']['roles'][0], f'Unexpected full-shape field: {field}')
 
     def test_partial_update_extend_unknown_field_is_400(self):
         self.client.force_login(self.manager)

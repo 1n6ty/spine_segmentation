@@ -20,7 +20,9 @@ function mock_me_response(overrides: Partial<Record<string, unknown>> = {}) {
 				email: 'doctor@example.com',
 				first_name: 'Jane',
 				last_name: 'Doe',
-				role: { slug: 'doctor', name: 'Doctor' },
+				roles: [{ slug: 'doctor', name: 'Doctor' }],
+				company: { slug: 'acme', name: 'Acme' },
+				permissions: ['Dicom.access_studies'],
 				...overrides
 			}
 		})
@@ -57,15 +59,28 @@ describe('authService.verify', () => {
 	});
 
 	it('populates researcher duty from the role name', async () => {
-		mock_me_response({ role: { slug: 'admin', name: 'Administrator' } });
+		mock_me_response({ roles: [{ slug: 'admin', name: 'Administrator' }] });
 
 		await authService.verify();
 
 		expect(researcherService.duty).toBe('Administrator');
 	});
 
-	it('leaves duty null when the profile has no role', async () => {
-		mock_me_response({ role: null });
+	it('joins multiple role names for duty', async () => {
+		mock_me_response({
+			roles: [
+				{ slug: 'doctor', name: 'Doctor' },
+				{ slug: 'admin', name: 'Administrator' }
+			]
+		});
+
+		await authService.verify();
+
+		expect(researcherService.duty).toBe('Doctor, Administrator');
+	});
+
+	it('leaves duty null when the profile has no roles', async () => {
+		mock_me_response({ roles: [] });
 
 		await authService.verify();
 
@@ -78,6 +93,27 @@ describe('authService.verify', () => {
 		await authService.verify();
 
 		expect(researcherService.fullName).toBe('doctor@example.com');
+	});
+
+	it('populates permissions and company from the response', async () => {
+		mock_me_response({
+			permissions: ['Dicom.access_studies', 'Company.view_company'],
+			company: { slug: 'acme', name: 'Acme' }
+		});
+
+		await authService.verify();
+
+		expect(authService.permissions).toEqual(['Dicom.access_studies', 'Company.view_company']);
+		expect(authService.company).toEqual({ slug: 'acme', name: 'Acme' });
+	});
+
+	it('defaults permissions to [] and company to null when absent from the response', async () => {
+		mock_me_response({ permissions: undefined, company: undefined });
+
+		await authService.verify();
+
+		expect(authService.permissions).toEqual([]);
+		expect(authService.company).toBeNull();
 	});
 
 	it('refreshes the recent-studies registry on a confirmed login', async () => {
@@ -99,6 +135,8 @@ describe('authService.verify', () => {
 		expect(ok).toBe(false);
 		expect(authService.status).toBe('unauthenticated');
 		expect(researcherService.email).toBeNull();
+		expect(authService.permissions).toEqual([]);
+		expect(authService.company).toBeNull();
 		expect(registry.sessionValues).toEqual({});
 	});
 
@@ -123,6 +161,8 @@ describe('authService.reject', () => {
 		expect(researcherService.fullName).toBeNull();
 		expect(researcherService.email).toBeNull();
 		expect(researcherService.duty).toBeNull();
+		expect(authService.permissions).toEqual([]);
+		expect(authService.company).toBeNull();
 		expect(registry.sessionValues).toEqual({});
 	});
 });

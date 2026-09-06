@@ -17,7 +17,7 @@ class Profiles_GET_Schema(BaseModel):
     role_slug: Optional[str] = Field(None, examples=["doctor,viewer"])
     is_active: Optional[bool] = None
     q: Optional[str] = Field(None, examples=["jane.doe@example.com"])
-    extend: Optional[str] = Field(None, examples=["company,role"])
+    extend: Optional[str] = Field(None, examples=["company,roles"])
 
     @field_validator('extend')
     @classmethod
@@ -32,7 +32,7 @@ class Profiles_GET_Schema(BaseModel):
 
 
 class Profile_DETAIL_GET_Schema(BaseModel):
-    extend: Optional[str] = Field(None, examples=["company,role"])
+    extend: Optional[str] = Field(None, examples=["company,roles"])
 
     @field_validator('extend')
     @classmethod
@@ -85,13 +85,13 @@ class Profiles_LIST_Response_OK(OkResponse):
 
 
 class Profile_PATCH_Request(BaseModel):
-    first_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New first name, if changing.", examples=["Jane"])
-    last_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New last name, if changing.", examples=["Doe"])
-    patronymic: Optional[str] = Field(None, max_length=150, description="New patronymic, if changing.", examples=["Ivanovna"])
-    email: Optional[str] = Field(None, max_length=150, description="New email address, if changing.", examples=["jane.doe@example.com"])
-    password: Optional[str] = Field(None, min_length=8, description="New password, if changing.", examples=["hunter22"])
-    role_slug: Optional[str] = Field(None, description="New role slug, if changing. Requires Profile.change_sensitive_profile_data.", examples=["doctor"])
-    company_slug: Optional[str] = Field(None, description="New company slug, if changing. Requires Profile.change_sensitive_profile_data.", examples=["acme"])
+    first_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New first name, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Jane"])
+    last_name: Optional[str] = Field(None, min_length=1, max_length=150, description="New last name, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Doe"])
+    patronymic: Optional[str] = Field(None, max_length=150, description="New patronymic, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["Ivanovna"])
+    email: Optional[str] = Field(None, max_length=150, description="New email address, if changing. Editing another profile's basic fields requires Profile.change_profile.", examples=["jane.doe@example.com"])
+    password: Optional[str] = Field(None, min_length=8, description="New password, if changing. Resetting another profile's password requires Profile.reset_profile_password.", examples=["hunter22"])
+    role_slugs: Optional[List[str]] = Field(None, description="Full replacement set of role slugs, if changing (Profile.roles is M2M). Requires Profile.change_profile_role, and every slug must be in the caller's own roles' assignable set.", examples=[["doctor"]])
+    company_slug: Optional[str] = Field(None, description="New company slug, if changing. Requires Profile.change_profile_company, and the new company must be in the caller's own managed_companies.", examples=["acme"])
 
     @field_validator("email")
     @classmethod

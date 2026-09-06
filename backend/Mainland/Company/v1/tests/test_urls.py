@@ -55,7 +55,7 @@ class CompanyVersionedUrlsEndToEndTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name='Acme', slug='acme')
-        cls.manager = create_company_user('manager', cls.company, can_view_any_company=True)
+        cls.manager = create_company_user('manager', cls.company)
 
     def test_versioned_list_url_serves_real_response(self):
         self.client.force_login(self.manager)

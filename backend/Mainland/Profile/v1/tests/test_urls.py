@@ -58,7 +58,7 @@ class ProfileVersionedUrlsEndToEndTests(APITestCase):
 
     @classmethod
     def setUpTestData(cls):
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
         cls.company = Company.objects.create(name='Acme', slug='acme')
         cls.manager = User.objects.create_user(username='manager', password='pw')
         cls.manager.groups.add(Group.objects.get(name='Admin'))

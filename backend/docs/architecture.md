@@ -72,7 +72,10 @@ another app's concrete model subclasses to inherit fields/behavior (CAS dedup + 
 `docs/patterns/media-serving.md`). Every other app's models are concrete with no such inheritance.
 Real cross-app dependencies today:
 
-- `Profile.Profile.company` → `Company.Company` (`on_delete=PROTECT`)
+- `Profile.Profile.company` → `Company.Company` (`on_delete=PROTECT`, the profile's home company)
+- `Profile.Profile.managed_companies` → `Company.Company` (M2M, seeded to `{company}` at creation,
+  freely edited after — see `docs/patterns/permissions.md`)
+- `Profile.Profile.roles` → `Profile.Role` (M2M — a profile may hold several roles at once)
 - `Profile.Profile.user` → `django.contrib.auth.User` (built-in, via `backends.EmailBackend`)
 - `Dicom.DicomFile` subclasses `FileManager.CasFileMixin`; `Dicom.DicomFile.role` →
   `FileManager.FileRole`; `Dicom.DicomFile.cas_file` → `FileManager.CasFile` (all via the mixin)
@@ -86,9 +89,13 @@ for the code pattern behind this convention.
 resyncs every field back to canonical, undoing manual DB drift.
 
 **Call order:** `init_spine_segmentation` runs every seeder in `commands_to_run` in dependency
-order — superuser → Profile roles (admin, doctor, viewer) → Dicom statuses/projections →
-Dicom's `DICOM_XRAY_FRONTAL`/`DICOM_XRAY_SAGITTAL` `FileRole`s. Admin and Doctor's seeders own 
-their group's `.permissions.set(...)` (kept resynced to
-every Permission in the system on every bootstrap, via `_ALWAYS_RESYNC`); Viewer is intentionally
-granted none. The X-ray `FileRole`s are create-once like Viewer (`max_count` doesn't grow over
-time the way the permission set does).
+order — superuser → `sync_roles` (admin, doctor, viewer) → Dicom statuses/projections →
+Dicom's `DICOM_XRAY_FRONTAL`/`DICOM_XRAY_SAGITTAL` `FileRole`s. `sync_roles` is the single source
+of truth for every Role/Group's permission set (`ROLE_DEFINITIONS`, replacing the older one
+command per role); it's in `_ALWAYS_RESYNC` so `init_spine_segmentation` always calls it with
+`force=True`, keeping each role's `.permissions.set(...)` tracking `ROLE_DEFINITIONS` as that dict
+evolves. Doctor and Admin each get a narrow, deliberately non-overlapping permission set (Doctor:
+`Dicom.access_studies` + read-only company/profile visibility; Admin: profile/company management,
+no `Dicom.*` at all — Admin must never be able to view studies or DICOM files); Viewer is
+intentionally granted none. The X-ray `FileRole`s are create-once (`max_count` doesn't grow over
+time the way a role's permission set does).

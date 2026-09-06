@@ -21,7 +21,7 @@ class ListProfilesTests(APITestCase):
         # Django's TestCase.setUpClass() calls setUpTestData() *during*
         # super().setUpClass() -- this must run first, before the group
         # lookup below.
-        call_command('create_admin_role_if_not_exists', verbosity=0)
+        call_command('sync_roles', verbosity=0)
 
         cls.company = Company.objects.create(name='Acme', slug='acme')
         cls.other_company = Company.objects.create(name='Globex', slug='globex')
@@ -35,11 +35,26 @@ class ListProfilesTests(APITestCase):
         cls.role = Role.objects.create(slug='list-profiles-test-role', group=role_group)
         cls.role.translations.update_or_create(language_code='en-us', defaults={'name': 'Nurse'})
 
+        # Admin group manager -- Profile.view_profile is managed_companies-scoped
+        # with no unscoped bypass tier, so its list is restricted to cls.company
+        # (seeded to {cls.company} at Profile creation).
         cls.manager = User.objects.create_user(username='manager', email='manager@example.com', password='pw')
         cls.manager.groups.add(Group.objects.get(name='Admin'))
+        Profile.objects.create(user=cls.manager, company=cls.company)
+
+        # An Admin managing BOTH companies -- there is no "any company" tier
+        # left; seeing more than one company's users is purely a function of
+        # how many companies are in Profile.managed_companies.
+        cls.multi_company_manager = User.objects.create_user(
+            username='multi_company_manager', email='multi_company_manager@example.com', password='pw',
+        )
+        cls.multi_company_manager.groups.add(Group.objects.get(name='Admin'))
+        multi_profile = Profile.objects.create(user=cls.multi_company_manager, company=cls.company)
+        multi_profile.managed_companies.add(cls.other_company)
 
         cls.plain_user = User.objects.create_user(username='plain', email='plain@example.com', password='pw')
-        Profile.objects.create(user=cls.plain_user, company=cls.company, role=cls.role)
+        plain_profile = Profile.objects.create(user=cls.plain_user, company=cls.company)
+        plain_profile.roles.set([cls.role])
 
         cls.other_company_user = User.objects.create_user(
             username='other_plain', email='other_plain@example.com', password='pw',
@@ -51,7 +66,11 @@ class ListProfilesTests(APITestCase):
         )
         Profile.objects.create(user=cls.inactive_user, company=cls.company)
 
-        # A user with no Profile at all (e.g. Admin staff).
+        # A user with no Profile at all (e.g. Admin staff) -- with no unscoped
+        # tier left, this user can never appear in ANY list() response, since
+        # scope_queryset_to_managed_companies filters on profile__company,
+        # which requires a Profile to exist at all. Kept here only to confirm
+        # it never leaks into any result set below.
         cls.no_profile_user = User.objects.create_user(
             username='noprofile', email='noprofile@example.com', password='pw',
         )
@@ -64,17 +83,34 @@ class ListProfilesTests(APITestCase):
     def test_url_shape(self):
         self.assertEqual(self.list_url, '/api/profiles/')
 
-    def test_manager_can_list_all_users(self):
+    def test_manager_lists_only_users_in_managed_companies(self):
         self.client.force_login(self.manager)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(
             self._emails(response),
             {
-                self.manager.email, self.plain_user.email, self.other_company_user.email,
-                self.inactive_user.email, self.no_profile_user.email,
+                self.manager.email, self.plain_user.email, self.inactive_user.email,
+                self.multi_company_manager.email,
             },
         )
+
+    def test_multi_company_manager_lists_users_in_every_managed_company(self):
+        self.client.force_login(self.multi_company_manager)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            self._emails(response),
+            {
+                self.manager.email, self.plain_user.email, self.inactive_user.email,
+                self.multi_company_manager.email, self.other_company_user.email,
+            },
+        )
+
+    def test_manager_company_slug_filter_rejected_for_other_company(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(self.list_url, {'company_slug': 'globex'})
+        self.assertEqual(response.status_code, 403, response.content)
 
     def test_plain_user_gets_403(self):
         self.client.force_login(self.plain_user)
@@ -92,22 +128,11 @@ class ListProfilesTests(APITestCase):
         row = users[self.plain_user.email]
 
         self.assertEqual(row['company'], {"slug": "acme", "name": "Acme"})
-        self.assertEqual(row['role'], {"slug": "list-profiles-test-role", "name": "Nurse"})
+        self.assertEqual(row['roles'], [{"slug": "list-profiles-test-role", "name": "Nurse"}])
         assert_matches_schema(row, User_Item_Schema)
 
-    def test_user_without_profile_has_null_defaults(self):
-        self.client.force_login(self.manager)
-        response = self.client.get(self.list_url)
-        users = {u['email']: u for u in response.json()['data']['users']}
-        row = users[self.no_profile_user.email]
-
-        self.assertEqual(row['patronymic'], '')
-        self.assertIsNone(row['phone'])
-        self.assertIsNone(row['company'])
-        self.assertIsNone(row['role'])
-
     def test_filter_by_company_slug(self):
-        self.client.force_login(self.manager)
+        self.client.force_login(self.multi_company_manager)
         response = self.client.get(self.list_url, {'company_slug': 'globex'})
         self.assertEqual(self._emails(response), {self.other_company_user.email})
 

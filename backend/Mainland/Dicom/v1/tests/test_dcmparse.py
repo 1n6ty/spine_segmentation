@@ -3,7 +3,6 @@ import warnings
 from unittest.mock import patch
 
 import numpy as np
-from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.utils import timezone
@@ -17,6 +16,7 @@ from Dicom.models import (
 )
 from Dicom.utils.constants import SEGMENTATION_PIPELINE_VERSION
 from Dicom.utils.parse import parse_and_store_dicom
+from Dicom.v1.tests.base import create_doctor_user
 from FileManager.models import CasFile
 
 
@@ -28,7 +28,7 @@ class DcmParseTests(APITestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(username='doctor', password='pw')
+        cls.user = create_doctor_user('doctor', password='pw')
 
     def setUp(self):
         self.client = APIClient()
@@ -72,7 +72,7 @@ class DcmFileTests(APITestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(username='doctor', password='pw')
+        cls.user = create_doctor_user('doctor', password='pw')
         patient = Patient.objects.create(patient_id='P1')
         study = Study.objects.create(study_instance_uid='S1', patient=patient)
         series = Series.objects.create(series_instance_uid='SE1', study=study)
@@ -144,7 +144,7 @@ class DcmSegmentEventsTests(APITransactionTestCase):
         # APITransactionTestCase has no setUpTestData -- each test truncates
         # tables rather than rolling back a transaction, so fixtures are
         # created fresh per-test here instead of once per-class.
-        self.user = User.objects.create_user(username='doctor', password='pw')
+        self.user = create_doctor_user('doctor', password='pw')
         done = SegmentationStatus.objects.create(slug='done')
         patient = Patient.objects.create(patient_id='P1')
         study = Study.objects.create(study_instance_uid='S1', patient=patient)
@@ -563,7 +563,7 @@ class DcmParseDedupAndRoleTests(APITransactionTestCase):
 
         # And the SSE endpoint -- what a second session's frontend watches --
         # immediately self-hydrates the already-computed result.
-        user = User.objects.create_user(username='doctor-dedup', password='pw')
+        user = create_doctor_user('doctor-dedup', password='pw')
         client = APIClient()
         client.force_login(user)
         response = client.get('/api/dcm/SOP-DEDUP/segment/events/')

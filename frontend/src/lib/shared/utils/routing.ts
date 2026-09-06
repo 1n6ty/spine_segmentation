@@ -1,6 +1,7 @@
-/** The four doctor-facing tabs a research can be viewed under -- mirrors the
- * route folders under `routes/[lang]/(authenticated)/(doctor)/researches/
- * [research_id]/`. */
+/** The four tabs a research can be viewed under -- mirrors the route folders
+ * under `routes/[lang]/(authenticated)/(studies)/researches/[research_id]/`.
+ * Gated behind the Dicom.access_studies permission -- see that route group's
+ * `+layout.svelte`. */
 const RESEARCH_TABS = ['patient', 'edit', 'measure', 'report'] as const;
 export type ResearchTab = (typeof RESEARCH_TABS)[number];
 

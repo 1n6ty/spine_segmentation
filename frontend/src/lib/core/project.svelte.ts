@@ -2,6 +2,7 @@ import { SessionService, type SessionUIDArg } from './session/session.svelte';
 import { researcherService } from './session/researcher.svelte';
 import { registry } from './session/registry.svelte';
 import { authService } from './session/auth.svelte';
+import { hasPermission } from './session/permissions.svelte';
 
 class Project {
 	// Deliberately no "resume last-touched session on load" -- a research is
@@ -27,7 +28,7 @@ class Project {
 	}
 
 	/** Called on mount by every route that names no research -- the landing
-	 * page and the doctor tabs' own +layout.svelte, but never
+	 * page and the (studies) route group's own +layout.svelte, but never
 	 * researches/[research_id]/+layout.svelte, which owns the opposite sync
 	 * direction (selecting a research the URL names). Deselects unconditionally,
 	 * every time, including a hard reload/typed URL -- there is no cold-start
@@ -36,6 +37,13 @@ class Project {
 		if (this.session.sessionUID || this.session.requestedUID) {
 			this.resetSession();
 		}
+	}
+
+	/** Delegates to core/session/permissions.svelte's hasPermission -- the
+	 * aggregation point callers outside core/ go through instead of importing
+	 * that core/session/*.svelte.ts module directly. */
+	hasPermission(codename: string): boolean {
+		return hasPermission(codename);
 	}
 }
 

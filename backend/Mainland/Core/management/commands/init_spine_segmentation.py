@@ -2,16 +2,14 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 # Names always resynced on every bootstrap run, regardless of the CLI --force
-# flag -- Admin/Doctor's group.permissions.set(...) must keep tracking every
-# Permission in the system as new apps/migrations add more, so they resync
-# unconditionally. Statuses/types/Viewer are create-once by design.
-_ALWAYS_RESYNC = {'create_admin_role_if_not_exists', 'create_doctor_role_if_not_exists'}
+# flag -- sync_roles' group.permissions.set(...) must keep tracking
+# ROLE_DEFINITIONS as it evolves, so it resyncs unconditionally. Statuses/types
+# are create-once by design.
+_ALWAYS_RESYNC = {'sync_roles'}
 
 commands_to_run = [
     'create_superuser_if_not_exists',
-    'create_admin_role_if_not_exists',
-    'create_doctor_role_if_not_exists',
-    'create_viewer_role_if_not_exists',
+    'sync_roles',
     'create_segmentation_statuses',
     'create_projections',
     'create_xray_file_roles_if_not_exists',

@@ -1,7 +1,7 @@
 import django_filters
 from django.contrib.auth.models import User
 
-from common.utils.company import resolve_company_slug_filter
+from common.utils.company import resolve_managed_company_slug_filter
 from Profile.v1.utils.search import search_users
 
 
@@ -16,14 +16,12 @@ class ProfileFilterSet(django_filters.FilterSet):
         fields = []
 
     def filter_company(self, queryset, name, value):
-        company = resolve_company_slug_filter(
-            self.request.user, value, any_company_perm='Profile.view_profile_any_company',
-        )
+        company = resolve_managed_company_slug_filter(self.request.user, value)
         return queryset.filter(profile__company=company)
 
     def filter_role(self, queryset, name, value):
         slugs = [s.strip() for s in value.split(',') if s.strip()]
-        return queryset.filter(profile__role__slug__in=slugs)
+        return queryset.filter(profile__roles__slug__in=slugs)
 
     def filter_q(self, queryset, name, value):
         return queryset.filter(pk__in=search_users(value))

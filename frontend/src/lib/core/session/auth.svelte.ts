@@ -5,18 +5,22 @@ import { researcherService } from './researcher.svelte';
 export type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated';
 
 // Mirrors the fields this file actually consumes from common/schemas/v1/domain/user.py's
-// User_Item_Schema (backend) -- not the full shape (also has patronymic/phone/company/
-// permissions), since nothing else here needs them yet.
+// User_Item_Schema (backend) -- not the full shape (also has patronymic/phone), since
+// nothing else here needs those yet.
 type Me = {
 	id: number;
 	email: string;
 	first_name: string;
 	last_name: string;
-	role: { slug: string; name: string } | null;
+	roles: { slug: string; name: string }[];
+	company: { slug: string; name: string } | null;
+	permissions: string[];
 };
 
 class AuthService {
 	status = $state<AuthStatus>('unknown');
+	permissions = $state<string[]>([]);
+	company = $state<{ slug: string; name: string } | null>(null);
 
 	/**
 	 * The only source of truth for "am I logged in": asks the backend
@@ -36,9 +40,14 @@ class AuthService {
 			const me = body.data as Me;
 
 			this.status = 'authenticated';
+			this.permissions = me.permissions ?? [];
+			this.company = me.company ?? null;
 			researcherService.email = me.email;
-			researcherService.fullName = [me.first_name, me.last_name].filter(Boolean).join(' ') || me.email;
-			researcherService.duty = me.role?.name ?? null;
+			researcherService.fullName =
+				[me.first_name, me.last_name].filter(Boolean).join(' ') || me.email;
+			researcherService.duty = me.roles?.length
+				? me.roles.map((role) => role.name).join(', ')
+				: null;
 			registry.refresh();
 
 			return true;
@@ -52,6 +61,8 @@ class AuthService {
 	 * whenever `verify()` finds the backend no longer recognizes the session. */
 	reject(): void {
 		this.status = 'unauthenticated';
+		this.permissions = [];
+		this.company = null;
 		researcherService.fullName = null;
 		researcherService.email = null;
 		researcherService.duty = null;

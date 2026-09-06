@@ -25,6 +25,3 @@ class Company(TranslatableModel):
     class Meta:
         verbose_name = "Company"
         verbose_name_plural = "Companies"
-        permissions = [
-            ("view_company_any_company", "Can view any company"),
-        ]

@@ -78,18 +78,17 @@ class Command(BaseCommand):
         doctor_role = Role.objects.get(slug='doctor')
 
         profile, created = Profile.objects.get_or_create(
-            user=user, defaults={'company': self.company, 'role': doctor_role},
+            user=user, defaults={'company': self.company},
         )
-        update_fields = []
         if not created and profile.company_id != self.company.id:
             profile.company = self.company
-            update_fields.append('company')
-        if not created and profile.role_id != doctor_role.pk:
-            profile.role = doctor_role
-            update_fields.append('role')
-        if update_fields:
-            profile.save(update_fields=update_fields)
-        user.groups.add(doctor_role.group)
+            profile.save(update_fields=['company'])
+        # Unconditional set (not "add if missing"): the post_save signal above
+        # may have just assigned `viewer` on creation, and group membership
+        # must mirror roles exactly -- an add-only fix here would leave a
+        # stale `viewer` group alongside `doctor`.
+        profile.roles.set([doctor_role])
+        user.groups.set([doctor_role.group])
         return user
 
     def _upsert_user(self, username, password, email):

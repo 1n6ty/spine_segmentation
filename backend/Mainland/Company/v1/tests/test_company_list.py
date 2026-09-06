@@ -15,7 +15,7 @@ class CompanyListTests(APITestCase):
         cls.company = Company.objects.create(name='Acme', slug='acme')
         cls.other_company = Company.objects.create(name='Globex', slug='globex')
 
-        cls.manager = create_company_user('manager', cls.company, can_view_any_company=True)
+        cls.manager = create_company_user('manager', cls.company, also_manages=[cls.other_company])
         cls.plain_user = create_company_user('plain', cls.company)
 
         cls.list_url = reverse('Company-list')
@@ -23,7 +23,7 @@ class CompanyListTests(APITestCase):
     def test_url_shape(self):
         self.assertEqual(self.list_url, '/api/company/')
 
-    def test_manager_sees_all_companies(self):
+    def test_manager_sees_every_managed_company(self):
         self.client.force_login(self.manager)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, 200, response.content)
@@ -33,10 +33,13 @@ class CompanyListTests(APITestCase):
         slugs = {c['slug'] for c in data['companies']}
         self.assertEqual(slugs, {'acme', 'globex'})
 
-    def test_non_manager_gets_403(self):
+    def test_plain_user_sees_only_own_company(self):
         self.client.force_login(self.plain_user)
         response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()['data']
+        slugs = {c['slug'] for c in data['companies']}
+        self.assertEqual(slugs, {'acme'})
 
     def test_unauthenticated_returns_401(self):
         response = self.client.get(self.list_url)

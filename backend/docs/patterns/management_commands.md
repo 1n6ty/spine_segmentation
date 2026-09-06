@@ -1,34 +1,35 @@
 # Management Commands
 
 ```python
-# Profile/management/commands/create_doctor_role_if_not_exists.py
-from django.contrib.auth.models import Group, Permission
+# Core/management/commands/create_segmentation_statuses.py-style single-entity seeder
 from django.core.management.base import BaseCommand
-from Profile.models import Role
+from Dicom.models import SegmentationStatus
 
-GROUP_NAME = 'Doctor'
-ROLE_SLUG = 'doctor'
-ROLE_NAMES = {'en-us': 'Doctor', 'ru': 'Врач'}
+SLUG = 'done'
+NAMES = {'en-us': 'Done', 'ru': 'Готово'}
 
 class Command(BaseCommand):
-    help = ("Idempotently seeds the Doctor Group/Role, with every Permission in "
-            "the system assigned to the group. Pass --force to resync the "
-            "group's permissions and role translations back to canonical even "
-            "if the role already exists.")
+    help = ("Idempotently seeds the 'done' SegmentationStatus. Pass --force to "
+            "resync translations back to canonical even if the row already exists.")
 
     def add_arguments(self, parser):
         parser.add_argument('--force', action='store_true',
-                             help="Resync permissions/translations even if the role already exists.")
+                             help="Resync translations even if the row already exists.")
 
     def handle(self, *args, **options):
         force = options['force']
-        group, _ = Group.objects.get_or_create(name=GROUP_NAME)
-        role, created = Role.objects.get_or_create(slug=ROLE_SLUG, defaults={'group': group})
+        status, created = SegmentationStatus.objects.get_or_create(slug=SLUG)
         if created or force:
-            role.group.permissions.set(Permission.objects.all())
-            for lang, name in ROLE_NAMES.items():
-                role.translations.update_or_create(language_code=lang, defaults={'name': name})
+            for lang, name in NAMES.items():
+                status.translations.update_or_create(language_code=lang, defaults={'name': name})
 ```
+
+**Naming pattern:** `create_<entity>_if_not_exists.py`, one command per row. **Exception:**
+`Profile/management/commands/sync_roles.py` seeds all of Doctor/Admin/Viewer from one
+`ROLE_DEFINITIONS` dict in a single command — the three roles' permission sets are cross-referenced
+and reviewed together often enough (see `docs/patterns/permissions.md`) that one file per role
+would just fragment that review, unlike genuinely independent rows like segmentation statuses or
+projections.
 
 - Always use `get_or_create` / `update_or_create` — never unconditional `create`
 - **Idempotent by default, `--force` to resync.** A command's default run (no flag) must be a true
