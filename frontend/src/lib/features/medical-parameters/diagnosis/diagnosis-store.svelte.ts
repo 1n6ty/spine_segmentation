@@ -17,6 +17,18 @@ import type {
 	RegionDiagnosis,
 	VertebraDiagnosis
 } from './types';
+import {
+	tallySingle,
+	tallyComposite,
+	rankFromTally,
+	triCode,
+	evaluatePattern,
+	gradeDetail,
+	spondyloptosisDetail,
+	severityGrade,
+	type DiagnosisKey,
+	type DiagnosisTally
+} from './conclusion';
 import { buildParametersNarrative, withRangeBadge, vertebraLabel, gapLabel } from './narrative';
 import { resolve_localized } from '$lib/core/i18n/resolve';
 
@@ -38,7 +50,8 @@ function buildVertebraDiagnosis(
 	projection: Projection,
 	v: Vertebrae,
 	mmPerPixel: number,
-	regionFinding: Finding
+	regionFinding: Finding,
+	tally: DiagnosisTally
 ): VertebraDiagnosis {
 	const vParams = getVertebraeParams(projection, v, mmPerPixel)!.params;
 	const findings: Finding[] = [];
@@ -68,8 +81,22 @@ function buildVertebraDiagnosis(
 				Sagittal.getVertebralWedgingSagittalRange()
 			);
 
+			// Tallied per-vertebra (a fracture is localized to one specific
+			// vertebra, not a whole-spine average) and gated on the SAME
+			// shipped gradeVertebralFracture() check shown in this vertebra's
+			// own findings list — reusing its collapsed Finding | null result
+			// directly rather than re-deriving the 2 sub-conditions
+			// separately, so the conclusion card can never show a nonzero
+			// probability for a vertebra whose own per-region text says
+			// nothing was found. Only fires (100%) when the shipped check
+			// actually does; there's no partial-credit state for this one
+			// since both of its sub-conditions are already required just to
+			// get a non-null Finding.
 			const fracture = Sagittal.gradeVertebralFracture(wedging, regionFinding.severity);
-			if (fracture) findings.push(withId(fracture, `${v.id}-fracture`));
+			if (fracture) {
+				findings.push(withId(fracture, `${v.id}-fracture`));
+				tallySingle(tally, `sag-vertebral-fracture:${v.id}`, true, vertebraLabel(v.id));
+			}
 		}
 	}
 
@@ -141,6 +168,110 @@ function buildGapDiagnosis(
 
 type RegionMeta = { id: string; label: Localized; vertebraeLabel: string };
 
+type CurveSignalKey =
+	| 'cervical'
+	| 'thoracic'
+	| 'thoracic-upper'
+	| 'thoracic-mid'
+	| 'thoracic-lower'
+	| 'lumbar';
+
+/** Raw values recorded as regions are built, read back once the whole
+ * `REGIONS` loop completes — several composite diagnoses need data from
+ * more than one region (e.g. Scheuermann's needs the lumbar and cervical
+ * curve directions, but is evaluated during thoracic's own loop
+ * iteration, which runs before lumbar's). `curves` covers items 1-4 of
+ * conclusion.ts's 8-item registry (thoracic sub-arcs + lumbar); the rest
+ * (items 5-8, plus Scheuermann's own wedging count) are recorded
+ * separately since they're each computed at their own specific call site
+ * rather than uniformly via buildCurveDiagnosis. */
+type CrossRegionSignals = {
+	curves: Partial<Record<CurveSignalKey, { angleDeg: number; range: Range }>>;
+	th6Th9WedgingAngles: number[] | null; // for Scheuermann
+	thoracicChordTiltAngle: number | null; // item 5: Th5-Th12 chord tilt
+};
+
+function newSignals(): CrossRegionSignals {
+	return { curves: {}, th6Th9WedgingAngles: null, thoracicChordTiltAngle: null };
+}
+
+/** Maps a sagittal region/sub-arc id to its Bekhterev's flexion-deformity
+ * diagnosis key — see conclusion.ts. Cervical frontal curve has no entry:
+ * the frontal diagnosis-codes source only covers thoracic/lumbar
+ * scoliosis. */
+const SAGITTAL_CURVE_DIAGNOSIS_KEYS: Partial<Record<string, DiagnosisKey>> = {
+	cervical: 'sag-bekhterev-cervical',
+	lumbar: 'sag-bekhterev-lumbar',
+	thoracic: 'sag-bekhterev-thoracic-total',
+	'thoracic-upper': 'sag-bekhterev-thoracic-upper',
+	'thoracic-mid': 'sag-bekhterev-thoracic-mid',
+	'thoracic-lower': 'sag-bekhterev-thoracic-lower'
+};
+
+/**
+ * Tallies the diagnosis this curve check corresponds to (see conclusion.ts's
+ * dictionary).
+ *
+ * Sagittal: Bekhterev's-pattern flexion deformity requires the central
+ * angle in the kyphosis direction (distinguished from lordosis-flattening
+ * by comparing the raw signed angle against this region's own
+ * display-badge range, since Finding.severity alone doesn't preserve
+ * direction) — this is the PRIMARY, gating condition: without it, this
+ * region simply isn't a candidate (not tallied at all), the same way a
+ * region that isn't annotated is already absent from the tally. Once
+ * gated, that same span's chord tilt (segments.ts's p4, already computed
+ * alongside the central angle p3 in the same getSegmentParams call — no
+ * extra calculator call needed) "tending counterclockwise" is a SECONDARY,
+ * partial-credit signal — its absence lowers the score but never the
+ * gate itself. No graded normal band exists for most of these 6 spans'
+ * chord tilt specifically (only Th5-Th12 and L1-L5 have one, and neither
+ * matches most of these spans), so this is a sign-only proxy: positive =
+ * counter-clockwise, per calculators/vertebrae.ts's and segments.ts's
+ * shared get_signed_angle(UP, ...) convention ("positive for
+ * counter-clockwise rotation, negative for clockwise") — not a verified
+ * clinical threshold.
+ *
+ * Frontal: unchanged, single-parameter, side read off the angle's sign
+ * matching Frontal.gradeRegionFrontal's own left/right branch (angle < 0 =
+ * left).
+ */
+function tallyCurveDiagnosis(
+	tally: DiagnosisTally,
+	projection: Projection,
+	regionId: string,
+	centralAngle: number,
+	chordTiltAngle: number | null,
+	severity: Finding['severity'],
+	range: Range
+) {
+	if (projection === 'side') {
+		const key = SAGITTAL_CURVE_DIAGNOSIS_KEYS[regionId];
+		if (!key) return;
+		if (!(centralAngle > range.max)) return; // gate: must be kyphosis-direction
+		let abnormal = 1; // the gate itself always counts as a hit
+		let total = 1;
+		if (chordTiltAngle !== null) {
+			total += 1;
+			if (chordTiltAngle > 0) abnormal += 1;
+		}
+		const grade = severityGrade(severity);
+		tallyComposite(tally, key, abnormal, total, grade !== null ? gradeDetail(grade) : undefined);
+		return;
+	}
+	if (severity === 'normal') return;
+	const key: DiagnosisKey | null =
+		regionId === 'thoracic'
+			? centralAngle < 0
+				? 'frontal-scoliosis-thoracic-left'
+				: 'frontal-scoliosis-thoracic-right'
+			: regionId === 'lumbar'
+				? centralAngle < 0
+					? 'frontal-scoliosis-lumbar-left'
+					: 'frontal-scoliosis-lumbar-right'
+				: null;
+	if (key) tallySingle(tally, key, true);
+}
+
 /** Curve-only: central-angle grading + its narrative sentence, no
  * vertebra/gap construction. Used both by buildRegionDiagnosis below and
  * directly by the thoracic container (which needs the whole-Th1-Th12 curve
@@ -152,11 +283,27 @@ function buildCurveDiagnosis(
 	mmPerPixel: number,
 	meta: RegionMeta,
 	gradeCurve: (centralAngleDeg: number) => Finding,
-	getCurveRange: () => Range
+	getCurveRange: () => Range,
+	tally: DiagnosisTally,
+	signals: CrossRegionSignals
 ) {
 	const segmentParams = getSegmentParams(projection, regionVertebrae, mmPerPixel).params;
 	const centralAngle = segmentParams.p3.val as number;
+	const chordTiltAngle = segmentParams.p4.val as number | null;
 	const curveFinding = gradeCurve(centralAngle);
+	const curveRange = getCurveRange();
+	tallyCurveDiagnosis(
+		tally,
+		projection,
+		meta.id,
+		centralAngle,
+		chordTiltAngle,
+		curveFinding.severity,
+		curveRange
+	);
+	if (projection === 'side' && meta.id in SAGITTAL_CURVE_DIAGNOSIS_KEYS) {
+		signals.curves[meta.id as CurveSignalKey] = { angleDeg: centralAngle, range: curveRange };
+	}
 
 	const [start, end] = meta.vertebraeLabel.split('-');
 	const regionIdentity: Localized = resolve_localized('diagnosis.narrative.regionIdentity', {
@@ -164,7 +311,7 @@ function buildCurveDiagnosis(
 		end
 	});
 	let narrative = buildParametersNarrative(regionIdentity, projection, 'segments', segmentParams);
-	narrative = withRangeBadge(narrative, 'p3', curveFinding.severity, getCurveRange());
+	narrative = withRangeBadge(narrative, 'p3', curveFinding.severity, curveRange);
 
 	return { curveFinding, narrative };
 }
@@ -180,7 +327,9 @@ function buildRegionDiagnosis(
 	mmPerPixel: number,
 	meta: RegionMeta,
 	gradeCurve: (centralAngleDeg: number) => Finding,
-	getCurveRange: () => Range
+	getCurveRange: () => Range,
+	tally: DiagnosisTally,
+	signals: CrossRegionSignals
 ): RegionDiagnosis {
 	const { curveFinding, narrative } = buildCurveDiagnosis(
 		projection,
@@ -188,12 +337,14 @@ function buildRegionDiagnosis(
 		mmPerPixel,
 		meta,
 		gradeCurve,
-		getCurveRange
+		getCurveRange,
+		tally,
+		signals
 	);
 	const findings: Finding[] = [withId(curveFinding, `${meta.id}-curve`)];
 
 	const vertebrae = regionVertebrae.map((v) =>
-		buildVertebraDiagnosis(projection, v, mmPerPixel, curveFinding)
+		buildVertebraDiagnosis(projection, v, mmPerPixel, curveFinding, tally)
 	);
 	const gaps: GapDiagnosis[] = [];
 	for (let i = 0; i < regionVertebrae.length - 1; i++) {
@@ -227,7 +378,9 @@ function buildRegionDiagnosis(
 function buildThoracicSideDiagnosis(
 	thoracicVertebrae: Vertebrae[],
 	mmPerPixel: number,
-	thoracicRegionDef: RegionDef
+	thoracicRegionDef: RegionDef,
+	tally: DiagnosisTally,
+	signals: CrossRegionSignals
 ): RegionDiagnosis {
 	const { curveFinding, narrative } = buildCurveDiagnosis(
 		'side',
@@ -235,7 +388,9 @@ function buildThoracicSideDiagnosis(
 		mmPerPixel,
 		thoracicRegionDef,
 		(angle) => Sagittal.gradeRegionSagittal('thoracic', angle),
-		() => Sagittal.getRegionSagittalRange('thoracic')
+		() => Sagittal.getRegionSagittalRange('thoracic'),
+		tally,
+		signals
 	);
 	const findings: Finding[] = [withId(curveFinding, 'thoracic-curve')];
 
@@ -247,7 +402,9 @@ function buildThoracicSideDiagnosis(
 			mmPerPixel,
 			sub,
 			(angle) => Sagittal.gradeThoracicSubArc(sub.subArcId, angle),
-			() => Sagittal.getThoracicSubArcRange(sub.subArcId)
+			() => Sagittal.getThoracicSubArcRange(sub.subArcId),
+			tally,
+			signals
 		);
 		return { subVertebrae, diagnosis };
 	});
@@ -261,19 +418,22 @@ function buildThoracicSideDiagnosis(
 	const th10 = lower.subVertebrae.find((v) => v.id === 'Th10')!;
 	mid.diagnosis.gaps.push(buildGapDiagnosis('side', th9, th10, mmPerPixel));
 
-	// Scheuermann fires once, here, at the container level — reuses mid's own
-	// Th6-Th9 vertebra list instead of re-deriving it.
-	const wedgingAngles = mid.subVertebrae
+	// Scheuermann needs the lumbar and cervical curve directions too (per
+	// TABLREHTG_Updated.docx), which aren't available yet — REGIONS processes
+	// cervical and thoracic before lumbar. Recorded here (this container's
+	// own Th6-Th9 wedging angles), evaluated once the whole REGIONS loop
+	// completes by evaluateCrossRegionComposites, which mutates `findings`
+	// below in place to add the Scheuermann finding if it fires.
+	signals.th6Th9WedgingAngles = mid.subVertebrae
 		.map((v) => getVertebraeParams('side', v, mmPerPixel)!.params.p5.val as number | null)
 		.filter((a): a is number => a !== null);
-	const scheuermann = Sagittal.gradeScheuermann(wedgingAngles, curveFinding.severity);
-	if (scheuermann) findings.push(withId(scheuermann, 'thoracic-scheuermann'));
 
 	// Thoracic chord tilt: a dedicated Th5-Th12 sub-segment, deliberately
 	// distinct from both the whole-Th1-Th12 container span above and the 3
 	// sub-arcs — no narrated clause exists for this exact span anywhere in
 	// the report, so this is a standalone finding with no inline bracket
-	// (same as GCoM).
+	// (same as GCoM). Also recorded as item 5 of the cross-region composite
+	// registry (see conclusion.ts).
 	const th5ToTh12 = match_items_by_ids(thoracicVertebrae, [
 		'Th12',
 		'Th11',
@@ -288,6 +448,7 @@ function buildThoracicSideDiagnosis(
 		const chordTiltAngle = getSegmentParams('side', th5ToTh12, mmPerPixel).params.p4.val as
 			| number
 			| null;
+		signals.thoracicChordTiltAngle = chordTiltAngle;
 		if (chordTiltAngle !== null) {
 			findings.push(withId(Sagittal.gradeThoracicChordTilt(chordTiltAngle), 'thoracic-chord-tilt'));
 		}
@@ -326,6 +487,8 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 	const proj = project.session.projections[projection];
 	const polygons = proj.polygons;
 	const mmPerPixel = proj.patient?.study.series.sopInstance.mmPerPixel || 1;
+	const tally: DiagnosisTally = new Map();
+	const signals = newSignals();
 
 	// Each region is gated independently by its own vertebra ids (see
 	// match_items_by_ids) — a region renders as soon as it's fully annotated,
@@ -339,7 +502,7 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 		// Sagittal thoracic gets nested sub-regions instead of the generic
 		// build below — frontal thoracic is untouched, still one flat region.
 		if (projection === 'side' && region.id === 'thoracic') {
-			regions.push(buildThoracicSideDiagnosis(regionVertebrae, mmPerPixel, region));
+			regions.push(buildThoracicSideDiagnosis(regionVertebrae, mmPerPixel, region, tally, signals));
 			continue;
 		}
 
@@ -363,7 +526,9 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			mmPerPixel,
 			region,
 			gradeCurve,
-			getCurveRange
+			getCurveRange,
+			tally,
+			signals
 		);
 
 		if (projection === 'side' && region.id === 'lumbar') {
@@ -408,30 +573,97 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				}
 			}
 
-			// p7 is now signed (verified: an unslipped baseline reads ~+90°, correctly inside
-			// gradeL5Spondylolisthesis's "normal" band, not immediately misclassified as severe
-			// slip like the old unsigned version did). One remaining concern surfaced while
-			// fixing this, not yet resolved: p7 measures the ANGLE between L5's contour and
-			// S1's endplate, which is mostly sensitive to *rotation* between the two vertebrae,
-			// not the *translational* slip spondylolisthesis fundamentally is — a pure
-			// translation (no rotation) leaves p7 unchanged. p5/p6 (translational/angular disc
-			// displacement) may be the better-suited input; needs clinical input to confirm,
-			// not a further code guess.
-			const l5s1Angle = getGapParams('side', { top: l5, bottom: s1 }, mmPerPixel)!.params.p7.val as
+			// L5 spondylolisthesis grading — TABLREHTG_Updated.docx: graded off L5's
+			// anterior displacement at L5-S1 (p5) as a fraction of L5's own
+			// inferior endplate length (p2), not the L5-S1 angle (p7) used by the
+			// earlier version — see gradeL5Spondylolisthesis's own doc comment.
+			const l5s1DisplacementMm = getGapParams('side', { top: l5, bottom: s1 }, mmPerPixel)!.params
+				.p5.val as number | null;
+			const l5InferiorEndplateMm = getVertebraeParams('side', l5, mmPerPixel)!.params.p2.val as
 				| number
 				| null;
-			if (l5s1Angle !== null) {
-				const finding = Sagittal.gradeL5Spondylolisthesis(l5s1Angle);
-				regionDiagnosis.findings.push(withId(finding, 'l5-spondylolisthesis'));
+			let spondylolisthesisFinding: Finding | null = null;
+			if (l5s1DisplacementMm !== null && l5InferiorEndplateMm !== null) {
+				spondylolisthesisFinding = Sagittal.gradeL5Spondylolisthesis(
+					l5s1DisplacementMm,
+					l5InferiorEndplateMm
+				);
+				regionDiagnosis.findings.push(withId(spondylolisthesisFinding, 'l5-spondylolisthesis'));
 				const l5s1Gap = regionDiagnosis.gaps.find((g) => g.id === 'L5-S1');
 				if (l5s1Gap) {
 					l5s1Gap.narrative = withRangeBadge(
 						l5s1Gap.narrative,
-						'p7',
-						finding.severity,
+						'p5',
+						spondylolisthesisFinding.severity,
 						Sagittal.getL5SpondylolisthesisRange()
 					);
 				}
+			}
+
+			// Composite "L5 Spondylolisthesis" tally (conclusion.ts). Gated on
+			// the shipped displacement-fraction Finding above being non-normal
+			// — that's the actual defining measurement; L5 inclination, lumbar
+			// lordosis, and (for higher grades) whole-thoracic kyphosis are
+			// compensatory/supporting signs per TABLREHTG_Updated.docx, not
+			// independently diagnostic. Un-gated, a patient with a completely
+			// normal L5-S1 (this Finding says so right above) but abnormal
+			// compensatory curves elsewhere could still show a nonzero
+			// spondylolisthesis probability, directly contradicting the
+			// Finding shown in this very region — the bug that prompted this
+			// rewrite. Only tallied at all when the gate holds; the 3
+			// remaining signals then determine how much ABOVE the gate's own
+			// contribution the score sits.
+			//
+			// The L5-inclination signal specifically requires the ANTERIOR
+			// direction ("Након тела L5 позвонка против часовой стрелки" —
+			// counterclockwise, which per calculators/vertebrae.ts's signed-angle
+			// convention is the same positive direction as
+			// gradeL5Inclination's anterior branch) — a posterior tilt is not
+			// evidence for this diagnosis, so checking severity!=='normal'
+			// alone (which fires for either direction) would wrongly credit
+			// the opposite tilt too.
+			const lumbarSignal = signals.curves['lumbar'];
+			const thoracicSignal = signals.curves['thoracic'];
+			if (spondylolisthesisFinding && spondylolisthesisFinding.severity !== 'normal') {
+				let spAbnormal = 1; // the gate itself
+				let spTotal = 1;
+				if (l5Inclination !== null) {
+					spTotal += 1;
+					if (l5Inclination > Sagittal.getL5InclinationRange().max) spAbnormal += 1;
+				}
+				if (lumbarSignal) {
+					spTotal += 1;
+					if (lumbarSignal.angleDeg < lumbarSignal.range.min) spAbnormal += 1;
+				}
+				if (thoracicSignal) {
+					spTotal += 1;
+					if (thoracicSignal.angleDeg > thoracicSignal.range.max) spAbnormal += 1;
+				}
+				const grade = severityGrade(spondylolisthesisFinding.severity);
+				const detail =
+					spondylolisthesisFinding.severity === 'grade5'
+						? spondyloptosisDetail()
+						: grade !== null
+							? gradeDetail(grade)
+							: undefined;
+				tallyComposite(tally, 'sag-spondylolisthesis-l5', spAbnormal, spTotal, detail);
+			}
+
+			// L4 spondylolisthesis — newly addable per TABLREHTG_Updated.docx: no
+			// staging, just displacement at L4-L5 (the same generic per-gap
+			// check already run for every level), gated the same way — lumbar
+			// curve in the lordosis direction is a supporting signal, not a
+			// substitute for the displacement itself being present.
+			const l4l5Gap = regionDiagnosis.gaps.find((g) => g.id === 'L4-L5');
+			const l4l5Displacement = l4l5Gap?.findings.find((f) => f.id === 'L4-L5-displacement');
+			if (l4l5Displacement && l4l5Displacement.severity !== 'normal') {
+				let l4Abnormal = 1;
+				let l4Total = 1;
+				if (lumbarSignal) {
+					l4Total += 1;
+					if (lumbarSignal.angleDeg < lumbarSignal.range.min) l4Abnormal += 1;
+				}
+				tallyComposite(tally, 'sag-l4-spondylolisthesis', l4Abnormal, l4Total);
 			}
 
 			const l5InferiorEndplate = getVertebraeParams('side', l5, mmPerPixel)!.params.p8.val as
@@ -463,6 +695,46 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 					Sagittal.getLumbarChordTiltRange()
 				);
 			}
+
+			// The 5 whole-spine composite diagnoses below (see conclusion.ts's
+			// doc comment) reference items 1-8 of TABLREHTG_Updated.docx's
+			// general parameter table — despite being filed under a "cervical"
+			// heading in the source, they're driven entirely by these
+			// region-level parameters, confirmed against the document. Item
+			// numbering: 1/2/3 = thoracic upper/mid/lower sub-arcs, 4 = lumbar
+			// curve, 5 = thoracic (Th5-Th12) chord tilt, 6 = lumbar chord tilt,
+			// 7 = L5 inclination, 8 = sacral slope (inverted sign convention —
+			// see triCode's own doc comment). Evaluated here (during lumbar's
+			// own loop iteration, which runs after cervical and thoracic) since
+			// every item this pattern needs is available by this point,
+			// whether recorded earlier via `signals` or computed just above.
+			const upperSignal = signals.curves['thoracic-upper'];
+			const midSignal = signals.curves['thoracic-mid'];
+			const lowerSignal = signals.curves['thoracic-lower'];
+			const item1 = upperSignal ? triCode(upperSignal.angleDeg, upperSignal.range) : null;
+			const item2 = midSignal ? triCode(midSignal.angleDeg, midSignal.range) : null;
+			const item3 = lowerSignal ? triCode(lowerSignal.angleDeg, lowerSignal.range) : null;
+			const item4 = lumbarSignal ? triCode(lumbarSignal.angleDeg, lumbarSignal.range) : null;
+			const item5 =
+				signals.thoracicChordTiltAngle !== null
+					? triCode(signals.thoracicChordTiltAngle, Sagittal.getThoracicChordTiltRange())
+					: null;
+			const item6 =
+				lumbarChordTilt !== null
+					? triCode(lumbarChordTilt, Sagittal.getLumbarChordTiltRange())
+					: null;
+			const item7 =
+				l5Inclination !== null ? triCode(l5Inclination, Sagittal.getL5InclinationRange()) : null;
+			const item8 =
+				sacralSlope !== null
+					? triCode(sacralSlope, Sagittal.getSacralSlopeRange(), true)
+					: null;
+			const items = [item1, item2, item3, item4, item5, item6, item7, item8];
+			evaluatePattern(tally, 'sag-slipped-dislocation', items, [1, 1, -1, 0, 1, 0, 1, -1]);
+			evaluatePattern(tally, 'sag-subluxation', items, [1, 1, [-1, 1], 0, 1, 0, -1, -1]);
+			evaluatePattern(tally, 'sag-cervical-fracture', items, [0, 0, 0, -1, 1, 0, 0, 0]);
+			evaluatePattern(tally, 'sag-disc-rupture', items, [0, [0, 1], -1, 0, 1, 0, 0, 0]);
+			evaluatePattern(tally, 'sag-degenerative-disc', [item1, item8], [1, [0, 1]]);
 		}
 
 		if (projection === 'frontal' && region.id === 'lumbar') {
@@ -489,6 +761,45 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 		regions.push(regionDiagnosis);
 	}
 
+	// Scheuermann's needs the lumbar and cervical curve directions (per
+	// TABLREHTG_Updated.docx), which weren't available during thoracic's own
+	// loop iteration (REGIONS runs cervical, thoracic, lumbar in that order)
+	// — evaluated here, now that the whole loop has completed, mutating the
+	// already-built thoracic region's findings in place, same pattern as the
+	// lumbar block's own narrative-patching above.
+	if (projection === 'side') {
+		const midSignal = signals.curves['thoracic-mid'];
+		const lumbarSignal = signals.curves['lumbar'];
+		const cervicalSignal = signals.curves['cervical'];
+		if (midSignal && lumbarSignal && cervicalSignal && signals.th6Th9WedgingAngles) {
+			const scheuermann = Sagittal.gradeScheuermann(
+				signals.th6Th9WedgingAngles,
+				midSignal.angleDeg,
+				lumbarSignal.angleDeg,
+				cervicalSignal.angleDeg
+			);
+			// gradeScheuermann() already returns null unless ALL 4 of its own
+			// conditions hold (wedging count, mid-thoracic kyphosis, lumbar +
+			// cervical lordosis) — so there's no meaningful "partial credit"
+			// state independent of that gate to tally separately; doing so
+			// previously let secondary signs alone push this diagnosis's score
+			// up even when the shipped Finding itself never fired. Tallied
+			// 1:1 with the shipped check instead: 100% when it fires, absent
+			// otherwise.
+			if (scheuermann) {
+				const thoracicRegion = regions.find((r) => r.id === 'thoracic');
+				thoracicRegion?.findings.push(withId(scheuermann, 'thoracic-scheuermann'));
+				const grade = severityGrade(scheuermann.severity);
+				tallySingle(
+					tally,
+					'sag-scheuermann',
+					true,
+					grade !== null ? gradeDetail(grade) : undefined
+				);
+			}
+		}
+	}
+
 	const overall: Finding[] = [];
 	if (projection === 'frontal') {
 		const gcomMm = getSpineParams(projection, polygons, mmPerPixel).params.p3.val as number | null;
@@ -511,7 +822,13 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 
 	// Now means "not a single region is fully annotated yet" — each region
 	// that IS ready already rendered above, independently of the others.
-	return { insufficientAnnotation: regions.length === 0, regions, overall, conclusion };
+	return {
+		insufficientAnnotation: regions.length === 0,
+		regions,
+		overall,
+		conclusion,
+		conclusionRanking: rankFromTally(tally)
+	};
 }
 
 export const diagnosis = {

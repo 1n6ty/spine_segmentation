@@ -67,6 +67,29 @@
 			}
 		}
 	},
+	"conclusion": {
+		"gradeSuffix": "grade {grade}",
+		"spondyloptosisSuffix": "spondyloptosis",
+		"bekhterevCervical": "Bekhterev's disease — cervical flexion deformity",
+		"bekhterevThoracicUpper": "Bekhterev's disease — upper-thoracic flexion deformity",
+		"bekhterevThoracicMid": "Bekhterev's disease — mid-thoracic flexion deformity",
+		"bekhterevThoracicLower": "Bekhterev's disease — lower-thoracic flexion deformity",
+		"bekhterevThoracicTotal": "Bekhterev's disease — total thoracic kyphosis",
+		"bekhterevLumbar": "Bekhterev's disease — lumbar flexion deformity",
+		"scheuermann": "Scheuermann-Mau disease",
+		"spondylolisthesisL5": "L5 spondylolisthesis",
+		"spondylolisthesisL4": "L4 spondylolisthesis",
+		"vertebralFracture": "Vertebral body fracture",
+		"slippedDislocation": "Slipped vertebral dislocation",
+		"subluxation": "Vertebral subluxation",
+		"cervicalFracture": "Vertebral body fracture (whole-spine pattern)",
+		"discRupture": "Disc rupture",
+		"degenerativeDisc": "Degenerative disc disease",
+		"scoliosisThoracicRight": "Right-sided thoracic scoliosis",
+		"scoliosisThoracicLeft": "Left-sided thoracic scoliosis",
+		"scoliosisLumbarRight": "Right-sided lumbar scoliosis",
+		"scoliosisLumbarLeft": "Left-sided lumbar scoliosis"
+	},
 	"regions": {
 		"cervical": "Cervical region",
 		"thoracic": "Thoracic region",
@@ -135,10 +158,11 @@
 			},
 			"l5Spondylolisthesis": {
 				"normal": "No signs of L5 spondylolisthesis",
-				"grade1": "L5 spondylolisthesis grade 1",
-				"grade2": "L5 spondylolisthesis grade 2",
-				"grade3": "L5 spondylolisthesis grade 3",
-				"grade4": "L5 spondylolisthesis grade 4-5 / spondyloptosis"
+				"grade1": "L5 spondylolisthesis grade 1, anterior displacement {mm}mm",
+				"grade2": "L5 spondylolisthesis grade 2, anterior displacement {mm}mm",
+				"grade3": "L5 spondylolisthesis grade 3, anterior displacement {mm}mm",
+				"grade4": "L5 spondylolisthesis grade 4, anterior displacement {mm}mm",
+				"spondyloptosis": "L5 spondyloptosis, anterior displacement {mm}mm"
 			},
 			"wedging": {
 				"normal": "No vertebral body wedging detected",
@@ -172,7 +196,8 @@
 					"normal": "Lower-thoracic kyphosis unchanged",
 					"kyphosisGrade1": "Lower-thoracic kyphosis increased grade 1",
 					"kyphosisGrade2": "Lower-thoracic kyphosis increased grade 2",
-					"kyphosisGrade3": "Lower-thoracic kyphosis increased grade 3"
+					"kyphosisGrade3": "Lower-thoracic kyphosis increased grade 3",
+					"kyphosisGrade4": "Lower-thoracic kyphosis increased grade 4"
 				}
 			},
 			"lumbarChordTilt": {

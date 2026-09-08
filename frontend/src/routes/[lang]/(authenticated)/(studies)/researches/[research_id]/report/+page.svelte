@@ -21,7 +21,7 @@
 	import type { Projection } from '$lib/features/dicom/types';
 
 	let projection = $state<Projection>('side');
-	const expandedRegions = new SvelteSet<string>();
+	const expandedRegions = new SvelteSet<string>(['conclusion']);
 	const expandedItems = new SvelteSet<string>();
 
 	const lang = $derived<LocaleKey>($locale === 'ru-RU' ? 'ru-RU' : 'en-US');
@@ -61,6 +61,14 @@
 		return out;
 	}
 
+	/** Section ids managed by `expandedRegions` — every region/sub-region plus
+	 * the standalone "conclusion" (Overall Assessment) section, so expand-all/
+	 * collapse-all and the toggle button's "all expanded" check account for it
+	 * too. */
+	function allSectionIds(): string[] {
+		return [...flattenRegions(currentDiagnosis.regions).map((r) => r.id), 'conclusion'];
+	}
+
 	function allItemKeys(): string[] {
 		const keys: string[] = [];
 		for (const region of flattenRegions(currentDiagnosis.regions)) {
@@ -73,7 +81,7 @@
 
 	function expandAll() {
 		expandedRegions.clear();
-		flattenRegions(currentDiagnosis.regions).forEach((r) => expandedRegions.add(r.id));
+		allSectionIds().forEach((id) => expandedRegions.add(id));
 		expandedItems.clear();
 		allItemKeys().forEach((key) => expandedItems.add(key));
 	}
@@ -204,12 +212,11 @@
 				<button
 					class="rounded-md border border-(--border) px-3 py-1.5 text-sm font-medium transition-colors hover:bg-(--accent)"
 					onclick={() => {
-						if (expandedRegions.size === flattenRegions(currentDiagnosis.regions).length)
-							collapseAll();
+						if (expandedRegions.size === allSectionIds().length) collapseAll();
 						else expandAll();
 					}}
 				>
-					{expandedRegions.size === flattenRegions(currentDiagnosis.regions).length
+					{expandedRegions.size === allSectionIds().length
 						? $t('report.collapse')
 						: $t('report.expand')}
 				</button>
@@ -446,16 +453,59 @@
 						<div class="my-2 h-px w-full shrink-0 bg-(--border)"></div>
 
 						<div class="scroll-mt-20" id="conclusion">
-							<div class="mb-4 flex items-center gap-3">
-								<h3 class="text-xl font-bold">{$t('report.header_overall')}</h3>
-							</div>
-							<div class="space-y-4">
-								{#each currentDiagnosis.conclusion as finding (finding.id)}
-									<div class="rounded border-l-4 p-4 {severityClasses(finding.severity)}">
-										<p class="text-sm leading-relaxed">{localize(finding.text)}</p>
-									</div>
-								{/each}
-							</div>
+							<button
+								class="group mb-4 flex w-full items-center justify-between"
+								onclick={() => toggleRegion('conclusion')}
+							>
+								<div class="flex items-center gap-3">
+									<img
+										src={downSVG}
+										alt="Expand/Collapse"
+										class="h-4 w-4 transition-transform {isExpanded('conclusion')
+											? ''
+											: '-rotate-90'}"
+									/>
+									<h3 class="text-xl font-bold">{$t('report.header_overall')}</h3>
+								</div>
+							</button>
+
+							{#if isExpanded('conclusion')}
+								<div class="ml-8">
+									{#if currentDiagnosis.conclusionRanking.length === 0}
+										<div class="rounded border-l-4 p-4 text-sm {severityClasses('normal')}">
+											{$t('report.no_anomalies')}
+										</div>
+									{:else}
+										<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+											{#each currentDiagnosis.conclusionRanking as d, i (d.key)}
+												<div
+													class="rounded-xl border p-4 {i === 0
+														? 'border-(--primary) bg-(--card) ring-1 ring-(--primary)'
+														: 'border-(--border) bg-(--card)'}"
+												>
+													<p class="mb-2 text-sm leading-snug font-medium">
+														{localize(d.label)}
+													</p>
+													<div class="mb-1.5 flex items-baseline justify-between">
+														<span class="text-xs text-(--muted-foreground)"
+															>{$t('report.probability')}</span
+														>
+														<span class="text-base font-bold"
+															>{(d.probability * 100).toFixed(1)}%</span
+														>
+													</div>
+													<div class="h-1.5 w-full overflow-hidden rounded-full bg-(--muted)">
+														<div
+															class="h-full rounded-full bg-(--primary)"
+															style="width: {(d.probability * 100).toFixed(1)}%"
+														></div>
+													</div>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/if}
 						</div>
 
 						<div class="my-2 h-px w-full shrink-0 bg-(--border)"></div>

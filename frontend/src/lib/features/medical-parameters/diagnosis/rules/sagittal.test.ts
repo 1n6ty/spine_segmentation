@@ -112,35 +112,84 @@ describe('gradeL5Inclination', () => {
 });
 
 describe('gradeL5Spondylolisthesis', () => {
-	it('is normal above -35 degrees', () => {
-		expect(gradeL5Spondylolisthesis(-20).severity).toBe('normal');
+	// endplate length fixed at 30mm across these cases so fraction thresholds
+	// land at clean displacement values: 1/4=7.5mm, 1/2=15mm, 3/4=22.5mm, 4/4=30mm
+	const ENDPLATE_MM = 30;
+
+	it('is normal within the general displacement noise tolerance', () => {
+		expect(gradeL5Spondylolisthesis(1, ENDPLATE_MM).severity).toBe('normal');
 	});
 
-	it('grades 1 between -35 and -75', () => {
-		expect(gradeL5Spondylolisthesis(-50).severity).toBe('grade1');
+	it('is normal for posterior (retrolisthesis) displacement regardless of magnitude', () => {
+		expect(gradeL5Spondylolisthesis(-20, ENDPLATE_MM).severity).toBe('normal');
 	});
 
-	it('grades 3 between -121 and -140', () => {
-		expect(gradeL5Spondylolisthesis(-130).severity).toBe('grade3');
+	it('grades 1 for anterior displacement under 1/4 of endplate length', () => {
+		expect(gradeL5Spondylolisthesis(5, ENDPLATE_MM).severity).toBe('grade1');
 	});
 
-	it('grades 4 beyond -141', () => {
-		expect(gradeL5Spondylolisthesis(-150).severity).toBe('grade4');
+	it('grades 2 for anterior displacement between 1/4 and 1/2 of endplate length', () => {
+		expect(gradeL5Spondylolisthesis(10, ENDPLATE_MM).severity).toBe('grade2');
+	});
+
+	it('grades 3 for anterior displacement between 1/2 and 3/4 of endplate length', () => {
+		expect(gradeL5Spondylolisthesis(20, ENDPLATE_MM).severity).toBe('grade3');
+	});
+
+	it('grades 4 for anterior displacement between 3/4 and a full endplate length', () => {
+		expect(gradeL5Spondylolisthesis(25, ENDPLATE_MM).severity).toBe('grade4');
+	});
+
+	it('grades 5 (spondyloptosis) at or beyond a full endplate length', () => {
+		expect(gradeL5Spondylolisthesis(30, ENDPLATE_MM).severity).toBe('grade5');
+		expect(gradeL5Spondylolisthesis(35, ENDPLATE_MM).severity).toBe('grade5');
 	});
 });
 
 describe('gradeScheuermann', () => {
+	// Mid sub-arc normal band is 15-35 (THORACIC_SUBARC_NORMAL.mid); lumbar
+	// normal is -56 to -30; cervical normal is -41 to -15 (see the constants
+	// atop this file). "Compensated" fixtures push lumbar/cervical below
+	// their normal min (lordosis direction); "uncompensated" leaves them
+	// inside the normal band.
+	const KYPHOTIC_MID = 60; // > 35, kyphosis direction
+	const COMPENSATED_LUMBAR = -60; // < -56, lordosis direction
+	const COMPENSATED_CERVICAL = -45; // < -41, lordosis direction
+	const NORMAL_LUMBAR = -40;
+	const NORMAL_CERVICAL = -20;
+
 	it('returns null when fewer than 3 vertebrae are wedged', () => {
-		expect(gradeScheuermann([6, 2, 1, 0], 'grade1')).toBeNull();
+		expect(
+			gradeScheuermann([6, 2, 1, 0], KYPHOTIC_MID, COMPENSATED_LUMBAR, COMPENSATED_CERVICAL)
+		).toBeNull();
 	});
 
-	it('returns null when the thoracic region itself is normal', () => {
-		expect(gradeScheuermann([6, 7, 8, 9], 'normal')).toBeNull();
+	it('returns null when the mid-thoracic sub-arc is not in the kyphosis direction', () => {
+		expect(
+			gradeScheuermann([6, 7, 8, 9], 20, COMPENSATED_LUMBAR, COMPENSATED_CERVICAL)
+		).toBeNull();
 	});
 
-	it("flags Scheuermann's disease when 3+ vertebrae wedge >5deg and region is kyphotic", () => {
-		const finding = gradeScheuermann([6, 7, 8, 2], 'grade2');
-		expect(finding?.severity).toBe('grade2');
+	it('returns null when the lumbar curve has not compensated into lordosis', () => {
+		expect(
+			gradeScheuermann([6, 7, 8, 9], KYPHOTIC_MID, NORMAL_LUMBAR, COMPENSATED_CERVICAL)
+		).toBeNull();
+	});
+
+	it('returns null when the cervical curve has not compensated into lordosis', () => {
+		expect(
+			gradeScheuermann([6, 7, 8, 9], KYPHOTIC_MID, COMPENSATED_LUMBAR, NORMAL_CERVICAL)
+		).toBeNull();
+	});
+
+	it("flags Scheuermann's disease when all 4 conditions hold", () => {
+		const finding = gradeScheuermann(
+			[6, 7, 8, 9],
+			KYPHOTIC_MID,
+			COMPENSATED_LUMBAR,
+			COMPENSATED_CERVICAL
+		);
+		expect(finding?.severity).not.toBe('normal');
 	});
 });
 
@@ -202,18 +251,22 @@ describe('gradeThoracicSubArc', () => {
 		expect(gradeThoracicSubArc('mid', 95).severity).toBe('grade4');
 	});
 
-	it('grades lower sub-arc normal (19-40 deg)', () => {
-		expect(gradeThoracicSubArc('lower', 30).severity).toBe('normal');
+	it('grades lower sub-arc normal (0-19 deg)', () => {
+		expect(gradeThoracicSubArc('lower', 10).severity).toBe('normal');
 	});
 
-	it('grades lower sub-arc kyphosis grade 3 beyond 80 (no grade4 band)', () => {
-		expect(gradeThoracicSubArc('lower', 90).severity).toBe('grade3');
+	it('grades lower sub-arc kyphosis grade 1 just above normal (20-40 deg)', () => {
+		expect(gradeThoracicSubArc('lower', 30).severity).toBe('grade1');
+	});
+
+	it('grades lower sub-arc kyphosis grade 4 beyond 80', () => {
+		expect(gradeThoracicSubArc('lower', 90).severity).toBe('grade4');
 	});
 
 	it('range-getters match each sub-arc normal band', () => {
 		expect(getThoracicSubArcRange('upper')).toEqual({ min: 8, max: 25 });
 		expect(getThoracicSubArcRange('mid')).toEqual({ min: 15, max: 35 });
-		expect(getThoracicSubArcRange('lower')).toEqual({ min: 19, max: 40 });
+		expect(getThoracicSubArcRange('lower')).toEqual({ min: 0, max: 19 });
 	});
 });
 

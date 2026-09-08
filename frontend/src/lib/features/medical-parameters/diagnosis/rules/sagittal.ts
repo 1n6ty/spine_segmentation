@@ -268,50 +268,64 @@ export function gradeL5Inclination(angleDeg: number): Finding {
 }
 
 /**
- * L5 spondylolisthesis grading by L5-S1 disc angle — "Классификация кифозов
- * таблица.doc.pdf" page 3. Input is the gaps.ts L5-S1 special-case angle
- * (`p7`), used as the available proxy for "угол наклона диска L5-S1". Severity
- * increases as the angle becomes MORE negative, the opposite direction from
- * the regional kyphosis tables above.
+ * L5 spondylolisthesis grading — TABLREHTG_Updated.docx's spondylolisthesis
+ * table: grade escalates with L5's anterior (forward) displacement at
+ * L5-S1 (gaps.ts's `p5`), expressed as a FRACTION of L5's own inferior
+ * endplate length (vertebrae.ts's `p2` on L5), not a fixed mm cutoff.
+ * Supersedes the earlier L5-S1-angle-based version — that angle (`p7`)
+ * measures *rotation* between L5 and S1, not the *translational* slip
+ * spondylolisthesis fundamentally is.
+ *
+ * Displacement within the general per-gap noise tolerance, or in the
+ * posterior direction (retrolisthesis — a different, unmodeled condition),
+ * reads as 'normal' here regardless of magnitude: this function is
+ * specifically about anterior slip.
  */
-const L5_SPONDYLOLISTHESIS_NORMAL_MIN = -35;
-
-/** Normal band for the L5-S1 spondylolisthesis angle, shared with the
- * display bracket. Open-ended above -35°. */
 export function getL5SpondylolisthesisRange(): Range {
-	return { min: L5_SPONDYLOLISTHESIS_NORMAL_MIN, max: Infinity };
+	return { min: -Infinity, max: SAGITTAL_DISPLACEMENT_TOLERANCE_MM };
 }
 
-export function gradeL5Spondylolisthesis(l5s1AngleDeg: number): Finding {
-	const a = l5s1AngleDeg;
-	if (a > L5_SPONDYLOLISTHESIS_NORMAL_MIN)
+export function gradeL5Spondylolisthesis(
+	displacementMm: number,
+	l5InferiorEndplateMm: number
+): Finding {
+	if (displacementMm <= SAGITTAL_DISPLACEMENT_TOLERANCE_MM) {
 		return {
 			id: '',
 			severity: 'normal',
 			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.normal')
 		};
-	if (a > -75)
+	}
+	const fraction = displacementMm / l5InferiorEndplateMm;
+	const mm = displacementMm.toFixed(1);
+	if (fraction < 0.25)
 		return {
 			id: '',
 			severity: 'grade1',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1')
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1', { mm })
 		};
-	if (a > -120)
+	if (fraction < 0.5)
 		return {
 			id: '',
 			severity: 'grade2',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2')
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2', { mm })
 		};
-	if (a > -140)
+	if (fraction < 0.75)
 		return {
 			id: '',
 			severity: 'grade3',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3')
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3', { mm })
+		};
+	if (fraction < 1)
+		return {
+			id: '',
+			severity: 'grade4',
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4', { mm })
 		};
 	return {
 		id: '',
-		severity: 'grade4',
-		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4')
+		severity: 'grade5',
+		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.spondyloptosis', { mm })
 	};
 }
 
@@ -361,27 +375,41 @@ export function gradeVertebralWedgingSagittal(angleDeg: number): Finding {
 }
 
 /**
- * Scheuermann's disease (Болезнь Шойермана-Мау) — TABLREHTG.docx.pdf page 7.
- * Simplified v1: flags when at least 3 of the Th6-Th9 vertebrae are wedged
- * more than 5 degrees AND the thoracic region already grades as increased
- * kyphosis. The source's additional disc-height-reduction criterion is
- * skipped (no usable disc-norm table — see file header).
+ * Scheuermann's disease (Болезнь Шойермана-Мау) — TABLREHTG_Updated.docx's
+ * diagnosis-codes table. Requires 4 conditions together: at least 3 of the
+ * Th6-Th9 vertebrae wedged more than 5 degrees; the Th6-Th9 sub-arc itself
+ * in the kyphosis direction (graded off THIS sub-arc specifically, not the
+ * whole-thoracic container as in the earlier version — the updated doc's
+ * per-segment thresholds are more specific); and, per the updated doc's
+ * explicit references to the "Лордозирование" (lordosis/flattening) column
+ * of "Классификация кифозов таблица.doc.pdf", the L1-L5 (lumbar) and C2-C7
+ * (cervical) curves both compensating toward the lordosis direction. The
+ * source's additional disc-height-reduction criterion is still skipped (no
+ * usable disc-norm table — see file header).
  */
 export function gradeScheuermann(
 	th6Th9WedgingAnglesDeg: number[],
-	thoracicSeverity: Severity
+	midThoracicAngleDeg: number,
+	lumbarAngleDeg: number,
+	cervicalAngleDeg: number
 ): Finding | null {
 	const wedgedCount = th6Th9WedgingAnglesDeg.filter((a) => Math.abs(a) > 5).length;
-	if (wedgedCount < 3 || thoracicSeverity === 'normal') return null;
+	if (wedgedCount < 3) return null;
+
+	if (!(midThoracicAngleDeg > getThoracicSubArcRange('mid').max)) return null;
+	if (!(lumbarAngleDeg < getRegionSagittalRange('lumbar').min)) return null;
+	if (!(cervicalAngleDeg < getRegionSagittalRange('cervical').min)) return null;
+
+	const midFinding = gradeThoracicSubArc('mid', midThoracicAngleDeg);
 	const grade =
-		thoracicSeverity === 'grade3' || thoracicSeverity === 'grade4'
+		midFinding.severity === 'grade3' || midFinding.severity === 'grade4'
 			? 3
-			: thoracicSeverity === 'grade2'
+			: midFinding.severity === 'grade2'
 				? 2
 				: 1;
 	return {
 		id: '',
-		severity: thoracicSeverity,
+		severity: midFinding.severity,
 		text: resolve_localized('diagnosis.rules.sagittal.scheuermann', { grade })
 	};
 }
@@ -415,11 +443,24 @@ export function gradeVertebralFracture(
  * gradeRegionSagittal('thoracic', ...) above, which grades the whole Th1-Th12
  * span and is unaffected by this — these are additional, finer-grained rows
  * from the same source table, not a replacement.
+ *
+ * lower's Norma/Kyphosis bands were previously {19,40} with only 3 kyphosis
+ * grades — corrected against the source table (confirmed via a 400dpi render
+ * of the PDF, not just the earlier OCR text extract) to Norma=[0,19],
+ * Kyphosis1=[20,40], Kyphosis2=[41,60], Kyphosis3=[61,80], Kyphosis4=(>80) —
+ * a 4th grade the old thresholds silently folded into grade3. The source
+ * table's own Lordosis-1 cell for this row ("от 18° до 0°") genuinely
+ * overlaps this corrected Norma start (both claim "0") — an apparent
+ * authoring error in the source itself, not an extraction artifact (checked
+ * at high resolution). Treated here as a narrow (-1, 0) band rather than
+ * dropped entirely, so grade2 (≤-1) still has a grade1 neighbor the way
+ * every other region does; flagged for confirmation against the original
+ * .doc if a more precise boundary is available.
  */
 const THORACIC_SUBARC_NORMAL: Record<'upper' | 'mid' | 'lower', Range> = {
 	upper: { min: 8, max: 25 },
 	mid: { min: 15, max: 35 },
-	lower: { min: 19, max: 40 }
+	lower: { min: 0, max: 19 }
 };
 
 /** Normal band for a thoracic sub-arc's central angle, shared with the display bracket. */
@@ -519,14 +560,15 @@ export function gradeThoracicSubArc(
 			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.mid.kyphosisGrade4')
 		};
 	}
-	// lower — only 3 kyphosis grades in the source table, no grade4 band.
+	// lower — see THORACIC_SUBARC_NORMAL's doc comment re: the source
+	// table's own Lordosis-1/Norma boundary overlap for this row.
 	if (a <= -1)
 		return {
 			id: '',
 			severity: 'grade2',
 			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.lordosisGrade2')
 		};
-	if (a <= 18)
+	if (a < 0)
 		return {
 			id: '',
 			severity: 'grade1',
@@ -538,22 +580,28 @@ export function gradeThoracicSubArc(
 			severity: 'normal',
 			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.normal')
 		};
-	if (a <= 60)
+	if (a <= 40)
 		return {
 			id: '',
 			severity: 'grade1',
 			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.kyphosisGrade1')
 		};
-	if (a <= 80)
+	if (a <= 60)
 		return {
 			id: '',
 			severity: 'grade2',
 			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.kyphosisGrade2')
 		};
+	if (a <= 80)
+		return {
+			id: '',
+			severity: 'grade3',
+			text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.kyphosisGrade3')
+		};
 	return {
 		id: '',
-		severity: 'grade3',
-		text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.kyphosisGrade3')
+		severity: 'grade4',
+		text: resolve_localized('diagnosis.rules.sagittal.thoracicSubArc.lower.kyphosisGrade4')
 	};
 }
 
@@ -662,7 +710,7 @@ const SAGITTAL_DISC_ANGLE_NORMS: Record<string, { mean: number; sd: number }> = 
 	'Th10-Th11': { mean: 2.51, sd: 5.4 },
 	'Th11-Th12': { mean: 2.41, sd: 6.5 },
 	'Th12-L1': { mean: 4.41, sd: 3.9 },
-	'L1-L2': { mean: 0.21, sd: 3.6 },
+	'L1-L2': { mean: 0.21, sd: 5.6 },
 	'L2-L3': { mean: -6.9, sd: 3.4 },
 	'L3-L4': { mean: -9.51, sd: 6.0 },
 	'L4-L5': { mean: -15.21, sd: 7.4 }

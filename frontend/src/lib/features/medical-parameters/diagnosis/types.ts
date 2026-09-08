@@ -1,6 +1,8 @@
 import type { Localized } from '$lib/core/i18n/types';
 
 export type { LocaleKey, Localized } from '$lib/core/i18n/types';
+import type { RankedDiagnosis } from './conclusion';
+export type { RankedDiagnosis } from './conclusion';
 
 export type Severity = 'normal' | 'grade1' | 'grade2' | 'grade3' | 'grade4' | 'grade5';
 
@@ -72,4 +74,6 @@ export type ProjectionDiagnosis = {
 	/** Whole-spine findings that aren't tied to a single region, e.g. GCoM lateral balance. */
 	overall: Finding[];
 	conclusion: Finding[];
+	/** Top-5 (+ "Others") ranked named diagnoses — see diagnosis/conclusion.ts. */
+	conclusionRanking: RankedDiagnosis[];
 };
