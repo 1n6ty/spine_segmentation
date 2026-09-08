@@ -26,8 +26,12 @@ import {
 	gradeDetail,
 	spondyloptosisDetail,
 	severityGrade,
+	matchedSymptom,
+	unmatchedSymptom,
 	type DiagnosisKey,
-	type DiagnosisTally
+	type DiagnosisTally,
+	type Symptom,
+	type PatternItem
 } from './conclusion';
 import { buildParametersNarrative, withRangeBadge, vertebraLabel, gapLabel } from './narrative';
 import { resolve_localized } from '$lib/core/i18n/resolve';
@@ -95,7 +99,10 @@ function buildVertebraDiagnosis(
 			const fracture = Sagittal.gradeVertebralFracture(wedging, regionFinding.severity);
 			if (fracture) {
 				findings.push(withId(fracture, `${v.id}-fracture`));
-				tallySingle(tally, `sag-vertebral-fracture:${v.id}`, true, vertebraLabel(v.id));
+				tallySingle(tally, `sag-vertebral-fracture:${v.id}`, true, {
+					detail: vertebraLabel(v.id),
+					symptoms: [matchedSymptom(wedgingFinding), matchedSymptom(regionFinding)]
+				});
 			}
 		}
 	}
@@ -184,15 +191,24 @@ type CurveSignalKey =
  * conclusion.ts's 8-item registry (thoracic sub-arcs + lumbar); the rest
  * (items 5-8, plus Scheuermann's own wedging count) are recorded
  * separately since they're each computed at their own specific call site
- * rather than uniformly via buildCurveDiagnosis. */
+ * rather than uniformly via buildCurveDiagnosis. Each curve signal also
+ * carries the already-computed `finding` it came from, reused verbatim as
+ * that region's symptom text/severity wherever it feeds a composite
+ * diagnosis's expandable breakdown — no re-deriving grades. */
 type CrossRegionSignals = {
-	curves: Partial<Record<CurveSignalKey, { angleDeg: number; range: Range }>>;
+	curves: Partial<Record<CurveSignalKey, { angleDeg: number; range: Range; finding: Finding }>>;
 	th6Th9WedgingAngles: number[] | null; // for Scheuermann
 	thoracicChordTiltAngle: number | null; // item 5: Th5-Th12 chord tilt
+	thoracicChordTiltFinding: Finding | null;
 };
 
 function newSignals(): CrossRegionSignals {
-	return { curves: {}, th6Th9WedgingAngles: null, thoracicChordTiltAngle: null };
+	return {
+		curves: {},
+		th6Th9WedgingAngles: null,
+		thoracicChordTiltAngle: null,
+		thoracicChordTiltFinding: null
+	};
 }
 
 /** Maps a sagittal region/sub-arc id to its Bekhterev's flexion-deformity
@@ -241,7 +257,7 @@ function tallyCurveDiagnosis(
 	regionId: string,
 	centralAngle: number,
 	chordTiltAngle: number | null,
-	severity: Finding['severity'],
+	curveFinding: Finding,
 	range: Range
 ) {
 	if (projection === 'side') {
@@ -250,15 +266,26 @@ function tallyCurveDiagnosis(
 		if (!(centralAngle > range.max)) return; // gate: must be kyphosis-direction
 		let abnormal = 1; // the gate itself always counts as a hit
 		let total = 1;
+		const symptoms: Symptom[] = [matchedSymptom(curveFinding)];
 		if (chordTiltAngle !== null) {
 			total += 1;
-			if (chordTiltAngle > 0) abnormal += 1;
+			const ccw = chordTiltAngle > 0;
+			if (ccw) abnormal += 1;
+			const chordTiltText = resolve_localized('diagnosis.conclusion.symptomChordTiltCcw');
+			symptoms.push(
+				ccw
+					? { text: chordTiltText, severity: 'grade1' }
+					: { text: chordTiltText, severity: 'normal' }
+			);
 		}
-		const grade = severityGrade(severity);
-		tallyComposite(tally, key, abnormal, total, grade !== null ? gradeDetail(grade) : undefined);
+		const grade = severityGrade(curveFinding.severity);
+		tallyComposite(tally, key, abnormal, total, {
+			detail: grade !== null ? gradeDetail(grade) : undefined,
+			symptoms
+		});
 		return;
 	}
-	if (severity === 'normal') return;
+	if (curveFinding.severity === 'normal') return;
 	const key: DiagnosisKey | null =
 		regionId === 'thoracic'
 			? centralAngle < 0
@@ -269,7 +296,7 @@ function tallyCurveDiagnosis(
 					? 'frontal-scoliosis-lumbar-left'
 					: 'frontal-scoliosis-lumbar-right'
 				: null;
-	if (key) tallySingle(tally, key, true);
+	if (key) tallySingle(tally, key, true, { symptoms: [matchedSymptom(curveFinding)] });
 }
 
 /** Curve-only: central-angle grading + its narrative sentence, no
@@ -298,11 +325,15 @@ function buildCurveDiagnosis(
 		meta.id,
 		centralAngle,
 		chordTiltAngle,
-		curveFinding.severity,
+		curveFinding,
 		curveRange
 	);
 	if (projection === 'side' && meta.id in SAGITTAL_CURVE_DIAGNOSIS_KEYS) {
-		signals.curves[meta.id as CurveSignalKey] = { angleDeg: centralAngle, range: curveRange };
+		signals.curves[meta.id as CurveSignalKey] = {
+			angleDeg: centralAngle,
+			range: curveRange,
+			finding: curveFinding
+		};
 	}
 
 	const [start, end] = meta.vertebraeLabel.split('-');
@@ -450,7 +481,9 @@ function buildThoracicSideDiagnosis(
 			| null;
 		signals.thoracicChordTiltAngle = chordTiltAngle;
 		if (chordTiltAngle !== null) {
-			findings.push(withId(Sagittal.gradeThoracicChordTilt(chordTiltAngle), 'thoracic-chord-tilt'));
+			const chordTiltFinding = Sagittal.gradeThoracicChordTilt(chordTiltAngle);
+			signals.thoracicChordTiltFinding = chordTiltFinding;
+			findings.push(withId(chordTiltFinding, 'thoracic-chord-tilt'));
 		}
 	}
 
@@ -542,15 +575,16 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			const sacralSlope = getVertebraeParams('side', s1, mmPerPixel)!.params.p9.val as
 				| number
 				| null;
+			let sacralSlopeFinding: Finding | null = null;
 			if (sacralSlope !== null) {
-				const finding = Sagittal.gradeSacralSlope(sacralSlope);
-				regionDiagnosis.findings.push(withId(finding, 's1-sacral-slope'));
+				sacralSlopeFinding = Sagittal.gradeSacralSlope(sacralSlope);
+				regionDiagnosis.findings.push(withId(sacralSlopeFinding, 's1-sacral-slope'));
 				const s1Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'S1');
 				if (s1Vertebra) {
 					s1Vertebra.narrative = withRangeBadge(
 						s1Vertebra.narrative,
 						'p9',
-						finding.severity,
+						sacralSlopeFinding.severity,
 						Sagittal.getSacralSlopeRange()
 					);
 				}
@@ -559,15 +593,16 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			const l5Inclination = getVertebraeParams('side', l5, mmPerPixel)!.params.p7.val as
 				| number
 				| null;
+			let l5InclinationFinding: Finding | null = null;
 			if (l5Inclination !== null) {
-				const finding = Sagittal.gradeL5Inclination(l5Inclination);
-				regionDiagnosis.findings.push(withId(finding, 'l5-inclination'));
+				l5InclinationFinding = Sagittal.gradeL5Inclination(l5Inclination);
+				regionDiagnosis.findings.push(withId(l5InclinationFinding, 'l5-inclination'));
 				const l5Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'L5');
 				if (l5Vertebra) {
 					l5Vertebra.narrative = withRangeBadge(
 						l5Vertebra.narrative,
 						'p7',
-						finding.severity,
+						l5InclinationFinding.severity,
 						Sagittal.getL5InclinationRange()
 					);
 				}
@@ -627,17 +662,32 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			if (spondylolisthesisFinding && spondylolisthesisFinding.severity !== 'normal') {
 				let spAbnormal = 1; // the gate itself
 				let spTotal = 1;
-				if (l5Inclination !== null) {
+				const spSymptoms: Symptom[] = [matchedSymptom(spondylolisthesisFinding)];
+				if (l5Inclination !== null && l5InclinationFinding) {
 					spTotal += 1;
-					if (l5Inclination > Sagittal.getL5InclinationRange().max) spAbnormal += 1;
+					const anterior = l5Inclination > Sagittal.getL5InclinationRange().max;
+					if (anterior) spAbnormal += 1;
+					spSymptoms.push(
+						anterior ? matchedSymptom(l5InclinationFinding) : unmatchedSymptom(l5InclinationFinding)
+					);
 				}
 				if (lumbarSignal) {
 					spTotal += 1;
-					if (lumbarSignal.angleDeg < lumbarSignal.range.min) spAbnormal += 1;
+					const lordosis = lumbarSignal.angleDeg < lumbarSignal.range.min;
+					if (lordosis) spAbnormal += 1;
+					spSymptoms.push(
+						lordosis ? matchedSymptom(lumbarSignal.finding) : unmatchedSymptom(lumbarSignal.finding)
+					);
 				}
 				if (thoracicSignal) {
 					spTotal += 1;
-					if (thoracicSignal.angleDeg > thoracicSignal.range.max) spAbnormal += 1;
+					const kyphosis = thoracicSignal.angleDeg > thoracicSignal.range.max;
+					if (kyphosis) spAbnormal += 1;
+					spSymptoms.push(
+						kyphosis
+							? matchedSymptom(thoracicSignal.finding)
+							: unmatchedSymptom(thoracicSignal.finding)
+					);
 				}
 				const grade = severityGrade(spondylolisthesisFinding.severity);
 				const detail =
@@ -646,7 +696,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 						: grade !== null
 							? gradeDetail(grade)
 							: undefined;
-				tallyComposite(tally, 'sag-spondylolisthesis-l5', spAbnormal, spTotal, detail);
+				tallyComposite(tally, 'sag-spondylolisthesis-l5', spAbnormal, spTotal, {
+					detail,
+					symptoms: spSymptoms
+				});
 			}
 
 			// L4 spondylolisthesis — newly addable per TABLREHTG_Updated.docx: no
@@ -659,11 +712,18 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			if (l4l5Displacement && l4l5Displacement.severity !== 'normal') {
 				let l4Abnormal = 1;
 				let l4Total = 1;
+				const l4Symptoms: Symptom[] = [matchedSymptom(l4l5Displacement)];
 				if (lumbarSignal) {
 					l4Total += 1;
-					if (lumbarSignal.angleDeg < lumbarSignal.range.min) l4Abnormal += 1;
+					const lordosis = lumbarSignal.angleDeg < lumbarSignal.range.min;
+					if (lordosis) l4Abnormal += 1;
+					l4Symptoms.push(
+						lordosis ? matchedSymptom(lumbarSignal.finding) : unmatchedSymptom(lumbarSignal.finding)
+					);
 				}
-				tallyComposite(tally, 'sag-l4-spondylolisthesis', l4Abnormal, l4Total);
+				tallyComposite(tally, 'sag-l4-spondylolisthesis', l4Abnormal, l4Total, {
+					symptoms: l4Symptoms
+				});
 			}
 
 			const l5InferiorEndplate = getVertebraeParams('side', l5, mmPerPixel)!.params.p8.val as
@@ -685,13 +745,14 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 
 			const lumbarChordTilt = getSegmentParams('side', regionVertebrae, mmPerPixel).params.p4
 				.val as number | null;
+			let lumbarChordTiltFinding: Finding | null = null;
 			if (lumbarChordTilt !== null) {
-				const finding = Sagittal.gradeLumbarChordTilt(lumbarChordTilt);
-				regionDiagnosis.findings.push(withId(finding, 'lumbar-chord-tilt'));
+				lumbarChordTiltFinding = Sagittal.gradeLumbarChordTilt(lumbarChordTilt);
+				regionDiagnosis.findings.push(withId(lumbarChordTiltFinding, 'lumbar-chord-tilt'));
 				regionDiagnosis.narrative = withRangeBadge(
 					regionDiagnosis.narrative,
 					'p4',
-					finding.severity,
+					lumbarChordTiltFinding.severity,
 					Sagittal.getLumbarChordTiltRange()
 				);
 			}
@@ -711,25 +772,50 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			const upperSignal = signals.curves['thoracic-upper'];
 			const midSignal = signals.curves['thoracic-mid'];
 			const lowerSignal = signals.curves['thoracic-lower'];
-			const item1 = upperSignal ? triCode(upperSignal.angleDeg, upperSignal.range) : null;
-			const item2 = midSignal ? triCode(midSignal.angleDeg, midSignal.range) : null;
-			const item3 = lowerSignal ? triCode(lowerSignal.angleDeg, lowerSignal.range) : null;
-			const item4 = lumbarSignal ? triCode(lumbarSignal.angleDeg, lumbarSignal.range) : null;
-			const item5 =
-				signals.thoracicChordTiltAngle !== null
-					? triCode(signals.thoracicChordTiltAngle, Sagittal.getThoracicChordTiltRange())
+			const item1: PatternItem = upperSignal
+				? { code: triCode(upperSignal.angleDeg, upperSignal.range), finding: upperSignal.finding }
+				: null;
+			const item2: PatternItem = midSignal
+				? { code: triCode(midSignal.angleDeg, midSignal.range), finding: midSignal.finding }
+				: null;
+			const item3: PatternItem = lowerSignal
+				? { code: triCode(lowerSignal.angleDeg, lowerSignal.range), finding: lowerSignal.finding }
+				: null;
+			const item4: PatternItem = lumbarSignal
+				? {
+						code: triCode(lumbarSignal.angleDeg, lumbarSignal.range),
+						finding: lumbarSignal.finding
+					}
+				: null;
+			const item5: PatternItem =
+				signals.thoracicChordTiltAngle !== null && signals.thoracicChordTiltFinding
+					? {
+							code: triCode(signals.thoracicChordTiltAngle, Sagittal.getThoracicChordTiltRange()),
+							finding: signals.thoracicChordTiltFinding
+						}
 					: null;
-			const item6 =
-				lumbarChordTilt !== null
-					? triCode(lumbarChordTilt, Sagittal.getLumbarChordTiltRange())
+			const item6: PatternItem =
+				lumbarChordTilt !== null && lumbarChordTiltFinding
+					? {
+							code: triCode(lumbarChordTilt, Sagittal.getLumbarChordTiltRange()),
+							finding: lumbarChordTiltFinding
+						}
 					: null;
-			const item7 =
-				l5Inclination !== null ? triCode(l5Inclination, Sagittal.getL5InclinationRange()) : null;
-			const item8 =
-				sacralSlope !== null
-					? triCode(sacralSlope, Sagittal.getSacralSlopeRange(), true)
+			const item7: PatternItem =
+				l5Inclination !== null && l5InclinationFinding
+					? {
+							code: triCode(l5Inclination, Sagittal.getL5InclinationRange()),
+							finding: l5InclinationFinding
+						}
 					: null;
-			const items = [item1, item2, item3, item4, item5, item6, item7, item8];
+			const item8: PatternItem =
+				sacralSlope !== null && sacralSlopeFinding
+					? {
+							code: triCode(sacralSlope, Sagittal.getSacralSlopeRange(), true),
+							finding: sacralSlopeFinding
+						}
+					: null;
+			const items: PatternItem[] = [item1, item2, item3, item4, item5, item6, item7, item8];
 			evaluatePattern(tally, 'sag-slipped-dislocation', items, [1, 1, -1, 0, 1, 0, 1, -1]);
 			evaluatePattern(tally, 'sag-subluxation', items, [1, 1, [-1, 1], 0, 1, 0, -1, -1]);
 			evaluatePattern(tally, 'sag-cervical-fracture', items, [0, 0, 0, -1, 1, 0, 0, 0]);
@@ -790,12 +876,23 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				const thoracicRegion = regions.find((r) => r.id === 'thoracic');
 				thoracicRegion?.findings.push(withId(scheuermann, 'thoracic-scheuermann'));
 				const grade = severityGrade(scheuermann.severity);
-				tallySingle(
-					tally,
-					'sag-scheuermann',
-					true,
-					grade !== null ? gradeDetail(grade) : undefined
-				);
+				const wedgedCount = signals.th6Th9WedgingAngles.filter((a) => Math.abs(a) > 5).length;
+				const symptoms: Symptom[] = [
+					{
+						text: resolve_localized('diagnosis.conclusion.symptomWedgingCount', {
+							count: wedgedCount,
+							total: signals.th6Th9WedgingAngles.length
+						}),
+						severity: 'grade1'
+					},
+					matchedSymptom(midSignal.finding),
+					matchedSymptom(lumbarSignal.finding),
+					matchedSymptom(cervicalSignal.finding)
+				];
+				tallySingle(tally, 'sag-scheuermann', true, {
+					detail: grade !== null ? gradeDetail(grade) : undefined,
+					symptoms
+				});
 			}
 		}
 	}

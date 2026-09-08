@@ -70,6 +70,8 @@
 	"conclusion": {
 		"gradeSuffix": "grade {grade}",
 		"spondyloptosisSuffix": "spondyloptosis",
+		"symptomChordTiltCcw": "Chord tilt tends counterclockwise",
+		"symptomWedgingCount": "{count} of {total} Th6-Th9 vertebrae wedged more than 5°",
 		"bekhterevCervical": "Bekhterev's disease — cervical flexion deformity",
 		"bekhterevThoracicUpper": "Bekhterev's disease — upper-thoracic flexion deformity",
 		"bekhterevThoracicMid": "Bekhterev's disease — mid-thoracic flexion deformity",

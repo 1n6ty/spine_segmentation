@@ -1,6 +1,6 @@
 import { resolve_localized } from '$lib/core/i18n/resolve';
 import type { Localized } from '$lib/core/i18n/types';
-import type { Range, Severity } from './types';
+import type { Finding, Range, Severity } from './types';
 
 /**
  * The named diagnoses this module can score, derived from the real clinical
@@ -112,7 +112,38 @@ export function severityGrade(severity: Severity): number | null {
 	return match ? Number(match[1]) : null;
 }
 
-export type DiagnosisTally = Map<TallyKey, { abnormal: number; total: number; detail?: Localized }>;
+/**
+ * One sub-condition tallied into a diagnosis's score, shown as a symptom
+ * row when the diagnosis card is expanded. Deliberately shaped like a
+ * trimmed-down `Finding` — wherever a symptom is backed by an
+ * already-computed Finding (true for nearly every one — see
+ * diagnosis-store.svelte.ts), it's built by copying that Finding's own
+ * `text`/`severity` directly, so the report never says two different
+ * things about the same measurement. For a symptom that didn't count
+ * toward this diagnosis, `severity` is forced to `'normal'` regardless of
+ * the source Finding's real severity — it renders muted, signaling
+ * "checked, didn't count", while `text` still shows what was actually
+ * observed.
+ */
+export type Symptom = { text: Localized; severity: Severity };
+
+/** Builds a matched symptom from an existing Finding — copies its text and
+ * real severity as-is. */
+export function matchedSymptom(finding: Finding): Symptom {
+	return { text: finding.text, severity: finding.severity };
+}
+
+/** Builds an unmatched symptom from an existing Finding — keeps its text
+ * (what was actually observed) but forces severity to 'normal' so it
+ * renders muted, since it didn't count toward this diagnosis. */
+export function unmatchedSymptom(finding: Finding): Symptom {
+	return { text: finding.text, severity: 'normal' };
+}
+
+type TallyEntry = { abnormal: number; total: number; detail?: Localized; symptoms?: Symptom[] };
+export type DiagnosisTally = Map<TallyKey, TallyEntry>;
+
+export type TallyOptions = { detail?: Localized; symptoms?: Symptom[] };
 
 /**
  * Records one single-parameter diagnosis check. Only tallied when
@@ -125,13 +156,14 @@ export function tallySingle(
 	tally: DiagnosisTally,
 	key: TallyKey,
 	triggered: boolean,
-	detail?: Localized
+	options?: TallyOptions
 ): void {
 	if (!triggered) return;
 	const entry = tally.get(key) ?? { abnormal: 0, total: 0 };
 	entry.abnormal += 1;
 	entry.total += 1;
-	if (detail) entry.detail = detail;
+	if (options?.detail) entry.detail = options.detail;
+	if (options?.symptoms) entry.symptoms = options.symptoms;
 	tally.set(key, entry);
 }
 
@@ -141,13 +173,14 @@ export function tallyComposite(
 	key: TallyKey,
 	abnormalCount: number,
 	totalCount: number,
-	detail?: Localized
+	options?: TallyOptions
 ): void {
 	if (totalCount <= 0) return;
 	const entry = tally.get(key) ?? { abnormal: 0, total: 0 };
 	entry.abnormal += abnormalCount;
 	entry.total += totalCount;
-	if (detail) entry.detail = detail;
+	if (options?.detail) entry.detail = options.detail;
+	if (options?.symptoms) entry.symptoms = options.symptoms;
 	tally.set(key, entry);
 }
 
@@ -159,19 +192,29 @@ export function tallyComposite(
  * source table codes "below min" as +1 and "above max" as -1, the opposite
  * of every other item's convention.
  */
-export function triCode(value: number, range: Pick<Range, 'min' | 'max'>, invert = false): -1 | 0 | 1 {
+export function triCode(
+	value: number,
+	range: Pick<Range, 'min' | 'max'>,
+	invert = false
+): -1 | 0 | 1 {
 	if (value < range.min) return invert ? 1 : -1;
 	if (value > range.max) return invert ? -1 : 1;
 	return 0;
 }
 
+/** One item of an 8-item (or fewer) lock-and-key pattern: its current
+ * tri-state code plus the already-computed Finding that code was derived
+ * from (reused verbatim as that item's symptom text/severity when the
+ * pattern matches). `null` when the item isn't computable this round. */
+export type PatternItem = { code: -1 | 0 | 1; finding: Finding } | null;
+
 /**
  * Evaluates one "item 1-8" lock-and-key diagnosis pattern (see
- * diagnosis-store.svelte.ts's cross-region composite evaluation): `codes` is
- * the current tri-state code for each item (in item-number order, `null`
- * when that item isn't computable this round — its region/span isn't
- * annotated), `pattern` is the required code per item, or an array of
- * codes when the source document says "either".
+ * diagnosis-store.svelte.ts's cross-region composite evaluation): `items`
+ * carries each item's current tri-state code alongside the Finding it came
+ * from (in item-number order, `null` when that item isn't computable this
+ * round — its region/span isn't annotated), `pattern` is the required code
+ * per item, or an array of codes when the source document says "either".
  *
  * Gated like every other composite in this module, just with a different
  * shape: these 5 diagnoses have no single "primary" measurement the way
@@ -186,30 +229,35 @@ export function triCode(value: number, range: Pick<Range, 'min' | 'max'>, invert
  * isn't annotated) are skipped rather than treated as a mismatch, per
  * this module's partial-annotation-aware philosophy elsewhere — once
  * every *available* item matches, the diagnosis tallies at 100% of
- * however many items were actually checkable this round.
+ * however many items were actually checkable this round, with one matched
+ * symptom per included item (every included item necessarily matched,
+ * or this function would have already bailed out).
  */
 export function evaluatePattern(
 	tally: DiagnosisTally,
 	key: DiagnosisKey,
-	codes: (-1 | 0 | 1 | null)[],
+	items: PatternItem[],
 	pattern: (-1 | 0 | 1 | (-1 | 0 | 1)[])[]
 ): void {
 	let total = 0;
+	const symptoms: Symptom[] = [];
 	for (let i = 0; i < pattern.length; i++) {
-		const code = codes[i];
-		if (code === null || code === undefined) continue;
+		const item = items[i];
+		if (item === null || item === undefined) continue;
 		const want = pattern[i];
-		const matches = Array.isArray(want) ? want.includes(code) : want === code;
+		const matches = Array.isArray(want) ? want.includes(item.code) : want === item.code;
 		if (!matches) return; // gate: one contradicting item invalidates the whole match
 		total += 1;
+		symptoms.push(matchedSymptom(item.finding));
 	}
-	tallyComposite(tally, key, total, total);
+	tallyComposite(tally, key, total, total, { symptoms });
 }
 
 export type RankedDiagnosis = {
 	key: string;
 	label: Localized;
 	probability: number;
+	symptoms: Symptom[];
 };
 
 const DISPLAY_THRESHOLD = 0.5;
@@ -224,16 +272,18 @@ const DISPLAY_THRESHOLD = 0.5;
  */
 export function rankFromTally(tally: DiagnosisTally): RankedDiagnosis[] {
 	return [...tally.entries()]
-		.map(([key, { abnormal, total, detail }]) => ({
+		.map(([key, { abnormal, total, detail, symptoms }]) => ({
 			key,
 			probability: total > 0 ? abnormal / total : 0,
-			detail
+			detail,
+			symptoms: symptoms ?? []
 		}))
 		.filter((d) => d.probability > DISPLAY_THRESHOLD)
 		.sort((a, b) => b.probability - a.probability)
 		.map((d) => ({
 			key: d.key,
 			label: combineLabel(diagnosisLabel(baseKey(d.key as TallyKey)), d.detail),
-			probability: d.probability
+			probability: d.probability,
+			symptoms: d.symptoms
 		}));
 }

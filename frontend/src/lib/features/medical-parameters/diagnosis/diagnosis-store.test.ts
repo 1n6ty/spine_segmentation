@@ -143,6 +143,13 @@ describe('sagittal thoracic sub-regions', () => {
 		expect(result.conclusionRanking.every((d) => d.probability > 0.5)).toBe(true);
 	});
 
+	it('every ranked diagnosis carries at least one symptom explaining its score', () => {
+		project.session.projections.side.polygons = make_thoracic();
+		const result = diagnosis.side;
+
+		expect(result.conclusionRanking.every((d) => d.symptoms.length > 0)).toBe(true);
+	});
+
 	it('propagates every abnormal sub-region finding into the whole-spine conclusion', () => {
 		project.session.projections.side.polygons = make_thoracic();
 		const result = diagnosis.side;
@@ -189,6 +196,13 @@ describe('lumbar-region composite diagnoses (module 4 revision 2)', () => {
 		expect(l4l5Gap?.findings.some((f) => f.id === 'L4-L5-displacement')).toBe(true);
 		expect(lumbar.findings.some((f) => f.id === 'l5-spondylolisthesis')).toBe(true);
 		expect(result.conclusionRanking.every((d) => d.probability > 0.5)).toBe(true);
+	});
+
+	it('every ranked diagnosis carries at least one symptom explaining its score', () => {
+		project.session.projections.side.polygons = make_lumbar();
+		const result = diagnosis.side;
+
+		expect(result.conclusionRanking.every((d) => d.symptoms.length > 0)).toBe(true);
 	});
 
 	it('never shows L5 spondylolisthesis in the conclusion when its own Finding says normal', () => {

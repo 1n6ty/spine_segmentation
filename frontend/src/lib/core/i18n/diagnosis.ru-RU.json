@@ -70,6 +70,8 @@
 	"conclusion": {
 		"gradeSuffix": "степень {grade}",
 		"spondyloptosisSuffix": "спондилоптоз",
+		"symptomChordTiltCcw": "Наклон хорды дуги против часовой стрелки",
+		"symptomWedgingCount": "{count} из {total} позвонков Th6-Th9 клиновидно деформированы более 5°",
 		"bekhterevCervical": "Болезнь Бехтерева — флексионная деформация шейного отдела",
 		"bekhterevThoracicUpper": "Болезнь Бехтерева — флексионная деформация верхне-грудного отдела",
 		"bekhterevThoracicMid": "Болезнь Бехтерева — флексионная деформация средне-грудного отдела",

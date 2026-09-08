@@ -18,6 +18,7 @@
 		RegionDiagnosis,
 		VertebraDiagnosis
 	} from '$lib/features/medical-parameters/diagnosis/types';
+	import type { Symptom } from '$lib/features/medical-parameters/diagnosis/conclusion';
 	import type { Projection } from '$lib/features/dicom/types';
 
 	let projection = $state<Projection>('side');
@@ -76,6 +77,7 @@
 				keys.push(row.kind === 'vertebra' ? `v-${row.data.id}` : `g-${row.data.id}`);
 			}
 		}
+		for (const d of currentDiagnosis.conclusionRanking) keys.push(d.key);
 		return keys;
 	}
 
@@ -317,134 +319,134 @@
 					class="flex flex-1 flex-col gap-6 overflow-y-auto rounded-xl border border-(--border) bg-(--card) text-(--card-foreground)"
 				>
 					<div class="p-6">
-						<div class="space-y-8 pb-8">
-							{#snippet clauseBadge(badge: NonNullable<NarrativeClause['badge']>)}<span
-									class="ml-1 rounded px-1.5 py-0.5 text-xs font-medium {rangeBadgeClasses(
-										badge.severity
-									)}">{localize(badge.display)}</span
-								>{/snippet}
-							{#snippet narrativeParagraph(narrative: ParametersNarrative, marginClass: string)}
-								<p class="{marginClass} text-sm leading-relaxed">
-									{localize(narrative.identity)}: {#each narrative.clauses as clause, i (clause.key)}{localize(
-											clause.text
-										)}{#if clause.badge}{@render clauseBadge(clause.badge)}{/if}{i <
-										narrative.clauses.length - 1
-											? ', '
-											: '.'}{/each}
-								</p>
-							{/snippet}
+						{#snippet clauseBadge(badge: NonNullable<NarrativeClause['badge']>)}<span
+								class="ml-1 rounded px-1.5 py-0.5 text-xs font-medium {rangeBadgeClasses(
+									badge.severity
+								)}">{localize(badge.display)}</span
+							>{/snippet}
+						{#snippet narrativeParagraph(narrative: ParametersNarrative, marginClass: string)}
+							<p class="{marginClass} text-sm leading-relaxed">
+								{localize(narrative.identity)}: {#each narrative.clauses as clause, i (clause.key)}{localize(
+										clause.text
+									)}{#if clause.badge}{@render clauseBadge(clause.badge)}{/if}{i <
+									narrative.clauses.length - 1
+										? ', '
+										: '.'}{/each}
+							</p>
+						{/snippet}
 
-							{#snippet findingsList(findings: Finding[], padding: string)}
-								<div class="space-y-2">
-									{#if findings.length > 0}
-										{#each findings as finding (finding.id)}
-											<div
-												class="rounded border-l-4 {padding} text-sm {severityClasses(
-													finding.severity
-												)}"
-											>
-												{localize(finding.text)}
-											</div>
-										{/each}
+						{#snippet findingsList(findings: (Finding | Symptom)[], padding: string)}
+							<div class="space-y-2">
+								{#if findings.length > 0}
+									{#each findings as finding, i (('id' in finding && finding.id) || i)}
+										<div
+											class="rounded border-l-4 {padding} text-sm {severityClasses(
+												finding.severity
+											)}"
+										>
+											{localize(finding.text)}
+										</div>
+									{/each}
+								{:else}
+									<div class="rounded border-l-4 {padding} text-sm {severityClasses('normal')}">
+										{$t('report.no_anomalies')}
+									</div>
+								{/if}
+							</div>
+						{/snippet}
+
+						{#snippet regionSection(region: RegionDiagnosis)}
+							<div class="scroll-mt-20" id={region.id}>
+								<button
+									class="group mb-4 flex w-full items-center justify-between"
+									onclick={() => toggleRegion(region.id)}
+								>
+									<div class="flex items-center gap-3">
+										<img
+											src={downSVG}
+											alt="Expand/Collapse"
+											class="h-4 w-4 transition-transform {isExpanded(region.id)
+												? ''
+												: '-rotate-90'}"
+										/>
+										<h3 class="text-xl font-bold">{localize(region.label)}</h3>
+										<span
+											class="inline-flex items-center justify-center rounded-md border border-(--border) px-2 py-0.5 text-xs font-medium"
+										>
+											{region.vertebraeLabel}
+										</span>
+									</div>
+								</button>
+
+								{#if isExpanded(region.id)}
+									<div class="mb-4 ml-8">
+										{@render narrativeParagraph(region.narrative, 'mb-3')}
+										{@render findingsList(region.findings, 'p-3')}
+									</div>
+									{#if region.subRegions?.length}
+										<div class="ml-8 space-y-8">
+											{#each region.subRegions as sub (sub.id)}
+												{@render regionSection(sub)}
+											{/each}
+										</div>
 									{:else}
-										<div class="rounded border-l-4 {padding} text-sm {severityClasses('normal')}">
-											{$t('report.no_anomalies')}
+										<div class="ml-8 space-y-4">
+											{#each interleave(region) as row (row.kind + '-' + row.data.id)}
+												{#if row.kind === 'vertebra'}
+													{@const itemKey = `v-${row.data.id}`}
+													<div id={itemKey} class="scroll-mt-20">
+														<button
+															class="group mb-2 flex w-full items-center gap-2"
+															onclick={() => toggleItem(itemKey)}
+														>
+															<img
+																src={downSVG}
+																alt="Expand/Collapse"
+																class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
+																	? ''
+																	: '-rotate-90'}"
+															/>
+															<h4 class="font-medium">{$t('vertebrae.head')} {row.data.id}</h4>
+														</button>
+														{#if isItemExpanded(itemKey)}
+															<div class="ml-6">
+																{@render narrativeParagraph(row.data.narrative, 'mb-2')}
+																{@render findingsList(row.data.findings, 'p-2')}
+															</div>
+														{/if}
+													</div>
+												{:else}
+													{@const itemKey = `g-${row.data.id}`}
+													<div id={itemKey} class="scroll-mt-20">
+														<button
+															class="group mb-2 flex w-full items-center gap-2"
+															onclick={() => toggleItem(itemKey)}
+														>
+															<img
+																src={downSVG}
+																alt="Expand/Collapse"
+																class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
+																	? ''
+																	: '-rotate-90'}"
+															/>
+															<h4 class="font-medium">{$t('gaps.head')} {row.data.id}</h4>
+														</button>
+														{#if isItemExpanded(itemKey)}
+															<div class="ml-6">
+																{@render narrativeParagraph(row.data.narrative, 'mb-2')}
+																{@render findingsList(row.data.findings, 'p-2')}
+															</div>
+														{/if}
+													</div>
+												{/if}
+											{/each}
 										</div>
 									{/if}
-								</div>
-							{/snippet}
+								{/if}
+							</div>
+						{/snippet}
 
-							{#snippet regionSection(region: RegionDiagnosis)}
-								<div class="scroll-mt-20" id={region.id}>
-									<button
-										class="group mb-4 flex w-full items-center justify-between"
-										onclick={() => toggleRegion(region.id)}
-									>
-										<div class="flex items-center gap-3">
-											<img
-												src={downSVG}
-												alt="Expand/Collapse"
-												class="h-4 w-4 transition-transform {isExpanded(region.id)
-													? ''
-													: '-rotate-90'}"
-											/>
-											<h3 class="text-xl font-bold">{localize(region.label)}</h3>
-											<span
-												class="inline-flex items-center justify-center rounded-md border border-(--border) px-2 py-0.5 text-xs font-medium"
-											>
-												{region.vertebraeLabel}
-											</span>
-										</div>
-									</button>
-
-									{#if isExpanded(region.id)}
-										<div class="mb-4 ml-8">
-											{@render narrativeParagraph(region.narrative, 'mb-3')}
-											{@render findingsList(region.findings, 'p-3')}
-										</div>
-										{#if region.subRegions?.length}
-											<div class="ml-8 space-y-8">
-												{#each region.subRegions as sub (sub.id)}
-													{@render regionSection(sub)}
-												{/each}
-											</div>
-										{:else}
-											<div class="ml-8 space-y-4">
-												{#each interleave(region) as row (row.kind + '-' + row.data.id)}
-													{#if row.kind === 'vertebra'}
-														{@const itemKey = `v-${row.data.id}`}
-														<div id={itemKey} class="scroll-mt-20">
-															<button
-																class="group mb-2 flex w-full items-center gap-2"
-																onclick={() => toggleItem(itemKey)}
-															>
-																<img
-																	src={downSVG}
-																	alt="Expand/Collapse"
-																	class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
-																		? ''
-																		: '-rotate-90'}"
-																/>
-																<h4 class="font-medium">{$t('vertebrae.head')} {row.data.id}</h4>
-															</button>
-															{#if isItemExpanded(itemKey)}
-																<div class="ml-6">
-																	{@render narrativeParagraph(row.data.narrative, 'mb-2')}
-																	{@render findingsList(row.data.findings, 'p-2')}
-																</div>
-															{/if}
-														</div>
-													{:else}
-														{@const itemKey = `g-${row.data.id}`}
-														<div id={itemKey} class="scroll-mt-20">
-															<button
-																class="group mb-2 flex w-full items-center gap-2"
-																onclick={() => toggleItem(itemKey)}
-															>
-																<img
-																	src={downSVG}
-																	alt="Expand/Collapse"
-																	class="h-3.5 w-3.5 transition-transform {isItemExpanded(itemKey)
-																		? ''
-																		: '-rotate-90'}"
-																/>
-																<h4 class="font-medium">{$t('gaps.head')} {row.data.id}</h4>
-															</button>
-															{#if isItemExpanded(itemKey)}
-																<div class="ml-6">
-																	{@render narrativeParagraph(row.data.narrative, 'mb-2')}
-																	{@render findingsList(row.data.findings, 'p-2')}
-																</div>
-															{/if}
-														</div>
-													{/if}
-												{/each}
-											</div>
-										{/if}
-									{/if}
-								</div>
-							{/snippet}
-
+						<div class="space-y-8 pb-8">
 							{#each currentDiagnosis.regions as region (region.id)}
 								{@render regionSection(region)}
 							{/each}
@@ -476,30 +478,43 @@
 											{$t('report.no_anomalies')}
 										</div>
 									{:else}
-										<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+										<div class="space-y-3">
 											{#each currentDiagnosis.conclusionRanking as d, i (d.key)}
+												{@const pct = (d.probability * 100).toFixed(1)}
 												<div
-													class="rounded-xl border p-4 {i === 0
-														? 'border-(--primary) bg-(--card) ring-1 ring-(--primary)'
-														: 'border-(--border) bg-(--card)'}"
+													class="rounded-lg border border-(--border) bg-(--card) p-3 {i === 0
+														? 'border-l-4 border-l-(--primary)'
+														: ''}"
 												>
-													<p class="mb-2 text-sm leading-snug font-medium">
-														{localize(d.label)}
-													</p>
-													<div class="mb-1.5 flex items-baseline justify-between">
-														<span class="text-xs text-(--muted-foreground)"
-															>{$t('report.probability')}</span
+													<button
+														class="group flex w-full items-center gap-2"
+														onclick={() => toggleItem(d.key)}
+													>
+														<img
+															src={downSVG}
+															alt="Expand/Collapse"
+															class="h-3.5 w-3.5 shrink-0 transition-transform {isItemExpanded(
+																d.key
+															)
+																? ''
+																: '-rotate-90'}"
+														/>
+														<span class="flex-1 text-left text-sm font-medium"
+															>{localize(d.label)}</span
 														>
-														<span class="text-base font-bold"
-															>{(d.probability * 100).toFixed(1)}%</span
-														>
-													</div>
-													<div class="h-1.5 w-full overflow-hidden rounded-full bg-(--muted)">
+														<span class="text-sm font-bold">{pct}%</span>
+													</button>
+													<div class="mt-2 ml-6 h-1.5 overflow-hidden rounded-full bg-(--muted)">
 														<div
 															class="h-full rounded-full bg-(--primary)"
-															style="width: {(d.probability * 100).toFixed(1)}%"
+															style="width: {pct}%"
 														></div>
 													</div>
+													{#if isItemExpanded(d.key)}
+														<div class="mt-3 ml-6">
+															{@render findingsList(d.symptoms, 'p-2')}
+														</div>
+													{/if}
 												</div>
 											{/each}
 										</div>
