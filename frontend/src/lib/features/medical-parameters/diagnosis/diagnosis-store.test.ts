@@ -236,3 +236,32 @@ describe('lumbar-region composite diagnoses (module 4 revision 2)', () => {
 		}
 	});
 });
+
+describe('narrative composed from graded findings (module 4 revision 4)', () => {
+	it("a graded clause's text matches its own Finding, plain, with the range as a separate badge", () => {
+		project.session.projections.side.polygons = make_lumbar();
+		const lumbar = diagnosis.side.regions[0];
+
+		// The region-level central angle (p3) is always graded — its clause
+		// text should be the lumbar curve finding's own wording verbatim
+		// (not the generic "Arc central angle is X°." fallback), with the
+		// normal range attached separately as a badge.
+		const curveFinding = lumbar.findings.find((f) => f.id === 'lumbar-curve')!;
+		const p3Clause = lumbar.narrative.clauses.find((c) => c.key === 'p3')!;
+		expect(p3Clause.severity).toBe(curveFinding.severity);
+		expect(p3Clause.text).toEqual(curveFinding.text);
+		expect(p3Clause.text['en-US']).not.toContain('Arc central angle is');
+		expect(p3Clause.badge).toBeDefined();
+	});
+
+	it('an ungraded parameter keeps the generic fallback phrasing at normal severity with no badge', () => {
+		project.session.projections.side.polygons = make_lumbar();
+		const lumbar = diagnosis.side.regions[0];
+
+		// Segment p1 (arc radius) has no grading rule anywhere in the app.
+		const p1Clause = lumbar.narrative.clauses.find((c) => c.key === 'p1')!;
+		expect(p1Clause.severity).toBe('normal');
+		expect(p1Clause.badge).toBeUndefined();
+		expect(p1Clause.text['en-US']).toContain('Arc radius is');
+	});
+});

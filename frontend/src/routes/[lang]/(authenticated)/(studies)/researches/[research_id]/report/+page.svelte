@@ -2,21 +2,22 @@
 	import { t, locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { LocaleKey } from '$lib/core/i18n/types';
+	import { resolve_localized } from '$lib/core/i18n/resolve';
 
 	import boneSVG from '$lib/assets/icons/bone.svg';
 	import downSVG from '$lib/assets/icons/down.svg';
 	import downloadSVG from '$lib/assets/icons/download.svg';
 	import documentSVG from '$lib/assets/icons/document.svg';
+	import printSVG from '$lib/assets/icons/print.svg';
 
 	import SessionLoadingGate from '$lib/components/ui/sessions/SessionLoadingGate.svelte';
 	import { diagnosis } from '$lib/features/medical-parameters/diagnosis/diagnosis-store.svelte';
+	import { interleave } from '$lib/features/medical-parameters/diagnosis/interleave';
 	import type {
 		Finding,
-		GapDiagnosis,
 		NarrativeClause,
 		ParametersNarrative,
-		RegionDiagnosis,
-		VertebraDiagnosis
+		RegionDiagnosis
 	} from '$lib/features/medical-parameters/diagnosis/types';
 	import type { Symptom } from '$lib/features/medical-parameters/diagnosis/conclusion';
 	import type { Projection } from '$lib/features/dicom/types';
@@ -148,35 +149,54 @@
 		}
 	}
 
-	type RowItem =
-		| { kind: 'vertebra'; data: VertebraDiagnosis }
-		| { kind: 'gap'; data: GapDiagnosis };
+	let busy = $state<null | 'pdf' | 'docx' | 'print'>(null);
+	let exportError = $state(false);
 
-	function interleave(region: RegionDiagnosis): RowItem[] {
-		// region.vertebrae is bottom-up (inferior->superior) — that order feeds the
-		// calculators (sign conventions for angles assume it) and must stay untouched there.
-		// Reversed here, display-only, so rows read top-to-bottom (e.g. cervical: C2...C7).
-		const ordered = [...region.vertebrae].reverse();
-		const gapById = new Map(region.gaps.map((g) => [g.id, g]));
-		const rows: RowItem[] = [];
-		const usedIds: string[] = [];
-		for (let i = 0; i < ordered.length; i++) {
-			rows.push({ kind: 'vertebra', data: ordered[i] });
-			if (i + 1 < ordered.length) {
-				const id = `${ordered[i].id}-${ordered[i + 1].id}`;
-				const gap = gapById.get(id);
-				if (gap) {
-					rows.push({ kind: 'gap', data: gap });
-					usedIds.push(id);
-				}
-			}
+	/** Opens the blank viewer tab synchronously, inside the click gesture, so
+	 * pop-up blockers allow it — the PDF is streamed into it once built. DOCX
+	 * downloads instead, so it needs no tab. */
+	function startExport(kind: 'pdf' | 'docx' | 'print') {
+		if (busy) return;
+		let viewer: Window | null = null;
+		if (kind !== 'docx') {
+			viewer = window.open('', '_blank');
+			viewer?.document.write($t('report.generating'));
 		}
-		// A gap not between two of this region's own vertebrae — e.g. a thoracic
-		// sub-region's boundary disc, appended at the end of its gaps list by
-		// diagnosis-store.svelte.ts — renders after the region's last (most
-		// inferior) vertebra row instead.
-		for (const g of region.gaps) if (!usedIds.includes(g.id)) rows.push({ kind: 'gap', data: g });
-		return rows;
+		void runExport(kind, viewer);
+	}
+
+	/** Builds the formal document (both projections, current UI locale) and
+	 * hands it to the chosen client-side renderer. The report-export feature
+	 * and its heavy pdfmake/docx deps are loaded on demand. PDF opens the blob
+	 * in `viewer`; Print opens it and pre-opens the print dialog; DOCX downloads. */
+	async function runExport(kind: 'pdf' | 'docx' | 'print', viewer: Window | null) {
+		busy = kind;
+		exportError = false;
+		try {
+			const ex = await import('$lib/features/report-export');
+			const meta = ex.collectReportMeta(lang);
+			const model = ex.buildReportDocModel({
+				locale: lang,
+				title: meta.title,
+				generatedAtLine: meta.generatedAtLine,
+				metaRows: meta.metaRows,
+				disclaimer: meta.disclaimer,
+				projections: [
+					{ label: $t('side_projection'), data: diagnosis.side },
+					{ label: $t('frontal_projection'), data: diagnosis.frontal }
+				]
+			});
+			const headerText = `${$t('header.name')} — ${meta.title}`;
+			if (kind === 'pdf') await ex.openPdf(model, headerText, viewer);
+			else if (kind === 'docx') await ex.exportDocx(model, `${ex.reportFilename()}.docx`);
+			else await ex.printPdf(model, headerText, viewer);
+		} catch (err) {
+			viewer?.close();
+			console.error('report export failed', err);
+			exportError = true;
+		} finally {
+			busy = null;
+		}
 	}
 </script>
 
@@ -224,22 +244,36 @@
 				</button>
 				<div class="col-span-2 flex gap-2 md:col-span-1">
 					<button
-						disabled
-						class="inline-flex h-8 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) opacity-50"
+						onclick={() => startExport('pdf')}
+						disabled={busy !== null}
+						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						<img src={downloadSVG} alt="Download PDF" class="h-4 w-4" />
-						PDF
+						<img src={downloadSVG} alt="" class="h-4 w-4" />
+						{busy === 'pdf' ? $t('report.generating') : 'PDF'}
 					</button>
 					<button
-						disabled
-						class="inline-flex h-8 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) opacity-50"
+						onclick={() => startExport('docx')}
+						disabled={busy !== null}
+						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						<img src={documentSVG} alt="Download DOCX" class="h-4 w-4" />
-						DOCX
+						<img src={documentSVG} alt="" class="h-4 w-4" />
+						{busy === 'docx' ? $t('report.generating') : 'DOCX'}
+					</button>
+					<button
+						onclick={() => startExport('print')}
+						disabled={busy !== null}
+						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<img src={printSVG} alt="" class="h-4 w-4" />
+						{busy === 'print' ? $t('report.generating') : $t('report.print')}
 					</button>
 				</div>
 			</div>
 		</div>
+
+		{#if exportError}
+			<p class="mb-4 text-sm text-(--destructive)">{$t('report.export_error')}</p>
+		{/if}
 
 		{#if currentDiagnosis.insufficientAnnotation}
 			<div
@@ -319,18 +353,20 @@
 					class="flex flex-1 flex-col gap-6 overflow-y-auto rounded-xl border border-(--border) bg-(--card) text-(--card-foreground)"
 				>
 					<div class="p-6">
-						{#snippet clauseBadge(badge: NonNullable<NarrativeClause['badge']>)}<span
-								class="ml-1 rounded px-1.5 py-0.5 text-xs font-medium {rangeBadgeClasses(
-									badge.severity
-								)}">{localize(badge.display)}</span
+						{#snippet clauseBadge(
+							badge: NonNullable<NarrativeClause['badge']>,
+							severity: Finding['severity']
+						)}<span
+								class="ml-1 rounded px-1.5 py-0.5 text-xs font-medium {rangeBadgeClasses(severity)}"
+								>{localize(badge)}</span
 							>{/snippet}
 						{#snippet narrativeParagraph(narrative: ParametersNarrative, marginClass: string)}
 							<p class="{marginClass} text-sm leading-relaxed">
-								{localize(narrative.identity)}: {#each narrative.clauses as clause, i (clause.key)}{localize(
+								{#each narrative.clauses as clause, i (clause.key)}{localize(
 										clause.text
-									)}{#if clause.badge}{@render clauseBadge(clause.badge)}{/if}{i <
+									)}{#if clause.badge}{@render clauseBadge(clause.badge, clause.severity)}{/if}{i <
 									narrative.clauses.length - 1
-										? ', '
+										? '; '
 										: '.'}{/each}
 							</p>
 						{/snippet}
@@ -381,7 +417,6 @@
 								{#if isExpanded(region.id)}
 									<div class="mb-4 ml-8">
 										{@render narrativeParagraph(region.narrative, 'mb-3')}
-										{@render findingsList(region.findings, 'p-3')}
 									</div>
 									{#if region.subRegions?.length}
 										<div class="ml-8 space-y-8">
@@ -411,7 +446,6 @@
 														{#if isItemExpanded(itemKey)}
 															<div class="ml-6">
 																{@render narrativeParagraph(row.data.narrative, 'mb-2')}
-																{@render findingsList(row.data.findings, 'p-2')}
 															</div>
 														{/if}
 													</div>
@@ -434,7 +468,6 @@
 														{#if isItemExpanded(itemKey)}
 															<div class="ml-6">
 																{@render narrativeParagraph(row.data.narrative, 'mb-2')}
-																{@render findingsList(row.data.findings, 'p-2')}
 															</div>
 														{/if}
 													</div>
@@ -502,7 +535,9 @@
 														<span class="flex-1 text-left text-sm font-medium"
 															>{localize(d.label)}</span
 														>
-														<span class="text-sm font-bold">{pct}%</span>
+														<span class="text-sm font-bold"
+															>{localize(resolve_localized('report.probability', { pct }))}</span
+														>
 													</button>
 													<div class="mt-2 ml-6 h-1.5 overflow-hidden rounded-full bg-(--muted)">
 														<div

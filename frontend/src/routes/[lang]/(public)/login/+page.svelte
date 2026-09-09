@@ -71,7 +71,7 @@
 				<div class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-white">
 					<img src={favicon} alt="favicon" class="h-8 w-8" />
 				</div>
-				<h1 class="mb-2 text-3xl text-gray-900">Digital Spondylography</h1>
+				<h1 class="mb-2 text-3xl text-gray-900">{$t('header.name')}</h1>
 				<p class="text-gray-600">{$t('header.p')}</p>
 			</div>
 			<div class="rounded-lg bg-white p-8 shadow-xl">

@@ -2,7 +2,7 @@ import type { Localized } from '$lib/core/i18n/types';
 import { resolve_localized } from '$lib/core/i18n/resolve';
 import { parametersConfig } from '../config';
 import type { Projection } from '$lib/features/dicom/types';
-import type { NarrativeClause, ParametersNarrative, Range, Severity } from './types';
+import type { Finding, NarrativeClause, ParametersNarrative, Range } from './types';
 
 type StructureType = keyof (typeof parametersConfig)['side'];
 type ParamEntry = { val: number | string | null; type: string };
@@ -90,10 +90,12 @@ function formatRange(range: Range, type: string): Localized {
 
 /**
  * Builds the structured list of parameter clauses for a region/vertebra/gap
- * — not just the ones a grading rule happened to flag. The qualitative
- * verdict is conveyed both by the existing severity cards rendered right
- * after this narrative, and — per clause, once a reference-range badge is
- * attached via withRangeBadge — by that clause's own coloring.
+ * — not just the ones a grading rule happened to flag. Every clause starts
+ * out as this generic fallback sentence ("{label} is {value}{unit}",
+ * `severity: 'normal'`, no badge); a parameter with a grading rule gets its
+ * clause replaced afterward by withClauseFinding once that rule has run,
+ * using the clinic doc's own Описание-sourced Finding text plus a colored
+ * reference-range badge instead.
  *
  * Parameters with a null value (e.g. p9 on a non-S1 vertebra, p7 on a non-
  * L5/S1 gap) are skipped — there's nothing measured to report for them.
@@ -115,29 +117,42 @@ export function buildParametersNarrative(
 			value: withMinus(entry.val.toFixed(1)),
 			unit
 		});
-		clauses.push({ key, type: entry.type === 'angular' ? 'angular' : 'linear', text });
+		clauses.push({
+			key,
+			type: entry.type === 'angular' ? 'angular' : 'linear',
+			text,
+			severity: 'normal'
+		});
 	}
 
 	return { identity, clauses };
 }
 
 /**
- * Attaches a colored reference-range badge to the clause for `key` (e.g.
- * 'p3'), returning a new narrative — clauses are otherwise unchanged.
- * A no-op (returns `narrative` as-is) if no clause has that key, e.g. the
- * parameter's value was null and so was skipped when the narrative was built.
+ * Replaces the clause for `key` (e.g. 'p3') with the grading rule's own
+ * Finding text — the clinic doc's Описание-sourced clinical wording,
+ * shown plain — and attaches its normal range as a separate colored
+ * badge, setting the clause's severity to the Finding's real grade.
+ * Returns a new narrative. A no-op (returns `narrative` as-is) if no
+ * clause has that key, e.g. the parameter's value was null and so was
+ * skipped when the narrative was built.
  */
-export function withRangeBadge(
+export function withClauseFinding(
 	narrative: ParametersNarrative,
 	key: string,
-	severity: Severity,
+	finding: Finding,
 	range: Range
 ): ParametersNarrative {
 	return {
 		identity: narrative.identity,
 		clauses: narrative.clauses.map((clause) =>
 			clause.key === key
-				? { ...clause, badge: { display: formatRange(range, clause.type), severity } }
+				? {
+						...clause,
+						severity: finding.severity,
+						text: finding.text,
+						badge: formatRange(range, clause.type)
+					}
 				: clause
 		)
 	};

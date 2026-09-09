@@ -122,8 +122,28 @@
 		"collapse": "Collapse all",
 		"toc": "Table of contents",
 		"no_anomalies": "Physiological shape is not disrupted",
+		"probability": "Probability: {pct}%",
 		"insufficient_annotation": "Annotate at least one full anatomical region (cervical, thoracic, or lumbar) in the editor to generate a diagnosis for this projection.",
-		"disclaimer": "This report is generated automatically from the annotated X-ray markup and is intended for educational and screening purposes only. All findings must be confirmed by a qualified radiologist or orthopedist. This tool does not replace professional medical diagnosis."
+		"disclaimer": "This report is generated automatically from the annotated X-ray markup and is intended for educational and screening purposes only. All findings must be confirmed by a qualified radiologist or orthopedist. This tool does not replace professional medical diagnosis.",
+		"print": "Print",
+		"generating": "Generating…",
+		"export_error": "Could not generate the document. Please try again.",
+		"generated_at": "Generated: {datetime}",
+		"meta": {
+			"patient_name": "Patient name",
+			"patient_id": "Patient ID",
+			"dob": "Date of birth",
+			"sex_age": "Sex / Age",
+			"study_date": "Study date",
+			"study_id": "Study ID",
+			"description": "Description",
+			"physician": "Physician",
+			"modality": "Modality",
+			"body_part": "Body part examined",
+			"institution": "Institution",
+			"address": "Institution address",
+			"station": "Station name"
+		}
 	},
 	"footer": {
 		"p_up": "Digital Spondylography project - Advanced Vertebralogical Platform",
@@ -161,7 +181,7 @@
 			"userTitle": "User-Defined Regions",
 			"cervical": "Cervical",
 			"thoracic": "Thoracic",
-			"lumbar": "Lumbar / Sacral",
+			"lumbar": "Lumbar",
 			"upper": "Upper",
 			"central": "Central",
 			"lower": "Lower",

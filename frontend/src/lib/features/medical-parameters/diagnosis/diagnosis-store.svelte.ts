@@ -33,7 +33,7 @@ import {
 	type Symptom,
 	type PatternItem
 } from './conclusion';
-import { buildParametersNarrative, withRangeBadge, vertebraLabel, gapLabel } from './narrative';
+import { buildParametersNarrative, withClauseFinding, vertebraLabel, gapLabel } from './narrative';
 import { resolve_localized } from '$lib/core/i18n/resolve';
 
 function withId(finding: Finding, id: string): Finding {
@@ -66,10 +66,10 @@ function buildVertebraDiagnosis(
 		if (wedging !== null) {
 			const finding = Frontal.gradeVertebralWedgingFrontal(wedging);
 			findings.push(withId(finding, `${v.id}-wedging`));
-			narrative = withRangeBadge(
+			narrative = withClauseFinding(
 				narrative,
 				'p6',
-				finding.severity,
+				finding,
 				Frontal.getVertebralWedgingFrontalRange()
 			);
 		}
@@ -78,10 +78,10 @@ function buildVertebraDiagnosis(
 		if (wedging !== null) {
 			const wedgingFinding = Sagittal.gradeVertebralWedgingSagittal(wedging);
 			findings.push(withId(wedgingFinding, `${v.id}-wedging`));
-			narrative = withRangeBadge(
+			narrative = withClauseFinding(
 				narrative,
 				'p5',
-				wedgingFinding.severity,
+				wedgingFinding,
 				Sagittal.getVertebralWedgingSagittalRange()
 			);
 
@@ -129,10 +129,10 @@ function buildGapDiagnosis(
 		if (displacement !== null) {
 			const finding = Frontal.gradeLateralDisplacement(displacement);
 			findings.push(withId(finding, `${top.id}-${bottom.id}-displacement`));
-			narrative = withRangeBadge(
+			narrative = withClauseFinding(
 				narrative,
 				'p5',
-				finding.severity,
+				finding,
 				Frontal.getLateralDisplacementRange()
 			);
 		}
@@ -143,17 +143,17 @@ function buildGapDiagnosis(
 			if (finding) {
 				findings.push(withId(finding, `${id}-disc-angle`));
 				const range = Sagittal.getSagittalDiscAngleRange(id);
-				if (range) narrative = withRangeBadge(narrative, 'p1', finding.severity, range);
+				if (range) narrative = withClauseFinding(narrative, 'p1', finding, range);
 			}
 		}
 		const displacement = gParams.p5.val as number | null;
 		if (displacement !== null) {
 			const finding = Sagittal.gradeSagittalDisplacement(displacement);
 			findings.push(withId(finding, `${id}-displacement`));
-			narrative = withRangeBadge(
+			narrative = withClauseFinding(
 				narrative,
 				'p5',
-				finding.severity,
+				finding,
 				Sagittal.getSagittalDisplacementRange()
 			);
 		}
@@ -161,10 +161,10 @@ function buildGapDiagnosis(
 		if (discWedging !== null) {
 			const finding = Sagittal.gradeSagittalDiscWedging(discWedging);
 			findings.push(withId(finding, `${id}-disc-wedging`));
-			narrative = withRangeBadge(
+			narrative = withClauseFinding(
 				narrative,
 				'p4',
-				finding.severity,
+				finding,
 				Sagittal.getSagittalDiscWedgingRange()
 			);
 		}
@@ -342,7 +342,7 @@ function buildCurveDiagnosis(
 		end
 	});
 	let narrative = buildParametersNarrative(regionIdentity, projection, 'segments', segmentParams);
-	narrative = withRangeBadge(narrative, 'p3', curveFinding.severity, curveRange);
+	narrative = withClauseFinding(narrative, 'p3', curveFinding, curveRange);
 
 	return { curveFinding, narrative };
 }
@@ -581,10 +581,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				regionDiagnosis.findings.push(withId(sacralSlopeFinding, 's1-sacral-slope'));
 				const s1Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'S1');
 				if (s1Vertebra) {
-					s1Vertebra.narrative = withRangeBadge(
+					s1Vertebra.narrative = withClauseFinding(
 						s1Vertebra.narrative,
 						'p9',
-						sacralSlopeFinding.severity,
+						sacralSlopeFinding,
 						Sagittal.getSacralSlopeRange()
 					);
 				}
@@ -599,10 +599,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				regionDiagnosis.findings.push(withId(l5InclinationFinding, 'l5-inclination'));
 				const l5Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'L5');
 				if (l5Vertebra) {
-					l5Vertebra.narrative = withRangeBadge(
+					l5Vertebra.narrative = withClauseFinding(
 						l5Vertebra.narrative,
 						'p7',
-						l5InclinationFinding.severity,
+						l5InclinationFinding,
 						Sagittal.getL5InclinationRange()
 					);
 				}
@@ -626,10 +626,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				regionDiagnosis.findings.push(withId(spondylolisthesisFinding, 'l5-spondylolisthesis'));
 				const l5s1Gap = regionDiagnosis.gaps.find((g) => g.id === 'L5-S1');
 				if (l5s1Gap) {
-					l5s1Gap.narrative = withRangeBadge(
+					l5s1Gap.narrative = withClauseFinding(
 						l5s1Gap.narrative,
 						'p5',
-						spondylolisthesisFinding.severity,
+						spondylolisthesisFinding,
 						Sagittal.getL5SpondylolisthesisRange()
 					);
 				}
@@ -734,10 +734,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				regionDiagnosis.findings.push(withId(finding, 'l5-inferior-endplate'));
 				const l5Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'L5');
 				if (l5Vertebra) {
-					l5Vertebra.narrative = withRangeBadge(
+					l5Vertebra.narrative = withClauseFinding(
 						l5Vertebra.narrative,
 						'p8',
-						finding.severity,
+						finding,
 						Sagittal.getL5InferiorEndplateInclinationRange()
 					);
 				}
@@ -749,10 +749,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			if (lumbarChordTilt !== null) {
 				lumbarChordTiltFinding = Sagittal.gradeLumbarChordTilt(lumbarChordTilt);
 				regionDiagnosis.findings.push(withId(lumbarChordTiltFinding, 'lumbar-chord-tilt'));
-				regionDiagnosis.narrative = withRangeBadge(
+				regionDiagnosis.narrative = withClauseFinding(
 					regionDiagnosis.narrative,
 					'p4',
-					lumbarChordTiltFinding.severity,
+					lumbarChordTiltFinding,
 					Sagittal.getLumbarChordTiltRange()
 				);
 			}
@@ -834,10 +834,10 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				regionDiagnosis.findings.push(withId(finding, 'l5-superior-endplate'));
 				const l5Vertebra = regionDiagnosis.vertebrae.find((v) => v.id === 'L5');
 				if (l5Vertebra) {
-					l5Vertebra.narrative = withRangeBadge(
+					l5Vertebra.narrative = withClauseFinding(
 						l5Vertebra.narrative,
 						'p8',
-						finding.severity,
+						finding,
 						Frontal.getL5SuperiorEndplateInclinationFrontalRange()
 					);
 				}

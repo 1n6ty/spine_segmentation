@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildParametersNarrative,
 	narrativeSentence,
-	withRangeBadge,
+	withClauseFinding,
 	paramLabel,
 	vertebraLabel,
 	gapLabel
 } from './narrative';
+import type { Finding } from './types';
+
+function fakeFinding(text = 'Vertebral body wedge-deformed', severity: Finding['severity'] = 'grade1'): Finding {
+	return { id: 'fake', text: { 'en-US': text, 'ru-RU': text }, severity };
+}
 
 describe('vertebraLabel', () => {
 	it('returns a bilingual vertebra label with the id interpolated', () => {
@@ -35,7 +40,7 @@ describe('paramLabel', () => {
 describe('buildParametersNarrative', () => {
 	const identity = { 'ru-RU': 'Отрезок от Th1 до Th12', 'en-US': 'Segment from Th1 to Th12' };
 
-	it('lists every non-null parameter, in order, skipping nulls', () => {
+	it('lists every non-null parameter, in order, skipping nulls, at normal severity with no badge', () => {
 		const params = {
 			p1: { val: 145.2, type: 'linear' },
 			p2: { val: 210.4, type: 'linear' },
@@ -45,6 +50,7 @@ describe('buildParametersNarrative', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
 		expect(narrative.clauses).toHaveLength(3);
 		expect(narrative.clauses.map((c) => c.key)).toEqual(['p1', 'p2', 'p3']);
+		expect(narrative.clauses.every((c) => c.severity === 'normal')).toBe(true);
 		expect(narrative.clauses.every((c) => c.badge === undefined)).toBe(true);
 
 		const result = narrativeSentence(narrative);
@@ -67,59 +73,71 @@ describe('buildParametersNarrative', () => {
 	});
 });
 
-describe('withRangeBadge', () => {
+describe('withClauseFinding', () => {
 	const identity = { 'ru-RU': 'Отрезок от Th1 до Th12', 'en-US': 'Segment from Th1 to Th12' };
 	const params = {
 		p3: { val: 72.3, type: 'angular' }
 	};
 
-	it('attaches a badge to the matching clause, formatted as center ± tolerance', () => {
+	it('replaces the clause text with the Finding text and attaches a center ± tolerance badge', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -5, max: 5, center: 0 });
-		expect(badged.clauses[0].badge?.severity).toBe('normal');
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 0 ± 5°');
+		const finding = fakeFinding('Central curve unchanged', 'normal');
+		const replaced = withClauseFinding(narrative, 'p3', finding, { min: -5, max: 5, center: 0 });
+		expect(replaced.clauses[0].text).toEqual(finding.text);
+		expect(replaced.clauses[0].severity).toBe('normal');
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal 0 ± 5°');
 	});
 
 	it('formats a non-symmetric range as a worded "min to max"', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p3', 'grade1', { min: 39, max: 65 });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 39 to 65°');
-		expect(badged.clauses[0].badge?.display['ru-RU']).toBe('норма от 39 до 65°');
+		const finding = fakeFinding('Thoracic kyphosis increased grade 1', 'grade1');
+		const replaced = withClauseFinding(narrative, 'p3', finding, { min: 39, max: 65 });
+		expect(replaced.clauses[0].severity).toBe('grade1');
+		expect(replaced.clauses[0].text['en-US']).toBe('Thoracic kyphosis increased grade 1');
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal 39 to 65°');
+		expect(replaced.clauses[0].badge?.['ru-RU']).toBe('норма от 39 до 65°');
 	});
 
 	it('renders negative bounds with a real minus sign, no dash collision', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -41, max: -15 });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal −41 to −15°');
-		expect(badged.clauses[0].badge?.display['ru-RU']).toBe('норма от −41 до −15°');
+		const finding = fakeFinding('Cervical lordosis unchanged', 'normal');
+		const replaced = withClauseFinding(narrative, 'p3', finding, { min: -41, max: -15 });
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal −41 to −15°');
+		expect(replaced.clauses[0].badge?.['ru-RU']).toBe('норма от −41 до −15°');
 	});
 
 	it('formats an open-ended range with a bare lower bound', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: -35, max: Infinity });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal > −35°');
+		const finding = fakeFinding('No signs of spondylolisthesis', 'normal');
+		const replaced = withClauseFinding(narrative, 'p3', finding, { min: -35, max: Infinity });
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal > −35°');
 	});
 
 	it('is a no-op when no clause has the given key', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p9', 'normal', { min: 0, max: 1 });
-		expect(badged.clauses[0].badge).toBeUndefined();
+		const finding = fakeFinding();
+		const replaced = withClauseFinding(narrative, 'p9', finding, { min: 0, max: 1 });
+		expect(replaced.clauses[0].severity).toBe('normal');
+		expect(replaced.clauses[0].badge).toBeUndefined();
+		expect(replaced.clauses[0].text).toEqual(narrative.clauses[0].text);
 	});
 
 	it('rounds a center+tolerance range to 2 decimals, not a raw floating-point subtraction', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const finding = fakeFinding();
 		// 9.11 - 6.61 === 2.499999999999999 in raw JS float math -- must round to 2.5.
-		const badged = withRangeBadge(narrative, 'p3', 'normal', {
+		const replaced = withClauseFinding(narrative, 'p3', finding, {
 			min: 4.11,
 			max: 9.11,
 			center: 6.61
 		});
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 6.61 ± 2.5°');
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal 6.61 ± 2.5°');
 	});
 
 	it('rounds a plain min-max range to 2 decimals', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
-		const badged = withRangeBadge(narrative, 'p3', 'normal', { min: 1.005, max: 2.0049999 });
-		expect(badged.clauses[0].badge?.display['en-US']).toBe('normal 1 to 2°');
+		const finding = fakeFinding();
+		const replaced = withClauseFinding(narrative, 'p3', finding, { min: 1.005, max: 2.0049999 });
+		expect(replaced.clauses[0].badge?.['en-US']).toBe('normal 1 to 2°');
 	});
 });

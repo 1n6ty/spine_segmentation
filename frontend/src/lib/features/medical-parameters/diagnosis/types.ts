@@ -20,17 +20,23 @@ export type Finding = {
 	text: Localized;
 };
 
-/** One narrated parameter clause (e.g. "Arc central angle is 72.3°"), with
- * an optional colored reference-range badge when a normal band is known.
- * `key` (the raw p1..p9 calculator key) and `type` let grading code that
- * runs after the narrative is built (e.g. sacral slope, graded once its own
- * vertebra's narrative already exists) find the right clause and attach a
- * badge to it via narrative.ts's withRangeBadge — see diagnosis-store.svelte.ts. */
+/** One narrated parameter clause — either the generic fallback ("Arc
+ * central angle is 72.3°.", `severity: 'normal'`, no badge) or, once a
+ * grading rule has run for this parameter, the clinic doc's own
+ * Описание-sourced Finding text ("Vertebral body wedge-deformed, base
+ * posterior, angle 6.2°.") shown plain, with its normal range attached as
+ * a separate colored badge ("normal −1° to 1°", `severity` the real
+ * grade) — see narrative.ts's withClauseFinding. `key` (the raw p1..p9
+ * calculator key) and `type` let grading code that runs after the
+ * narrative is built (e.g. sacral slope, graded once its own vertebra's
+ * narrative already exists) find the right clause to replace — see
+ * diagnosis-store.svelte.ts. */
 export type NarrativeClause = {
 	key: string;
 	type: 'linear' | 'angular';
 	text: Localized;
-	badge?: { display: Localized; severity: Severity };
+	severity: Severity;
+	badge?: Localized;
 };
 
 export type ParametersNarrative = {
@@ -40,11 +46,14 @@ export type ParametersNarrative = {
 
 export type VertebraDiagnosis = {
 	id: string;
+	/** Not rendered as its own alert-card list any more — the narrative
+	 * below already carries each graded finding's text inline. Still used
+	 * internally: feeds collectConclusionFindings (→ `conclusion`) and the
+	 * conclusion module's per-diagnosis symptom tallying, which looks up
+	 * specific findings by id. */
 	findings: Finding[];
 	/** Precomputed, structured list of parameter clauses for this vertebra —
-	 * see diagnosis/narrative.ts. The qualitative verdict is conveyed both by
-	 * `findings`' own cards and, per-clause, by each clause's optional
-	 * reference-range badge. */
+	 * see diagnosis/narrative.ts. */
 	narrative: ParametersNarrative;
 };
 
