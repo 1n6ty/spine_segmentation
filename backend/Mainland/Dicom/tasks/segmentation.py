@@ -14,6 +14,7 @@ from Dicom.utils.constants import (
     SEGMENTATION_MODEL_WEIGHTS,
     SEGMENTATION_PIPELINE_VERSION,
     SEGMENTATION_STATUS_WIRE,
+    SEGMENTATION_TILE_CONFIG,
 )
 from Dicom.utils.pixels import dicom_to_windowed_float32
 from Dicom.utils.segmentation.compose import segment_spine_from_S1_to_C2
@@ -125,9 +126,12 @@ def segment_vertebraes(sop_instance_uid: str):
                 f"identify frontal vs sagittal, and no X-ray role to fall back on). "
                 f"Refusing to guess a model."
             )
+        tile_cfg = SEGMENTATION_TILE_CONFIG[projection_slug]
         vertebraes_list = segment_spine_from_S1_to_C2(
             pixel_array=pixel_array,
-            detection_model=_get_model(projection_slug)
+            detection_model=_get_model(projection_slug),
+            tile_size=tile_cfg["tile_size"],
+            overlap=tile_cfg["overlap"],
         )
 
         _advance_status(channel_layer, image_instance, 'saving')

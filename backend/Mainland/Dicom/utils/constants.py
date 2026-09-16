@@ -13,6 +13,19 @@ SEGMENTATION_MODEL_WEIGHTS = {
     "frontal": "Dicom/tasks/weights/yolo26m-seg-fro.onnx",
 }
 
+# SAHI sliced-inference window (pixels) each projection's model above was
+# trained on -- passed explicitly into Dicom.utils.segmentation.instances
+# .get_instances by Dicom.tasks.segmentation._get_model's caller, rather than
+# relying on get_instances' own default, so re-training one projection at a
+# different tile size (as sagittal was, 640 -> 960) can't silently leave the
+# other projection's inference slicing wrong, or vice versa. Keep each entry
+# in sync with the `--tile-size`/`--tile-overlap` model/train.py was run with
+# for that projection's currently-deployed weights above.
+SEGMENTATION_TILE_CONFIG = {
+    "sagittal": {"tile_size": 960, "overlap": 240},
+    "frontal": {"tile_size": 640, "overlap": 160},
+}
+
 # Bump MANUALLY on ANY change that alters segmentation output: re-exporting either
 # weights file above, or changing anything under Dicom/utils/segmentation/
 # (compose.py geometry, unstick/reveal, cap logic). Stamped onto
@@ -25,7 +38,12 @@ SEGMENTATION_MODEL_WEIGHTS = {
 #      silently run through the frontal model; it now follows the declared X-ray
 #      role, or errors. Re-run so any sagittal image mis-segmented by the frontal
 #      model gets replaced.
-SEGMENTATION_PIPELINE_VERSION = "2"
+#
+# "3": sagittal weights re-trained and re-exported (yolo26m-seg-sag.onnx,
+#      now imgsz=960 vs the previous 640) + SEGMENTATION_TILE_CONFIG added so
+#      inference slices sagittal films at the matching 960px window. Re-run so
+#      every sagittal image gets segmented by the new weights at the right scale.
+SEGMENTATION_PIPELINE_VERSION = "3"
 
 # SegmentationStatus.slug -> wire "status" string sent to the frontend over SSE.
 # Kept distinct from the DB slug so the wire contract (matching the frontend's

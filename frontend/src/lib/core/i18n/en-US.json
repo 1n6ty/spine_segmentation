@@ -177,13 +177,13 @@
 		"not_enough_vertebrae": "Add at least 2 annotated vertebrae on this projection before creating a segment.",
 		"groups": {
 			"defaultTitle": "Default Regions",
-			"computedTitle": "Computed Regions",
+			"computedTitle": "Smooth Regions",
 			"userTitle": "User-Defined Regions",
 			"cervical": "Cervical",
 			"thoracic": "Thoracic",
 			"lumbar": "Lumbar",
 			"upper": "Upper",
-			"central": "Central",
+			"central": "Middle",
 			"lower": "Lower",
 			"total": "Total"
 		}

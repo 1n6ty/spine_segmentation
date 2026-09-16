@@ -87,9 +87,15 @@ def segment_spine_from_S1_to_C2_masks(polygons: np.ndarray[np.int32], max_verteb
     return vertebraes
 
 
-def segment_spine_from_S1_to_C2(pixel_array: np.ndarray, detection_model, threshold: float = 0.5) -> list[Vertebrae]:
+def segment_spine_from_S1_to_C2(
+    pixel_array: np.ndarray,
+    detection_model,
+    threshold: float = 0.5,
+    tile_size: int = 640,
+    overlap: int = 160,
+) -> list[Vertebrae]:
     _logger.debug("Instances extraction...")
-    instances = get_instances(pixel_array, detection_model=detection_model)
+    instances = get_instances(pixel_array, detection_model=detection_model, tile_size=tile_size, overlap=overlap)
     instances = sorted([i for i in instances if i["confidence"] > threshold], key=lambda vm: vm["confidence"], reverse=True)[:MAX_VERTEBRAE]
 
     return segment_spine_from_S1_to_C2_masks([vm["polygon"].astype(np.int32) for vm in instances])

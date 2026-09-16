@@ -1,4 +1,4 @@
-# Spine Segmentation
+# Digital Spondylography
 
 A spine-deformity diagnostics tool: a doctor uploads a spine DICOM X-ray, an AI model proposes vertebra outlines (or the doctor draws them by hand), and the app computes clinical parameters and a rule-based first-pass diagnosis from the result.
 
