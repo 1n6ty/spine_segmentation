@@ -26,7 +26,7 @@
 	{@render children()}
 {:else}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-(--background)/80 backdrop-blur-sm"
+		class="fixed inset-0 z-50 flex h-dvh items-center justify-center bg-(--background)/80 backdrop-blur-sm"
 	>
 		<Spinner size="lg" />
 	</div>

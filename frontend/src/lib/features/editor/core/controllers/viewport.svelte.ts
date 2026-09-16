@@ -114,12 +114,19 @@ export class ViewportController implements PanViewport {
 		return true;
 	}
 
-	zoomToFit() {
+	/** The sopInstanceUID `zoomToFitOnce()` last actually fit to -- lets a persisted
+	 * `InstanceContainer` (see `SessionService.getInstanceContainer`) tell "this is the same image
+	 * I already fit, a remount/re-render just handed it to me again" apart from "this is a
+	 * genuinely new image that needs fitting", without re-fitting (and so discarding the user's
+	 * chosen pan/zoom) on every editor tab revisit. */
+	private lastFitSopInstanceUID: string | null = null;
+
+	zoomToFit(): boolean {
 		const { projection, mainCanvas } = this.parent;
 		const bitmap =
 			this.parent.session.projections[projection].patient?.study.series.sopInstance.bitmap;
 
-		if (!mainCanvas || !bitmap) return;
+		if (!mainCanvas || !bitmap) return false;
 
 		// minScale (Contain): Ensure the entire image fits within the canvas
 		const scaleX = mainCanvas.clientWidth / bitmap.width;
@@ -136,6 +143,22 @@ export class ViewportController implements PanViewport {
 
 		this.clamp();
 		this.lastKnownSize = { width: mainCanvas.clientWidth, height: mainCanvas.clientHeight };
+		return true;
+	}
+
+	/**
+	 * Like `zoomToFit()`, but only the FIRST time it's called for a given sopInstanceUID -- every
+	 * later call for that same UID (e.g. `EditorCanvas.svelte` remounting because the user
+	 * switched tabs and came back) is a no-op, preserving whatever pan/zoom the user left it at.
+	 * A genuinely different UID (a new image loaded into this projection) still fits normally.
+	 */
+	zoomToFitOnce(sopInstanceUID: string) {
+		if (sopInstanceUID === this.lastFitSopInstanceUID) return;
+		// Only record success -- if the canvas/bitmap weren't ready yet, `zoomToFit()` no-op'd and
+		// a later call (once they ARE ready) must still be allowed to actually fit.
+		if (this.zoomToFit()) {
+			this.lastFitSopInstanceUID = sopInstanceUID;
+		}
 	}
 
 	/**
@@ -241,5 +264,6 @@ export class ViewportController implements PanViewport {
 	clear() {
 		this.view = { offset: { x: 0, y: 0 }, scale: 1 };
 		this.lastKnownSize = null;
+		this.lastFitSopInstanceUID = null;
 	}
 }

@@ -6,9 +6,10 @@
 
 	import Button from '$lib/components/ui/button/Button.svelte';
 	import ConfirmCard from '$lib/components/ui/ConfirmCard.svelte';
+	import ViewSettingsPanel from '$lib/components/ui/editor/ViewSettingsPanel.svelte';
 
-	import { InstanceContainer } from '$lib/features/editor/core/instance-container.svelte';
 	import { project } from '$lib/core/project.svelte';
+	import { getInstanceContainer } from '$lib/features/editor/core/instance-container.svelte';
 	import { drawMain } from '$lib/features/editor/rendering/main-draw';
 	import { drawMinimap } from '$lib/features/editor/rendering/minimap-draw';
 	import { watchAutofillStatus, type AutofillStatus } from '$lib/features/autofill/autofill';
@@ -193,11 +194,14 @@
 		}
 	} as const;
 
-	const projectionContainer = $derived(new InstanceContainer(projection, project.session));
+	// Reuses the SAME InstanceContainer across remounts (e.g. navigating away from this tab and
+	// back) instead of constructing a fresh one every time -- see `getInstanceContainer`. This is
+	// what lets pan/zoom, the active tool/selection, and view settings (opacity/brightness/
+	// contrast) survive a tab switch. A different `project.session` (a different research) still
+	// gets its own containers.
+	const projectionContainer = $derived(getInstanceContainer(project.session, projection));
 
 	onMount(() => {
-		projectionContainer.nav.zoomToFit();
-
 		// The canvas's backing-store size only gets re-synced as a side effect
 		// of the next redraw (drawBackground() in main-draw.ts sets
 		// canvas.width/height = canvas.clientWidth/clientHeight every draw),
@@ -217,14 +221,25 @@
 		return () => resizeObserver.disconnect();
 	});
 
+	// Only the FIRST bitmap of a given SOP instance should reset the view to fit -- a live VOI
+	// edit (DisplayController.rewindow()) also swaps `bitmap` to a new ImageBitmap object for the
+	// SAME image, and so does simply remounting this component (e.g. returning to this tab), and
+	// neither should snap the user's zoom/pan back to default. `zoomToFitOnce` tracks "already
+	// fit this UID" on the (now persisted) ViewportController itself, not a local variable here,
+	// so it survives this component unmounting and remounting.
 	$effect(() => {
-		const bitmap = project.session.projections[projection].patient?.study.series.sopInstance.bitmap;
+		const sopInstance = project.session.projections[projection].patient?.study.series.sopInstance;
 		const canvas = projectionContainer.mainCanvas;
 
-		if (bitmap && canvas) {
-			requestAnimationFrame(() => {
-				projectionContainer.nav.zoomToFit();
+		if (sopInstance?.bitmap && canvas) {
+			// Cancelled on cleanup (tab switch away, or this effect re-running) -- otherwise a
+			// pending frame from a PREVIOUS mount can still fire after the component's unmounted,
+			// racing the next mount's own call. zoomToFitOnce() is idempotent per sopInstanceUID
+			// so a stray extra call was harmless, but there's no reason to leave it dangling.
+			const rafId = requestAnimationFrame(() => {
+				projectionContainer.nav.zoomToFitOnce(sopInstance.sopInstanceUID);
 			});
+			return () => cancelAnimationFrame(rafId);
 		}
 	});
 
@@ -244,7 +259,8 @@
 				nav.view,
 				tools.selectionBox,
 				6,
-				centralLine.centralPath
+				centralLine.centralPath,
+				projectionContainer.display.overlayOpacity
 			);
 		}
 
@@ -449,4 +465,5 @@
 			{$t('editor.zoom_help', { values: { percentage: projectionContainer.nav.scalePercentage } })}
 		</p>
 	</div>
+	<ViewSettingsPanel display={projectionContainer.display} />
 </div>

@@ -82,6 +82,16 @@
 		"delete_selected": "Удалить выбранное",
 		"cancel": "Отменить",
 		"continue": "Продолжить",
+		"view_settings": {
+			"header": "Настройки отображения",
+			"opacity_label": "Прозрачность разметки",
+			"voi_label": "Яркость / Контраст",
+			"contrast_axis_label": "↑ Контраст",
+			"brightness_axis_label": "Яркость →",
+			"voi_aria_label": "Область регулировки яркости и контраста. Стрелки влево/вправо меняют яркость, вверх/вниз — контраст.",
+			"voi_readout": "Яркость: {brightness}%  Контраст: {contrast}%",
+			"reset": "Сбросить"
+		},
 		"instructions": {
 			"header": "Инструкции"
 		},

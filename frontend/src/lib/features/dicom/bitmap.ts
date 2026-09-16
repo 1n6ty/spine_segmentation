@@ -1,13 +1,29 @@
 import type { DicomImageMetadata, DicomImagePixelData } from './types';
 
+export type ResolvedWindow = {
+	low: number;
+	high: number;
+	/** Actual (rescaled) pixel value range found in the data -- used both for the auto
+	 * min/max windowing fallback and as sane drag bounds for a live VOI control. */
+	dataMin: number;
+	dataMax: number;
+};
+
 /**
- * Converts raw DICOM pixel data into a GPU-ready ImageBitmap.
- * Fixed for TypeScript Overload errors.
+ * Resolves the low/high windowing edges for a DICOM image, applying the same
+ * declared-window-vs-actual-data-range fallback `create_dicom_bitmap` always has: some source
+ * files carry a WindowCenter/Width computed for a different bit depth than the pixel data
+ * actually stored (stale/mismatched metadata), which would otherwise window every real pixel to
+ * a single solid color. Also returns the scanned data range so callers (e.g. a live VOI pad) can
+ * derive sane drag bounds without re-scanning the pixel data themselves.
  */
-export async function create_dicom_bitmap(
+export function resolve_window(
 	pixel_data: DicomImagePixelData,
-	image_meta: DicomImageMetadata
-): Promise<ImageBitmap> {
+	image_meta: Pick<
+		DicomImageMetadata,
+		'slope' | 'intercept' | 'windowCenter' | 'windowWidth' | 'rows' | 'cols'
+	>
+): ResolvedWindow {
 	const {
 		slope,
 		intercept,
@@ -17,21 +33,12 @@ export async function create_dicom_bitmap(
 		cols
 	} = image_meta;
 
-	// Guard against missing dimensions
 	if (!rows || !cols || !pixel_data) {
 		throw new Error('Invalid DICOM metadata or pixel data');
 	}
 
 	const num_pixels = rows * cols;
-	const output = new Uint8ClampedArray(num_pixels * 4);
 
-	// 2. Find the actual (rescaled) pixel value range so we can fall back to
-	// auto min/max contrast when the declared window doesn't overlap it at
-	// all -- some source files carry a WindowCenter/Width computed for a
-	// different bit depth than the pixel data actually stored (stale/mismatched
-	// metadata), which would otherwise window every real pixel to a single
-	// solid color. The backend's thumbnail renderer sidesteps this the same
-	// way, via an unconditional min/max stretch.
 	let data_min = Infinity;
 	let data_max = -Infinity;
 	for (let i = 0; i < num_pixels; i++) {
@@ -49,11 +56,33 @@ export async function create_dicom_bitmap(
 		high = data_max;
 	}
 
+	return { low, high, dataMin: data_min, dataMax: data_max };
+}
+
+/**
+ * Renders raw DICOM pixel data into a GPU-ready ImageBitmap using explicit low/high windowing
+ * edges. Shared by `create_dicom_bitmap` (which resolves low/high from metadata, via
+ * `resolve_window`) and any live re-windowing (e.g. a VOI pad), which already knows the edges it
+ * wants and shouldn't re-run the auto min/max fallback on every drag frame.
+ */
+export async function render_windowed_bitmap(
+	pixel_data: DicomImagePixelData,
+	rows: number,
+	cols: number,
+	slope: number,
+	intercept: number,
+	low: number,
+	high: number
+): Promise<ImageBitmap> {
+	if (!rows || !cols || !pixel_data) {
+		throw new Error('Invalid DICOM metadata or pixel data');
+	}
+
+	const num_pixels = rows * cols;
+	const output = new Uint8ClampedArray(num_pixels * 4);
 	const range = high - low || 1; // Prevent division by zero
 
 	for (let i = 0; i < num_pixels; i++) {
-		// FIX: Access pixelData directly (not .buffer)
-		// The TypedArray (Uint16/Int16) handles the 2-byte offset automatically
 		const raw_val = pixel_data[i];
 		const val = raw_val * slope + intercept;
 
@@ -73,8 +102,27 @@ export async function create_dicom_bitmap(
 		output[idx + 3] = 255; // A
 	}
 
-	// 3. Create ImageData with explicit dimensions
 	const image_data = new ImageData(output, cols, rows);
-
 	return await createImageBitmap(image_data);
+}
+
+/**
+ * Converts raw DICOM pixel data into a GPU-ready ImageBitmap, windowed per the image's own
+ * metadata (falling back to an auto min/max stretch when the declared window doesn't overlap the
+ * actual data -- see `resolve_window`).
+ */
+export async function create_dicom_bitmap(
+	pixel_data: DicomImagePixelData,
+	image_meta: DicomImageMetadata
+): Promise<ImageBitmap> {
+	const { low, high } = resolve_window(pixel_data, image_meta);
+	return render_windowed_bitmap(
+		pixel_data,
+		image_meta.rows,
+		image_meta.cols,
+		image_meta.slope,
+		image_meta.intercept,
+		low,
+		high
+	);
 }

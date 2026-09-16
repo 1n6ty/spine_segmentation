@@ -208,7 +208,8 @@ export function drawMain(
 	view: { offset: Point; scale: number },
 	box: { start: Point; current: Point } | null = null,
 	pointsRadius: number = 6,
-	centralPath: CentralPath | null = null
+	centralPath: CentralPath | null = null,
+	overlayOpacity: number = 1
 ) {
 	drawBackground(ctx, bitmap, view.offset, view.scale);
 
@@ -216,11 +217,19 @@ export function drawMain(
 	ctx.translate(view.offset.x, view.offset.y);
 	ctx.scale(view.scale, view.scale);
 
+	// Opacity applies to the "drawings" only (polygons/labels, central line, in-progress draft
+	// points) -- not the selection marquee below, which is an interaction affordance rather than
+	// a drawing and should stay fully visible regardless of this setting.
+	ctx.save();
+	ctx.globalAlpha = overlayOpacity;
+
 	drawPolygons(ctx, polygons, selectedEntries, pointsRadius, view.scale);
 
 	drawCentralLine(ctx, centralPath, pointsRadius, view.scale);
 
 	drawDraftPoints(ctx, draftPoints, pointsRadius, view.scale);
+
+	ctx.restore();
 
 	if (box) drawSelectionBox(ctx, box, view.scale);
 

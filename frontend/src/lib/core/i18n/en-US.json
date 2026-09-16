@@ -82,6 +82,16 @@
 		"delete_selected": "Delete selected",
 		"cancel": "Cancel",
 		"continue": "Continue",
+		"view_settings": {
+			"header": "View settings",
+			"opacity_label": "Overlay opacity",
+			"voi_label": "Brightness / Contrast",
+			"contrast_axis_label": "↑ Contrast",
+			"brightness_axis_label": "Brightness →",
+			"voi_aria_label": "Brightness/contrast pad. Left/right arrow keys adjust brightness, up/down adjust contrast.",
+			"voi_readout": "Brightness: {brightness}%  Contrast: {contrast}%",
+			"reset": "Reset"
+		},
 		"instructions": {
 			"header": "Instructions"
 		},
