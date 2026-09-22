@@ -81,6 +81,9 @@
 		"scheuermann": "Scheuermann-Mau disease",
 		"spondylolisthesisL5": "L5 spondylolisthesis",
 		"spondylolisthesisL4": "L4 spondylolisthesis",
+		"osteochondrosisL4L5": "Osteochondrosis at L4-L5",
+		"osteochondrosisL5S1": "Osteochondrosis at L5-S1",
+		"congenitalKyphosis": "Congenital kyphosis",
 		"vertebralFracture": "Vertebral body fracture",
 		"slippedDislocation": "Slipped vertebral dislocation",
 		"subluxation": "Vertebral subluxation",
@@ -90,7 +93,8 @@
 		"scoliosisThoracicRight": "Right-sided thoracic scoliosis",
 		"scoliosisThoracicLeft": "Left-sided thoracic scoliosis",
 		"scoliosisLumbarRight": "Right-sided lumbar scoliosis",
-		"scoliosisLumbarLeft": "Left-sided lumbar scoliosis"
+		"scoliosisLumbarLeft": "Left-sided lumbar scoliosis",
+		"congenitalKyphosisRange": "at the {start}-{end} level"
 	},
 	"regions": {
 		"cervical": "Cervical region",
@@ -160,11 +164,11 @@
 			},
 			"l5Spondylolisthesis": {
 				"normal": "No signs of L5 spondylolisthesis",
-				"grade1": "L5 spondylolisthesis grade 1, anterior displacement {mm}mm",
-				"grade2": "L5 spondylolisthesis grade 2, anterior displacement {mm}mm",
-				"grade3": "L5 spondylolisthesis grade 3, anterior displacement {mm}mm",
-				"grade4": "L5 spondylolisthesis grade 4, anterior displacement {mm}mm",
-				"spondyloptosis": "L5 spondyloptosis, anterior displacement {mm}mm"
+				"grade1": "L5 spondylolisthesis grade 1, L5-S1 disc inclination {angle}°",
+				"grade2": "L5 spondylolisthesis grade 2, L5-S1 disc inclination {angle}°",
+				"grade3": "L5 spondylolisthesis grade 3, L5-S1 disc inclination {angle}°",
+				"grade4": "L5 spondylolisthesis grade 4, L5-S1 disc inclination {angle}°",
+				"spondyloptosis": "L5 spondyloptosis, L5-S1 disc inclination {angle}°"
 			},
 			"wedging": {
 				"normal": "No vertebral body wedging detected",
@@ -230,6 +234,10 @@
 				"normal": "L5 inferior endplate inclination unchanged",
 				"posterior": "L5 inferior endplate tilted posteriorly",
 				"anterior": "L5 inferior endplate tilted anteriorly"
+			},
+			"discHeightRatio": {
+				"normal": "Vertebral body / underlying disc height ratio within normal range (coefficient {ratio})",
+				"abnormal": "Vertebral body / underlying disc height ratio exceeds normal by more than 5% (coefficient {ratio}, normal {reference})"
 			},
 			"direction": {
 				"anterior": "anteriorly",

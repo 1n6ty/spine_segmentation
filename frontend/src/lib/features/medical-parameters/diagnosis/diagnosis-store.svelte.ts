@@ -8,6 +8,7 @@ import type { Vertebrae } from '../types';
 import { REGIONS, THORACIC_SUBREGIONS, match_items_by_ids, type RegionDef } from './regions';
 import * as Sagittal from './rules/sagittal';
 import * as Frontal from './rules/frontal';
+import { evaluateCongenitalKyphosis } from './rules/congenital-kyphosis';
 import type {
 	Finding,
 	GapDiagnosis,
@@ -21,10 +22,10 @@ import {
 	tallySingle,
 	tallyComposite,
 	rankFromTally,
+	suppressThoracicSubdiagnoses,
 	triCode,
 	evaluatePattern,
 	gradeDetail,
-	spondyloptosisDetail,
 	severityGrade,
 	matchedSymptom,
 	unmatchedSymptom,
@@ -171,6 +172,35 @@ function buildGapDiagnosis(
 	}
 
 	return { id, findings, narrative };
+}
+
+/** Body/disc height ratio for the osteochondrosis check (sagittal.ts's
+ * gradeVertebralDiscHeightRatio) — averages each side's anterior/posterior
+ * measurement (vertebrae.ts's p3/p4, gaps.ts's p2/p3) rather than picking
+ * one side, since the source table's own reference coefficients are
+ * whole-body-height values, not anterior- or posterior-only ones. */
+function computeVertebralDiscHeightRatio(
+	upperVertebra: Vertebrae,
+	lowerVertebra: Vertebrae,
+	mmPerPixel: number
+): number | null {
+	const vParams = getVertebraeParams('side', upperVertebra, mmPerPixel)!.params;
+	const anteriorBody = vParams.p3.val as number | null;
+	const posteriorBody = vParams.p4.val as number | null;
+	if (anteriorBody === null || posteriorBody === null) return null;
+
+	const gParams = getGapParams(
+		'side',
+		{ top: upperVertebra, bottom: lowerVertebra },
+		mmPerPixel
+	)!.params;
+	const anteriorDisc = gParams.p2.val as number | null;
+	const posteriorDisc = gParams.p3.val as number | null;
+	if (anteriorDisc === null || posteriorDisc === null) return null;
+
+	const discHeight = (anteriorDisc + posteriorDisc) / 2;
+	if (discHeight <= 0) return null;
+	return (anteriorBody + posteriorBody) / 2 / discHeight;
 }
 
 type RegionMeta = { id: string; label: Localized; vertebraeLabel: string };
@@ -571,6 +601,7 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			// vertebra/gap narratives in place) is new.
 			const s1 = regionVertebrae[0];
 			const l5 = regionVertebrae[1];
+			const l4 = regionVertebrae[2];
 
 			const sacralSlope = getVertebraeParams('side', s1, mmPerPixel)!.params.p9.val as
 				| number
@@ -608,27 +639,22 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				}
 			}
 
-			// L5 spondylolisthesis grading — TABLREHTG_Updated.docx: graded off L5's
-			// anterior displacement at L5-S1 (p5) as a fraction of L5's own
-			// inferior endplate length (p2), not the L5-S1 angle (p7) used by the
-			// earlier version — see gradeL5Spondylolisthesis's own doc comment.
-			const l5s1DisplacementMm = getGapParams('side', { top: l5, bottom: s1 }, mmPerPixel)!.params
-				.p5.val as number | null;
-			const l5InferiorEndplateMm = getVertebraeParams('side', l5, mmPerPixel)!.params.p2.val as
-				| number
-				| null;
+			// L5 spondylolisthesis grading — angle-based (the L5-S1 disc's own
+			// inclination-to-vertical, gaps.ts's p7), per Классификация кифозов
+			// таблица.doc.pdf page 3 — see gradeL5Spondylolisthesis's own doc
+			// comment for why this basis (not the earlier displacement-fraction
+			// one) is correct.
+			const l5s1Params = getGapParams('side', { top: l5, bottom: s1 }, mmPerPixel)!.params;
+			const l5s1DiscInclinationDeg = l5s1Params.p7.val as number | null;
 			let spondylolisthesisFinding: Finding | null = null;
-			if (l5s1DisplacementMm !== null && l5InferiorEndplateMm !== null) {
-				spondylolisthesisFinding = Sagittal.gradeL5Spondylolisthesis(
-					l5s1DisplacementMm,
-					l5InferiorEndplateMm
-				);
+			if (l5s1DiscInclinationDeg !== null) {
+				spondylolisthesisFinding = Sagittal.gradeL5Spondylolisthesis(l5s1DiscInclinationDeg);
 				regionDiagnosis.findings.push(withId(spondylolisthesisFinding, 'l5-spondylolisthesis'));
 				const l5s1Gap = regionDiagnosis.gaps.find((g) => g.id === 'L5-S1');
 				if (l5s1Gap) {
 					l5s1Gap.narrative = withClauseFinding(
 						l5s1Gap.narrative,
-						'p5',
+						'p7',
 						spondylolisthesisFinding,
 						Sagittal.getL5SpondylolisthesisRange()
 					);
@@ -636,7 +662,7 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			}
 
 			// Composite "L5 Spondylolisthesis" tally (conclusion.ts). Gated on
-			// the shipped displacement-fraction Finding above being non-normal
+			// the shipped L5-S1 disc-inclination Finding above being non-normal
 			// — that's the actual defining measurement; L5 inclination, lumbar
 			// lordosis, and (for higher grades) whole-thoracic kyphosis are
 			// compensatory/supporting signs per TABLREHTG_Updated.docx, not
@@ -689,13 +715,11 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 							: unmatchedSymptom(thoracicSignal.finding)
 					);
 				}
+				// No 'grade5'/spondyloptosis tier any more — the angle-based table
+				// (unlike the old displacement-fraction one) doesn't split grade 4
+				// from 5, so severityGrade never returns 5 for this Finding.
 				const grade = severityGrade(spondylolisthesisFinding.severity);
-				const detail =
-					spondylolisthesisFinding.severity === 'grade5'
-						? spondyloptosisDetail()
-						: grade !== null
-							? gradeDetail(grade)
-							: undefined;
+				const detail = grade !== null ? gradeDetail(grade) : undefined;
 				tallyComposite(tally, 'sag-spondylolisthesis-l5', spAbnormal, spTotal, {
 					detail,
 					symptoms: spSymptoms
@@ -725,6 +749,51 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 					symptoms: l4Symptoms
 				});
 			}
+
+			// Osteochondrosis at L4-L5 and L5-S1 — per-level, independent (each
+			// disc checked on its own, per the user's own confirmed scope): 3
+			// required (AND) conditions per level — disc angle abnormal, lumbar
+			// central angle kyphotic, and the body/disc height ratio more than
+			// 5% above the level's reference coefficient (Дополнение
+			// текст.docx). Gated the same way as the spondylolisthesis
+			// composites above: only tallied when the primary (disc-angle)
+			// condition holds.
+			const evaluateOsteochondrosis = (
+				levelId: 'L4-L5' | 'L5-S1',
+				diagnosisKey: DiagnosisKey,
+				upperVertebra: Vertebrae,
+				lowerVertebra: Vertebrae
+			) => {
+				const gap = regionDiagnosis.gaps.find((g) => g.id === levelId);
+				const discAngleFinding = gap?.findings.find((f) => f.id === `${levelId}-disc-angle`);
+				if (!discAngleFinding || discAngleFinding.severity === 'normal') return;
+
+				let abnormal = 1;
+				let total = 1;
+				const symptoms: Symptom[] = [matchedSymptom(discAngleFinding)];
+				if (lumbarSignal) {
+					total += 1;
+					const kyphosis = lumbarSignal.angleDeg > lumbarSignal.range.max;
+					if (kyphosis) abnormal += 1;
+					symptoms.push(
+						kyphosis ? matchedSymptom(lumbarSignal.finding) : unmatchedSymptom(lumbarSignal.finding)
+					);
+				}
+				const ratio = computeVertebralDiscHeightRatio(upperVertebra, lowerVertebra, mmPerPixel);
+				if (ratio !== null) {
+					total += 1;
+					const ratioFinding = Sagittal.gradeVertebralDiscHeightRatio(levelId, ratio);
+					if (ratioFinding.severity !== 'normal') abnormal += 1;
+					symptoms.push(
+						ratioFinding.severity !== 'normal'
+							? matchedSymptom(ratioFinding)
+							: unmatchedSymptom(ratioFinding)
+					);
+				}
+				tallyComposite(tally, diagnosisKey, abnormal, total, { symptoms });
+			};
+			evaluateOsteochondrosis('L4-L5', 'sag-osteochondrosis-l4-l5', l4, l5);
+			evaluateOsteochondrosis('L5-S1', 'sag-osteochondrosis-l5-s1', l5, s1);
 
 			const l5InferiorEndplate = getVertebraeParams('side', l5, mmPerPixel)!.params.p8.val as
 				| number
@@ -895,6 +964,13 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				});
 			}
 		}
+
+		// Congenital kyphosis — evaluated directly on the BIC/DP auto-segmented
+		// "computed regions" (not REGIONS/THORACIC_SUBREGIONS above), so it
+		// tallies straight into `tally` rather than attaching to any one
+		// region's own findings list — see congenital-kyphosis.ts's own doc
+		// comment for the 2 patterns it checks.
+		evaluateCongenitalKyphosis(tally, polygons, mmPerPixel);
 	}
 
 	const overall: Finding[] = [];
@@ -924,7 +1000,7 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 		regions,
 		overall,
 		conclusion,
-		conclusionRanking: rankFromTally(tally)
+		conclusionRanking: suppressThoracicSubdiagnoses(rankFromTally(tally))
 	};
 }
 

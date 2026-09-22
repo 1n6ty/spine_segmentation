@@ -30,13 +30,23 @@ export type Finding = {
  * calculator key) and `type` let grading code that runs after the
  * narrative is built (e.g. sacral slope, graded once its own vertebra's
  * narrative already exists) find the right clause to replace — see
- * diagnosis-store.svelte.ts. */
+ * diagnosis-store.svelte.ts.
+ *
+ * `value` is the raw measurement ("92°"/"6.2 mm", no label) computed once
+ * up front by buildParametersNarrative, for every clause regardless of
+ * grading. Not every grading rule's Finding text restates its own number
+ * (e.g. sacral slope's Finding text is just "Sacral position tends toward
+ * vertical" — no degree figure), so `value` is what lets a graded clause's
+ * rendering (narrativeParagraph in the report tab, abnormalNarrativeSentence
+ * for PDF/DOCX export) show the actual reading next to its normal-range
+ * badge even when the Finding text alone doesn't. */
 export type NarrativeClause = {
 	key: string;
 	type: 'linear' | 'angular';
 	text: Localized;
 	severity: Severity;
 	badge?: Localized;
+	value?: Localized;
 };
 
 export type ParametersNarrative = {

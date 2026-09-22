@@ -43,9 +43,13 @@ export const getGapParams = (projection: Projection, g: Gap, mmPerPixel: number)
 			type: 'angular'
 		},
 		p7: {
-			// Order matters: a normal (unslipped) L5-S1 pair must read positive (within the clinical
-			// "normal" band, > -35°) — verified empirically; the reverse order put a healthy spine
-			// at -90°, immediately misclassifying it as severe spondylolisthesis.
+			// "Угол наклона диска L5-S1" — Классификация кифозов таблица.doc.pdf page 3 /
+			// Клинико-биомеханичечкая оценка...docx: degree-graded (1: -35..-75, 2: -76..-120,
+			// 3: -121..-140, 4&5: <=-141; normal > -35), consumed by
+			// rules/sagittal.ts's gradeL5Spondylolisthesis. Order matters: a normal (unslipped)
+			// L5-S1 pair must read positive (within the normal, > -35° band) — verified
+			// empirically; the reverse order put a healthy spine at -90°, immediately
+			// misclassifying it as severe spondylolisthesis.
 			val:
 				g.top.id.includes('L5') && g.bottom.id.includes('S1')
 					? M.to_degrees(

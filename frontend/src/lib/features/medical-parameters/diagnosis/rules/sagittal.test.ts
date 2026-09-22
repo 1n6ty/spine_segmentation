@@ -4,6 +4,7 @@ import {
 	gradeSacralSlope,
 	gradeL5Inclination,
 	gradeL5Spondylolisthesis,
+	gradeVertebralDiscHeightRatio,
 	gradeScheuermann,
 	gradeVertebralFracture,
 	gradeVertebralWedgingSagittal,
@@ -112,37 +113,45 @@ describe('gradeL5Inclination', () => {
 });
 
 describe('gradeL5Spondylolisthesis', () => {
-	// endplate length fixed at 30mm across these cases so fraction thresholds
-	// land at clean displacement values: 1/4=7.5mm, 1/2=15mm, 3/4=22.5mm, 4/4=30mm
-	const ENDPLATE_MM = 30;
-
-	it('is normal within the general displacement noise tolerance', () => {
-		expect(gradeL5Spondylolisthesis(1, ENDPLATE_MM).severity).toBe('normal');
+	it('is normal above -35 degrees', () => {
+		expect(gradeL5Spondylolisthesis(-10).severity).toBe('normal');
+		expect(gradeL5Spondylolisthesis(20).severity).toBe('normal');
 	});
 
-	it('is normal for posterior (retrolisthesis) displacement regardless of magnitude', () => {
-		expect(gradeL5Spondylolisthesis(-20, ENDPLATE_MM).severity).toBe('normal');
+	it('grades 1 between -35 and -75', () => {
+		expect(gradeL5Spondylolisthesis(-50).severity).toBe('grade1');
 	});
 
-	it('grades 1 for anterior displacement under 1/4 of endplate length', () => {
-		expect(gradeL5Spondylolisthesis(5, ENDPLATE_MM).severity).toBe('grade1');
+	it('grades 2 between -76 and -120', () => {
+		expect(gradeL5Spondylolisthesis(-100).severity).toBe('grade2');
 	});
 
-	it('grades 2 for anterior displacement between 1/4 and 1/2 of endplate length', () => {
-		expect(gradeL5Spondylolisthesis(10, ENDPLATE_MM).severity).toBe('grade2');
+	it('grades 3 between -121 and -140', () => {
+		expect(gradeL5Spondylolisthesis(-130).severity).toBe('grade3');
 	});
 
-	it('grades 3 for anterior displacement between 1/2 and 3/4 of endplate length', () => {
-		expect(gradeL5Spondylolisthesis(20, ENDPLATE_MM).severity).toBe('grade3');
+	it('grades 4 at or beyond -141 (source table does not split 4 from 5)', () => {
+		expect(gradeL5Spondylolisthesis(-141).severity).toBe('grade4');
+		expect(gradeL5Spondylolisthesis(-170).severity).toBe('grade4');
+	});
+});
+
+describe('gradeVertebralDiscHeightRatio', () => {
+	it('is normal at or below the reference coefficient', () => {
+		expect(gradeVertebralDiscHeightRatio('L4-L5', 2.28).severity).toBe('normal');
 	});
 
-	it('grades 4 for anterior displacement between 3/4 and a full endplate length', () => {
-		expect(gradeL5Spondylolisthesis(25, ENDPLATE_MM).severity).toBe('grade4');
+	it('is normal within 5% above the reference coefficient', () => {
+		expect(gradeVertebralDiscHeightRatio('L4-L5', 2.28 * 1.05).severity).toBe('normal');
 	});
 
-	it('grades 5 (spondyloptosis) at or beyond a full endplate length', () => {
-		expect(gradeL5Spondylolisthesis(30, ENDPLATE_MM).severity).toBe('grade5');
-		expect(gradeL5Spondylolisthesis(35, ENDPLATE_MM).severity).toBe('grade5');
+	it('grades 1 more than 5% above the reference coefficient', () => {
+		expect(gradeVertebralDiscHeightRatio('L4-L5', 2.5).severity).toBe('grade1');
+	});
+
+	it('uses the L5-S1-specific reference coefficient', () => {
+		expect(gradeVertebralDiscHeightRatio('L5-S1', 1.9).severity).toBe('normal');
+		expect(gradeVertebralDiscHeightRatio('L5-S1', 2.2).severity).toBe('grade1');
 	});
 });
 
@@ -165,9 +174,7 @@ describe('gradeScheuermann', () => {
 	});
 
 	it('returns null when the mid-thoracic sub-arc is not in the kyphosis direction', () => {
-		expect(
-			gradeScheuermann([6, 7, 8, 9], 20, COMPENSATED_LUMBAR, COMPENSATED_CERVICAL)
-		).toBeNull();
+		expect(gradeScheuermann([6, 7, 8, 9], 20, COMPENSATED_LUMBAR, COMPENSATED_CERVICAL)).toBeNull();
 	});
 
 	it('returns null when the lumbar curve has not compensated into lordosis', () => {

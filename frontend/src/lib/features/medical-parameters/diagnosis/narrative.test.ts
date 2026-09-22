@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildParametersNarrative,
 	narrativeSentence,
+	abnormalNarrativeSentence,
 	withClauseFinding,
 	paramLabel,
 	vertebraLabel,
@@ -9,7 +10,10 @@ import {
 } from './narrative';
 import type { Finding } from './types';
 
-function fakeFinding(text = 'Vertebral body wedge-deformed', severity: Finding['severity'] = 'grade1'): Finding {
+function fakeFinding(
+	text = 'Vertebral body wedge-deformed',
+	severity: Finding['severity'] = 'grade1'
+): Finding {
 	return { id: 'fake', text: { 'en-US': text, 'ru-RU': text }, severity };
 }
 
@@ -70,6 +74,59 @@ describe('buildParametersNarrative', () => {
 		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
 		expect(narrative.clauses).toHaveLength(0);
 		expect(narrativeSentence(narrative)['ru-RU']).toBe('Отрезок от Th1 до Th12: .');
+	});
+});
+
+describe('abnormalNarrativeSentence', () => {
+	const identity = { 'ru-RU': 'Отрезок от Th1 до Th12', 'en-US': 'Segment from Th1 to Th12' };
+	const params = {
+		p1: { val: 145.2, type: 'linear' },
+		p3: { val: 72.3, type: 'angular' }
+	};
+
+	it('returns null when every clause is normal severity', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		expect(abnormalNarrativeSentence(narrative)).toBeNull();
+	});
+
+	it('joins only the non-normal clauses, dropping normal ones from the sentence', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const finding = fakeFinding('Central curve increased', 'grade2');
+		const graded = withClauseFinding(narrative, 'p3', finding, { min: 39, max: 65 });
+
+		const result = abnormalNarrativeSentence(graded);
+		expect(result).not.toBeNull();
+		expect(result?.['en-US']).toBe(
+			'Segment from Th1 to Th12: Central curve increased, 72.3° (normal 39 to 65°).'
+		);
+		expect(result?.['en-US']).not.toContain('Arc radius');
+	});
+
+	it('inserts the raw measured value before the badge, even when the graded Finding text is purely qualitative (no number of its own)', () => {
+		// Mirrors gradeSacralSlope's real Finding text ("Sacral position
+		// tends toward vertical") — no digit anywhere in it, unlike
+		// "Central curve increased" tests above which could in principle
+		// coincidentally contain one.
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const finding = fakeFinding('Sacral position tends toward vertical', 'grade1');
+		const graded = withClauseFinding(narrative, 'p3', finding, { min: 99, max: 124 });
+
+		const result = abnormalNarrativeSentence(graded);
+		expect(result?.['en-US']).toBe(
+			'Segment from Th1 to Th12: Sacral position tends toward vertical, 72.3° (normal 99 to 124°).'
+		);
+	});
+
+	it('renders a clause with no badge (e.g. no Range attached) as plain text, no parentheses', () => {
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const withFinding: typeof narrative = {
+			...narrative,
+			clauses: narrative.clauses.map((c) =>
+				c.key === 'p3' ? { ...c, severity: 'grade1', text: fakeFinding('No range here').text } : c
+			)
+		};
+		const result = abnormalNarrativeSentence(withFinding);
+		expect(result?.['en-US']).toBe('Segment from Th1 to Th12: No range here.');
 	});
 });
 

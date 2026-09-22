@@ -8,10 +8,10 @@ import type { Finding, Range, Severity } from './types';
  * (sagittal) and Data/clinic/Описание спондилограмм во фронтальной
  * плоскости.docx.pdf (frontal) — see diagnosis-store.svelte.ts for where
  * each is tallied. Bounded to diagnoses whose required parameters are
- * already computed elsewhere in this module; diagnoses needing data not
- * yet computed (disc-height ratio for osteochondrosis, congenital kyphosis
- * — which has no numeric criteria in the source at all) are deliberately
- * not represented here.
+ * computed elsewhere in this codebase — osteochondrosis (rules/sagittal.ts's
+ * gradeVertebralDiscHeightRatio) and congenital kyphosis
+ * (rules/congenital-kyphosis.ts, driven by the BIC/DP "computed regions"
+ * rather than a clinic source table) are both represented below.
  *
  * The 5 "sag-slipped-dislocation" .. "sag-degenerative-disc" keys are filed
  * under a "шейного отдела" (cervical) heading in the source document, but
@@ -30,6 +30,9 @@ export type DiagnosisKey =
 	| 'sag-scheuermann'
 	| 'sag-spondylolisthesis-l5'
 	| 'sag-l4-spondylolisthesis'
+	| 'sag-osteochondrosis-l4-l5'
+	| 'sag-osteochondrosis-l5-s1'
+	| 'sag-congenital-kyphosis'
 	| 'sag-vertebral-fracture'
 	| 'sag-slipped-dislocation'
 	| 'sag-subluxation'
@@ -68,6 +71,9 @@ const DIAGNOSIS_LABEL_KEYS: Record<DiagnosisKey, string> = {
 	'sag-scheuermann': 'diagnosis.conclusion.scheuermann',
 	'sag-spondylolisthesis-l5': 'diagnosis.conclusion.spondylolisthesisL5',
 	'sag-l4-spondylolisthesis': 'diagnosis.conclusion.spondylolisthesisL4',
+	'sag-osteochondrosis-l4-l5': 'diagnosis.conclusion.osteochondrosisL4L5',
+	'sag-osteochondrosis-l5-s1': 'diagnosis.conclusion.osteochondrosisL5S1',
+	'sag-congenital-kyphosis': 'diagnosis.conclusion.congenitalKyphosis',
 	'sag-vertebral-fracture': 'diagnosis.conclusion.vertebralFracture',
 	'sag-slipped-dislocation': 'diagnosis.conclusion.slippedDislocation',
 	'sag-subluxation': 'diagnosis.conclusion.subluxation',
@@ -98,10 +104,14 @@ export function gradeDetail(grade: number): Localized {
 	return resolve_localized('diagnosis.conclusion.gradeSuffix', { grade });
 }
 
-/** "spondyloptosis" — L5 spondylolisthesis's own grade5 is clinically a
- * distinct named condition rather than just "grade 5". */
-export function spondyloptosisDetail(): Localized {
-	return resolve_localized('diagnosis.conclusion.spondyloptosisSuffix');
+/** "at level N-M vertebrae" — congenital kyphosis's per-instance detail,
+ * naming the specific boundary vertebrae the pattern matched at (see
+ * diagnosis/rules/congenital-kyphosis.ts). */
+export function congenitalKyphosisRangeDetail(startId: string, endId: string): Localized {
+	return resolve_localized('diagnosis.conclusion.congenitalKyphosisRange', {
+		start: startId,
+		end: endId
+	});
 }
 
 /** Extracts the numeric grade from a Severity, or null for 'normal' (which
@@ -286,4 +296,27 @@ export function rankFromTally(tally: DiagnosisTally): RankedDiagnosis[] {
 			probability: d.probability,
 			symptoms: d.symptoms
 		}));
+}
+
+/**
+ * Drops the 3 thoracic-sub-arc Bekhterev's variants ('-upper'/'-mid'/'-lower')
+ * from an already-ranked list whenever the whole-thoracic
+ * 'sag-bekhterev-thoracic-total' diagnosis is also present — the total
+ * container's own curve already subsumes each sub-arc's, so showing all 4
+ * simultaneously double-counts the same underlying kyphosis as up to 4
+ * separate named diagnoses. Applied once, right after `rankFromTally`, so
+ * both the on-screen conclusion list and the PDF/docx/Print export (which
+ * reads the exact same `conclusionRanking` array) get the fix for free.
+ */
+export function suppressThoracicSubdiagnoses(ranked: RankedDiagnosis[]): RankedDiagnosis[] {
+	const hasTotal = ranked.some(
+		(d) => baseKey(d.key as TallyKey) === 'sag-bekhterev-thoracic-total'
+	);
+	if (!hasTotal) return ranked;
+	const subKeys: DiagnosisKey[] = [
+		'sag-bekhterev-thoracic-upper',
+		'sag-bekhterev-thoracic-mid',
+		'sag-bekhterev-thoracic-lower'
+	];
+	return ranked.filter((d) => !subKeys.includes(baseKey(d.key as TallyKey)));
 }

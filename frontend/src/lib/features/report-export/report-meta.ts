@@ -42,7 +42,12 @@ export function collectReportMeta(locale: LocaleKey): ReportMeta {
 		[tr('report.meta.body_part'), series?.bodyPart || nf],
 		[tr('report.meta.institution'), study?.institutionName || nf],
 		[tr('report.meta.address'), study?.institutionAddress || nf],
-		[tr('report.meta.station'), study?.stationName || nf]
+		[tr('report.meta.station'), study?.stationName || nf],
+		[
+			tr('report.meta.prepared_by'),
+			[project.researcher.fullName, project.researcher.duty].filter(Boolean).join(' — ') || nf
+		],
+		[tr('report.meta.organization'), project.auth.company?.name || nf]
 	];
 
 	return {

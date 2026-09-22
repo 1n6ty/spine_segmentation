@@ -69,14 +69,8 @@ function blocksToContent(model: DocBlock[]): Content[] {
 			case 'paragraph':
 				out.push({ text: b.text, style: 'body' });
 				break;
-			case 'rankedDiagnosis':
-				out.push({
-					columns: [
-						{ text: b.label, style: 'diagLabel', width: '*' },
-						{ text: `${b.probabilityPct}%`, style: 'diagPct', width: 'auto' }
-					],
-					margin: [0, 6, 0, 2]
-				});
+			case 'summarySentence':
+				out.push({ text: b.text, style: 'summarySentence', margin: [0, 6, 0, 6] });
 				break;
 			case 'bullet':
 				out.push({ ul: [{ text: b.text }], style: 'body', margin: [10, 0, 0, 3] });
@@ -133,8 +127,7 @@ function buildDocDefinition(model: DocBlock[], headerText: string): TDocumentDef
 			body: { fontSize: 10.5, margin: [0, 2, 0, 4] },
 			metaKey: { fontSize: 9.5, bold: true, color: '#333333' },
 			metaVal: { fontSize: 9.5 },
-			diagLabel: { fontSize: 10.5, bold: true },
-			diagPct: { fontSize: 10.5, bold: true },
+			summarySentence: { fontSize: 10.5, bold: true, lineHeight: 1.4 },
 			runningHeader: { fontSize: 8, color: '#888888' },
 			footer: { fontSize: 8, color: '#888888' },
 			disclaimer: { fontSize: 8.5, italics: true, color: '#666666', margin: [0, 4, 0, 0] }

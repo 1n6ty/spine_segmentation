@@ -139,6 +139,8 @@
 		"generating": "Generating…",
 		"export_error": "Could not generate the document. Please try again.",
 		"generated_at": "Generated: {datetime}",
+		"summary_prefix": "The quantitative parameters of spinal shape and spatial orientation detected are characteristic of:",
+		"summary_item": "{label} with {pct}% confidence",
 		"meta": {
 			"patient_name": "Patient name",
 			"patient_id": "Patient ID",
@@ -152,7 +154,9 @@
 			"body_part": "Body part examined",
 			"institution": "Institution",
 			"address": "Institution address",
-			"station": "Station name"
+			"station": "Station name",
+			"prepared_by": "Report prepared by",
+			"organization": "Organization"
 		}
 	},
 	"footer": {

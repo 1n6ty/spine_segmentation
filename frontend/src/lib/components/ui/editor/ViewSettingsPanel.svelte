@@ -91,7 +91,7 @@
 <div class="mt-2 rounded-xl border border-(--border) bg-(--card) text-(--card-foreground)">
 	<button
 		type="button"
-		class="flex w-full items-center justify-between px-3 py-1.5 text-sm font-medium text-(--foreground) transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 {display.panelExpanded
+		class="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 text-sm font-medium text-(--foreground) transition-all outline-none hover:bg-(--accent) hover:text-(--accent-foreground) focus-visible:ring-[3px] focus-visible:ring-(--ring)/50 {display.panelExpanded
 			? 'rounded-t-xl'
 			: 'rounded-xl'}"
 		aria-expanded={display.panelExpanded}
@@ -161,7 +161,7 @@
 					</span>
 					<button
 						type="button"
-						class="rounded-md border border-(--border) bg-(--background) px-2 py-0.5 text-xs transition-all hover:bg-(--accent) hover:text-(--accent-foreground)"
+						class="cursor-pointer rounded-md border border-(--border) bg-(--background) px-2 py-0.5 text-xs transition-all hover:bg-(--accent) hover:text-(--accent-foreground)"
 						onclick={() => display.resetWindow()}
 					>
 						{$t('editor.view_settings.reset')}

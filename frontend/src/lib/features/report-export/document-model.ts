@@ -1,6 +1,6 @@
 import type { LocaleKey } from '$lib/core/i18n/types';
 import { resolve_localized } from '$lib/core/i18n/resolve';
-import { narrativeSentence } from '$lib/features/medical-parameters/diagnosis/narrative';
+import { abnormalNarrativeSentence } from '$lib/features/medical-parameters/diagnosis/narrative';
 import { interleave } from '$lib/features/medical-parameters/diagnosis/interleave';
 import type {
 	ProjectionDiagnosis,
@@ -17,10 +17,10 @@ export type DocBlock =
 	| { type: 'metaTable'; rows: [label: string, value: string][] }
 	| { type: 'heading'; level: 1 | 2 | 3; text: string }
 	| { type: 'paragraph'; text: string }
-	| { type: 'rankedDiagnosis'; label: string; probabilityPct: string }
 	| { type: 'bullet'; text: string }
 	| { type: 'divider' }
 	| { type: 'pageBreak' }
+	| { type: 'summarySentence'; text: string }
 	| { type: 'disclaimer'; text: string };
 
 export interface ReportProjectionInput {
@@ -44,7 +44,8 @@ export interface BuildReportOpts {
 
 export function buildReportDocModel(opts: BuildReportOpts): DocBlock[] {
 	const { locale } = opts;
-	const tr = (key: string) => resolve_localized(key)[locale];
+	const tr = (key: string, params?: Record<string, string | number>) =>
+		resolve_localized(key, params)[locale];
 	const blocks: DocBlock[] = [];
 
 	blocks.push({ type: 'docTitle', text: opts.title });
@@ -63,26 +64,32 @@ export function buildReportDocModel(opts: BuildReportOpts): DocBlock[] {
 
 		for (const region of proj.data.regions) emitRegion(blocks, region, locale, 2);
 
-		blocks.push({ type: 'divider' });
-		blocks.push({ type: 'heading', level: 2, text: tr('report.header_overall') });
-
-		for (const finding of proj.data.overall) {
-			blocks.push({ type: 'bullet', text: finding.text[locale] });
+		const abnormalOverall = proj.data.overall.filter((f) => f.severity !== 'normal');
+		if (abnormalOverall.length > 0) {
+			blocks.push({ type: 'divider' });
+			blocks.push({ type: 'heading', level: 2, text: tr('report.header_overall') });
+			for (const finding of abnormalOverall) {
+				blocks.push({ type: 'bullet', text: finding.text[locale] });
+			}
 		}
 
+		blocks.push({ type: 'divider' });
 		if (proj.data.conclusionRanking.length === 0) {
 			blocks.push({ type: 'paragraph', text: tr('report.no_anomalies') });
 		} else {
-			for (const d of proj.data.conclusionRanking) {
-				blocks.push({
-					type: 'rankedDiagnosis',
-					label: d.label[locale],
-					probabilityPct: (d.probability * 100).toFixed(1)
-				});
-				for (const symptom of d.symptoms) {
-					blocks.push({ type: 'bullet', text: symptom.text[locale] });
-				}
-			}
+			// Export-only: one terminal sentence naming every ranked diagnosis with
+			// its confidence, no per-diagnosis parameter/symptom detail (that stays
+			// on-screen only, in the still-unfiltered report tab) — per the user's
+			// own requested phrasing.
+			const items = proj.data.conclusionRanking
+				.map((d) =>
+					tr('report.summary_item', {
+						label: d.label[locale],
+						pct: (d.probability * 100).toFixed(1)
+					})
+				)
+				.join(', ');
+			blocks.push({ type: 'summarySentence', text: `${tr('report.summary_prefix')} ${items}.` });
 		}
 	});
 
@@ -92,10 +99,26 @@ export function buildReportDocModel(opts: BuildReportOpts): DocBlock[] {
 	return blocks;
 }
 
+/** True if this region itself, or any of its vertebrae/gaps/sub-regions
+ * (recursively), has at least one non-normal finding — export-only gate so a
+ * fully-normal region/vertebra/gap is omitted entirely rather than narrated. */
+function regionHasAbnormalFinding(region: RegionDiagnosis): boolean {
+	if (region.findings.some((f) => f.severity !== 'normal')) return true;
+	if (region.vertebrae.some((v) => v.findings.some((f) => f.severity !== 'normal'))) return true;
+	if (region.gaps.some((g) => g.findings.some((f) => f.severity !== 'normal'))) return true;
+	return (region.subRegions ?? []).some(regionHasAbnormalFinding);
+}
+
 /**
  * A region → its L2/L3 heading + narrative paragraph, then either its clinical
  * sub-regions (sagittal thoracic only, one level deep by contract) or its
- * interleaved vertebra/disc narratives.
+ * interleaved vertebra/disc narratives. Export-only: skips the region
+ * entirely when nothing under it is abnormal, and — per the export's
+ * abnormal-only content policy — renders each paragraph from only its
+ * non-normal clauses (`abnormalNarrativeSentence`), never the full
+ * per-parameter sentence `narrativeSentence` builds for the on-screen report
+ * tab, so a normal finding is never stated even inline within an otherwise-
+ * abnormal row's sentence.
  */
 function emitRegion(
 	blocks: DocBlock[],
@@ -103,12 +126,17 @@ function emitRegion(
 	locale: LocaleKey,
 	level: 2 | 3
 ): void {
+	if (!regionHasAbnormalFinding(region)) return;
+
 	blocks.push({
 		type: 'heading',
 		level,
 		text: `${region.label[locale]} (${region.vertebraeLabel})`
 	});
-	blocks.push({ type: 'paragraph', text: narrativeSentence(region.narrative)[locale] });
+	const regionSentence = abnormalNarrativeSentence(region.narrative);
+	if (regionSentence) {
+		blocks.push({ type: 'paragraph', text: regionSentence[locale] });
+	}
 
 	if (region.subRegions?.length) {
 		for (const sub of region.subRegions) emitRegion(blocks, sub, locale, 3);
@@ -116,6 +144,8 @@ function emitRegion(
 	}
 
 	for (const row of interleave(region)) {
-		blocks.push({ type: 'paragraph', text: narrativeSentence(row.data.narrative)[locale] });
+		const sentence = abnormalNarrativeSentence(row.data.narrative);
+		if (!sentence) continue;
+		blocks.push({ type: 'paragraph', text: sentence[locale] });
 	}
 }

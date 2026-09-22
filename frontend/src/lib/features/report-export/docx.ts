@@ -92,14 +92,11 @@ export async function exportDocx(model: DocBlock[], filename: string): Promise<v
 			case 'paragraph':
 				children.push(new Paragraph({ children: [new TextRun(b.text)], spacing: { after: 80 } }));
 				break;
-			case 'rankedDiagnosis':
+			case 'summarySentence':
 				children.push(
 					new Paragraph({
-						children: [
-							new TextRun({ text: b.label, bold: true }),
-							new TextRun({ text: `  —  ${b.probabilityPct}%`, bold: true })
-						],
-						spacing: { before: 100, after: 20 }
+						children: [new TextRun({ text: b.text, bold: true })],
+						spacing: { before: 120, after: 120 }
 					})
 				);
 				break;

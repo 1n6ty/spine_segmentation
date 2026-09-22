@@ -1,4 +1,4 @@
-import type { Localized } from '$lib/core/i18n/types';
+import type { Localized, LocaleKey } from '$lib/core/i18n/types';
 import { resolve_localized } from '$lib/core/i18n/resolve';
 import { parametersConfig } from '../config';
 import type { Projection } from '$lib/features/dicom/types';
@@ -112,16 +112,22 @@ export function buildParametersNarrative(
 		if (typeof entry.val !== 'number') continue;
 		const label = paramLabel(projection, structureType, key);
 		const unit = unitFor(entry.type);
+		const formattedValue = withMinus(entry.val.toFixed(1));
 		const text = resolve_localized('diagnosis.narrative.clause', {
 			label,
-			value: withMinus(entry.val.toFixed(1)),
+			value: formattedValue,
 			unit
 		});
+		const value: Localized = {
+			'ru-RU': `${formattedValue}${unit['ru-RU']}`,
+			'en-US': `${formattedValue}${unit['en-US']}`
+		};
 		clauses.push({
 			key,
 			type: entry.type === 'angular' ? 'angular' : 'linear',
 			text,
-			severity: 'normal'
+			severity: 'normal',
+			value
 		});
 	}
 
@@ -165,6 +171,44 @@ export function narrativeSentence(narrative: ParametersNarrative): Localized {
 	const joined: Localized = {
 		'ru-RU': narrative.clauses.map((c) => c.text['ru-RU']).join(', '),
 		'en-US': narrative.clauses.map((c) => c.text['en-US']).join(', ')
+	};
+	return resolve_localized('diagnosis.narrative.sentence', {
+		identity: narrative.identity,
+		clauses: joined
+	});
+}
+
+/**
+ * Same as `narrativeSentence`, but joins only the non-`'normal'` clauses —
+ * for the PDF/DOCX/Print export, which (per its own abnormal-only content
+ * policy — see report-export/document-model.ts) must never state a normal
+ * finding, even inline as part of an otherwise-abnormal row's sentence.
+ * Each abnormal clause's normal-range `badge`, when present, is appended in
+ * parentheses right after its text — the plain-text equivalent of the
+ * colored range badge the on-screen report tab renders next to the same
+ * clause (see clauseBadge in the report +page.svelte). Right before the
+ * badge, a graded clause's raw `value` is inserted too — many grading
+ * rules' Finding text is purely qualitative ("Sacral position tends toward
+ * vertical") and never restates the actual reading, so without `value` an
+ * abnormal line could show a normal-range bracket next to no number at
+ * all. A clause with no badge (e.g. congenital-kyphosis findings, which
+ * have no Range) renders with just its text, unchanged.
+ * Returns null if every clause is normal, so a caller can skip the
+ * paragraph entirely rather than emit an empty/identity-only sentence.
+ */
+export function abnormalNarrativeSentence(narrative: ParametersNarrative): Localized | null {
+	const abnormal = narrative.clauses.filter((c) => c.severity !== 'normal');
+	if (abnormal.length === 0) return null;
+	const clauseText = (clause: NarrativeClause, locale: LocaleKey) => {
+		const withValue =
+			clause.badge && clause.value
+				? `${clause.text[locale]}, ${clause.value[locale]}`
+				: clause.text[locale];
+		return clause.badge ? `${withValue} (${clause.badge[locale]})` : withValue;
+	};
+	const joined: Localized = {
+		'ru-RU': abnormal.map((c) => clauseText(c, 'ru-RU')).join(', '),
+		'en-US': abnormal.map((c) => clauseText(c, 'en-US')).join(', ')
 	};
 	return resolve_localized('diagnosis.narrative.sentence', {
 		identity: narrative.identity,

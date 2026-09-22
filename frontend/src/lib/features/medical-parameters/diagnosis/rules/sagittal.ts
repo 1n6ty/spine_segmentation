@@ -15,6 +15,15 @@ import { resolve_localized } from '$lib/core/i18n/resolve';
  * vertebra model; the angular table needs identifying "the deformed segment"
  * which isn't derivable from the fixed 3-region grouping used here).
  *
+ * Osteochondrosis (L4-L5/L5-S1) and congenital kyphosis, previously listed
+ * here as unimplemented for lack of source data, are now implemented —
+ * osteochondrosis via gradeVertebralDiscHeightRatio below (composed with the
+ * disc-angle and lumbar-curve checks in diagnosis-store.svelte.ts), and
+ * congenital kyphosis in the sibling
+ * `diagnosis/rules/congenital-kyphosis.ts` module (it needs the BIC/DP
+ * auto-segmented "computed regions", not this module's fixed-region
+ * grading, so it lives separately).
+ *
  * Each grading function is a plain if/else chain over the source table's bands
  * rather than a generic table-lookup helper: some tables increase in severity
  * as the value increases (regional kyphosis), others as it decreases
@@ -268,64 +277,103 @@ export function gradeL5Inclination(angleDeg: number): Finding {
 }
 
 /**
- * L5 spondylolisthesis grading — TABLREHTG_Updated.docx's spondylolisthesis
- * table: grade escalates with L5's anterior (forward) displacement at
- * L5-S1 (gaps.ts's `p5`), expressed as a FRACTION of L5's own inferior
- * endplate length (vertebrae.ts's `p2` on L5), not a fixed mm cutoff.
- * Supersedes the earlier L5-S1-angle-based version — that angle (`p7`)
- * measures *rotation* between L5 and S1, not the *translational* slip
- * spondylolisthesis fundamentally is.
+ * L5 spondylolisthesis grading — "Угол наклона диска L5-S1": the inclination
+ * to the vertical (Z) axis of the line connecting the sacrum's
+ * cranio-ventral corner to the displaced L5's caudo-ventral corner
+ * (gaps.ts's `p7` on the L5-S1 gap; per its own doc comment, `p7`'s sign was
+ * empirically verified so a normal spine reads positive/> -35°, matching
+ * this table's own grade-1 lower boundary exactly). Source: "Классификация
+ * кифозов таблица.doc.pdf" page 3 ("Моя классификация степени
+ * спондилолистеза L5 позвонка") / "Клинико-биомеханичечкая оценка
+ * позвоночника при истинном спондилолистезе L5 позвонка.docx". This is the
+ * SAME basis an earlier version of this function used before being
+ * superseded by a displacement-fraction version (see git history) — the
+ * new source docs supply the missing degree table that version's own doc
+ * comment said didn't exist yet.
  *
- * Displacement within the general per-gap noise tolerance, or in the
- * posterior direction (retrolisthesis — a different, unmodeled condition),
- * reads as 'normal' here regardless of magnitude: this function is
- * specifically about anterior slip.
+ * The source table's own "норма" row states no explicit band (blank cell in
+ * the source) — "more positive than -35°" (grade 1's own lower bound) is
+ * used here as the inferred normal boundary; the table also doesn't
+ * distinguish grade 4 from grade 5 (listed together as "4 и 5"), so both
+ * fold into a single 'grade4' severity rather than inventing an unsourced
+ * split (unlike the old mm-based version, this one never reaches 'grade5').
  */
 export function getL5SpondylolisthesisRange(): Range {
-	return { min: -Infinity, max: SAGITTAL_DISPLACEMENT_TOLERANCE_MM };
+	return { min: -35, max: Infinity };
 }
 
-export function gradeL5Spondylolisthesis(
-	displacementMm: number,
-	l5InferiorEndplateMm: number
-): Finding {
-	if (displacementMm <= SAGITTAL_DISPLACEMENT_TOLERANCE_MM) {
+export function gradeL5Spondylolisthesis(discInclinationDeg: number): Finding {
+	const a = discInclinationDeg;
+	const angle = a.toFixed(1);
+	if (a > -35) {
 		return {
 			id: '',
 			severity: 'normal',
 			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.normal')
 		};
 	}
-	const fraction = displacementMm / l5InferiorEndplateMm;
-	const mm = displacementMm.toFixed(1);
-	if (fraction < 0.25)
+	if (a >= -75)
 		return {
 			id: '',
 			severity: 'grade1',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1', { mm })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1', { angle })
 		};
-	if (fraction < 0.5)
+	if (a >= -120)
 		return {
 			id: '',
 			severity: 'grade2',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2', { mm })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2', { angle })
 		};
-	if (fraction < 0.75)
+	if (a >= -140)
 		return {
 			id: '',
 			severity: 'grade3',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3', { mm })
-		};
-	if (fraction < 1)
-		return {
-			id: '',
-			severity: 'grade4',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4', { mm })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3', { angle })
 		};
 	return {
 		id: '',
-		severity: 'grade5',
-		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.spondyloptosis', { mm })
+		severity: 'grade4',
+		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4', { angle })
+	};
+}
+
+/**
+ * Vertebral body height / underlying disc height coefficient — "Дополнение
+ * текст.docx"'s "Соотношение высоты тела позвонка и высоты нижележащего
+ * межпозвонкового диска в сагиттальной плоскости" table. One of 3 required
+ * (AND) conditions for osteochondrosis at L4-L5/L5-S1 — see
+ * diagnosis-store.svelte.ts's lumbar block, which also checks the disc
+ * angle (gradeSagittalDiscAngle) and lumbar central-angle kyphosis
+ * (signals.curves.lumbar) for the same level. Flagged abnormal when the
+ * computed ratio exceeds the level's reference value by more than 5%
+ * (per the user's own diagnostic criterion — the source table gives no
+ * tolerance band of its own, just the single reference coefficient).
+ */
+const VERTEBRAL_DISC_HEIGHT_RATIO_NORMS: Record<'L4-L5' | 'L5-S1', number> = {
+	'L4-L5': 2.28,
+	'L5-S1': 1.9
+};
+
+export function getVertebralDiscHeightRatioNorm(levelId: 'L4-L5' | 'L5-S1'): number {
+	return VERTEBRAL_DISC_HEIGHT_RATIO_NORMS[levelId];
+}
+
+export function gradeVertebralDiscHeightRatio(levelId: 'L4-L5' | 'L5-S1', ratio: number): Finding {
+	const reference = VERTEBRAL_DISC_HEIGHT_RATIO_NORMS[levelId];
+	if (ratio <= reference * 1.05) {
+		return {
+			id: '',
+			severity: 'normal',
+			text: resolve_localized('diagnosis.rules.sagittal.discHeightRatio.normal')
+		};
+	}
+	return {
+		id: '',
+		severity: 'grade1',
+		text: resolve_localized('diagnosis.rules.sagittal.discHeightRatio.abnormal', {
+			ratio: ratio.toFixed(2),
+			reference: reference.toFixed(2)
+		})
 	};
 }
 

@@ -209,7 +209,7 @@
 					class="col-span-2 flex overflow-hidden rounded-lg border border-(--border) md:col-span-1"
 				>
 					<button
-						class="flex flex-1 items-center justify-center px-3 py-1.5 text-center text-sm font-medium transition-colors {projection ===
+						class="flex flex-1 cursor-pointer items-center justify-center px-3 py-1.5 text-center text-sm font-medium transition-colors {projection ===
 						'side'
 							? 'bg-(--primary) text-(--primary-foreground)'
 							: 'text-(--muted-foreground) hover:bg-(--muted)'}"
@@ -220,7 +220,7 @@
 						{$t('side_projection')}
 					</button>
 					<button
-						class="flex flex-1 items-center justify-center px-3 py-1.5 text-center text-sm font-medium transition-colors {projection ===
+						class="flex flex-1 cursor-pointer items-center justify-center px-3 py-1.5 text-center text-sm font-medium transition-colors {projection ===
 						'frontal'
 							? 'bg-(--primary) text-(--primary-foreground)'
 							: 'text-(--muted-foreground) hover:bg-(--muted)'}"
@@ -232,7 +232,7 @@
 					</button>
 				</div>
 				<button
-					class="rounded-md border border-(--border) px-3 py-1.5 text-sm font-medium transition-colors hover:bg-(--accent)"
+					class="cursor-pointer rounded-md border border-(--border) px-3 py-1.5 text-sm font-medium transition-colors hover:bg-(--accent)"
 					onclick={() => {
 						if (expandedRegions.size === allSectionIds().length) collapseAll();
 						else expandAll();
@@ -246,7 +246,7 @@
 					<button
 						onclick={() => startExport('pdf')}
 						disabled={busy !== null}
-						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
+						class="inline-flex h-8 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<img src={downloadSVG} alt="" class="h-4 w-4" />
 						{busy === 'pdf' ? $t('report.generating') : 'PDF'}
@@ -254,7 +254,7 @@
 					<button
 						onclick={() => startExport('docx')}
 						disabled={busy !== null}
-						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
+						class="inline-flex h-8 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<img src={documentSVG} alt="" class="h-4 w-4" />
 						{busy === 'docx' ? $t('report.generating') : 'DOCX'}
@@ -262,7 +262,7 @@
 					<button
 						onclick={() => startExport('print')}
 						disabled={busy !== null}
-						class="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
+						class="inline-flex h-8 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-(--border) bg-(--background) px-3 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--accent) disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<img src={printSVG} alt="" class="h-4 w-4" />
 						{busy === 'print' ? $t('report.generating') : $t('report.print')}
@@ -296,7 +296,7 @@
 						{#snippet tocEntry(region: RegionDiagnosis, chain: string[])}
 							<div class="mb-2">
 								<button
-									class="w-full rounded px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-(--muted) {isExpanded(
+									class="w-full cursor-pointer rounded px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-(--muted) {isExpanded(
 										region.id
 									)
 										? 'bg-(--primary)/10 text-(--primary)'
@@ -316,7 +316,7 @@
 										{#each interleave(region) as row (row.kind + '-' + row.data.id)}
 											{#if row.kind === 'vertebra'}
 												<button
-													class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
+													class="block w-full cursor-pointer px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
 													onclick={() => goToSection(chain, `v-${row.data.id}`)}
 												>
 													{$t('vertebrae.head')}
@@ -324,7 +324,7 @@
 												</button>
 											{:else}
 												<button
-													class="block w-full px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
+													class="block w-full cursor-pointer px-2 py-1 text-left text-xs text-(--muted-foreground) hover:text-(--foreground)"
 													onclick={() => goToSection(chain, `g-${row.data.id}`)}
 												>
 													{$t('gaps.head')}
@@ -341,7 +341,7 @@
 						{/each}
 						<div class="my-2 h-px w-full shrink-0 bg-(--border)"></div>
 						<button
-							class="w-full rounded px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-(--muted)"
+							class="w-full cursor-pointer rounded px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-(--muted)"
 							onclick={() => scrollToId('conclusion')}
 						>
 							{$t('report.header_overall')}
@@ -364,10 +364,12 @@
 							<p class="{marginClass} text-sm leading-relaxed">
 								{#each narrative.clauses as clause, i (clause.key)}{localize(
 										clause.text
-									)}{#if clause.badge}{@render clauseBadge(clause.badge, clause.severity)}{/if}{i <
-									narrative.clauses.length - 1
-										? '; '
-										: '.'}{/each}
+									)}{#if clause.badge && clause.value}, {localize(
+											clause.value
+										)}{/if}{#if clause.badge}{@render clauseBadge(
+											clause.badge,
+											clause.severity
+										)}{/if}{i < narrative.clauses.length - 1 ? '; ' : '.'}{/each}
 							</p>
 						{/snippet}
 
@@ -394,7 +396,7 @@
 						{#snippet regionSection(region: RegionDiagnosis)}
 							<div class="scroll-mt-20" id={region.id}>
 								<button
-									class="group mb-4 flex w-full items-center justify-between"
+									class="group mb-4 flex w-full cursor-pointer items-center justify-between"
 									onclick={() => toggleRegion(region.id)}
 								>
 									<div class="flex items-center gap-3">
@@ -431,7 +433,7 @@
 													{@const itemKey = `v-${row.data.id}`}
 													<div id={itemKey} class="scroll-mt-20">
 														<button
-															class="group mb-2 flex w-full items-center gap-2"
+															class="group mb-2 flex w-full cursor-pointer items-center gap-2"
 															onclick={() => toggleItem(itemKey)}
 														>
 															<img
@@ -453,7 +455,7 @@
 													{@const itemKey = `g-${row.data.id}`}
 													<div id={itemKey} class="scroll-mt-20">
 														<button
-															class="group mb-2 flex w-full items-center gap-2"
+															class="group mb-2 flex w-full cursor-pointer items-center gap-2"
 															onclick={() => toggleItem(itemKey)}
 														>
 															<img
@@ -489,7 +491,7 @@
 
 						<div class="scroll-mt-20" id="conclusion">
 							<button
-								class="group mb-4 flex w-full items-center justify-between"
+								class="group mb-4 flex w-full cursor-pointer items-center justify-between"
 								onclick={() => toggleRegion('conclusion')}
 							>
 								<div class="flex items-center gap-3">
@@ -520,7 +522,7 @@
 														: ''}"
 												>
 													<button
-														class="group flex w-full items-center gap-2"
+														class="group flex w-full cursor-pointer items-center gap-2"
 														onclick={() => toggleItem(d.key)}
 													>
 														<img
@@ -547,7 +549,10 @@
 													</div>
 													{#if isItemExpanded(d.key)}
 														<div class="mt-3 ml-6">
-															{@render findingsList(d.symptoms, 'p-2')}
+															{@render findingsList(
+																d.symptoms.filter((s) => s.severity !== 'normal'),
+																'p-2'
+															)}
 														</div>
 													{/if}
 												</div>

@@ -4,6 +4,7 @@ import {
 	tallySingle,
 	tallyComposite,
 	evaluatePattern,
+	suppressThoracicSubdiagnoses,
 	triCode,
 	gradeDetail,
 	severityGrade,
@@ -208,6 +209,39 @@ describe('triCode', () => {
 		expect(triCode(-20, range, true)).toBe(1);
 		expect(triCode(20, range, true)).toBe(-1);
 		expect(triCode(0, range, true)).toBe(0);
+	});
+});
+
+describe('suppressThoracicSubdiagnoses', () => {
+	it('drops the 3 thoracic sub-arc variants when the total is present', () => {
+		const tally: DiagnosisTally = new Map();
+		const keys = [
+			'sag-bekhterev-thoracic-total',
+			'sag-bekhterev-thoracic-upper',
+			'sag-bekhterev-thoracic-mid',
+			'sag-bekhterev-thoracic-lower'
+		] as const;
+		for (const key of keys) tallySingle(tally, key, true);
+
+		const ranking = suppressThoracicSubdiagnoses(rankFromTally(tally));
+		expect(ranking).toHaveLength(1);
+		expect(ranking[0].key).toBe('sag-bekhterev-thoracic-total');
+	});
+
+	it('leaves an unrelated diagnosis and the subs alone when the total is absent', () => {
+		const tally: DiagnosisTally = new Map();
+		tallySingle(tally, 'sag-bekhterev-thoracic-upper', true);
+		tallySingle(tally, 'sag-bekhterev-lumbar', true);
+
+		const ranking = suppressThoracicSubdiagnoses(rankFromTally(tally));
+		expect(ranking.map((d) => d.key).sort()).toEqual([
+			'sag-bekhterev-lumbar',
+			'sag-bekhterev-thoracic-upper'
+		]);
+	});
+
+	it('is a no-op on an empty ranking', () => {
+		expect(suppressThoracicSubdiagnoses([])).toEqual([]);
 	});
 });
 
