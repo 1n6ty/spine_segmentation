@@ -85,8 +85,9 @@ describe('getVertebraeParams side', () => {
 		expect(getVertebraeParams('side', s1, 1)!.params.p9.val).toBeGreaterThan(0);
 	});
 
-	it('p5 wedging angle is 0 when anterior and posterior edges are parallel (regardless of height difference)', () => {
-		expect(params.p5.val).toBeCloseTo(0);
+	it('p5 wedging angle is nonzero from height difference alone, even with parallel walls -- the endplates converge even when the walls don\'t', () => {
+		// wedge: anterior height 30, posterior height 50, width 60 -- endplates meet at atan(20/60).
+		expect(params.p5.val).toBeCloseTo((Math.atan(20 / 60) * 180) / Math.PI, 5);
 	});
 
 	it('p5 is positive when the posterior (right) edge is taller and the edges converge', () => {

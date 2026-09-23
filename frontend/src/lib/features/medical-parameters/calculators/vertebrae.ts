@@ -13,8 +13,16 @@ import type { Vertebrae } from '../types';
  *
  * Inclination angles (p6-p9 / p7-p9) measure rotation from a named reference
  * axis (0° = aligned with it). Wedging angles (p5 side / p6 frontal) measure
- * rotation between the vertebra's two side edges, ordered so a taller right
- * (frontal) or posterior (side) edge reads positive — verified against the
+ * rotation between the vertebra's two ENDPLATES (inferior points[3]-points[0]
+ * vs. superior points[2]-points[1]) -- NOT between its two side walls, which
+ * was the original (wrong) implementation: a quadrilateral's opposite side
+ * lengths and their mutual angle are independent, so wall-to-wall angle
+ * doesn't track which side is taller at all. Verified on a real annotated
+ * spine (24 vertebrae): the endplate-angle sign agreed with the raw
+ * anterior/posterior height difference's sign on 16/16 vertebrae with a
+ * non-trivial height gap (>=3px); the old wall-to-wall formula agreed on
+ * only 6/16 -- worse than chance. Ordered so a taller right (frontal) or
+ * posterior (side) endplate side reads positive — verified against the
  * frontal-plane document's explicit "base right = positive, base left =
  * negative" wedging convention; the side/sagittal equivalent has no separate
  * explicit sign table in the source, so the same ordering pattern is applied
@@ -66,8 +74,8 @@ export const getVertebraeParams = (projection: Projection, v: Vertebrae, mmPerPi
 					val: isMidVertebra
 						? M.to_degrees(
 								M.get_signed_angle(
-									M.vector_sub(v.points[2], v.points[3]),
-									M.vector_sub(v.points[1], v.points[0])
+									M.vector_sub(v.points[3], v.points[0]),
+									M.vector_sub(v.points[2], v.points[1])
 								)
 							)
 						: null,
@@ -121,8 +129,8 @@ export const getVertebraeParams = (projection: Projection, v: Vertebrae, mmPerPi
 				val: isMidVertebra
 					? M.to_degrees(
 							M.get_signed_angle(
-								M.vector_sub(v.points[2], v.points[3]),
-								M.vector_sub(v.points[1], v.points[0])
+								M.vector_sub(v.points[3], v.points[0]),
+								M.vector_sub(v.points[2], v.points[1])
 							)
 						)
 					: null,

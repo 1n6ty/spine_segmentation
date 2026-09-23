@@ -78,12 +78,14 @@ describe('getGapParams with anterior slip', () => {
 });
 
 describe('getGapParams L5-S1 special case (p7)', () => {
-	it("an unslipped baseline reads positive, inside the clinical 'normal' band (>-35)", () => {
+	it("an unslipped baseline reads inside the clinical 'normal' band (>-35)", () => {
 		const { params } = getGapParams('side', { top: L5, bottom: S1 }, 1)!;
-		// both upright/horizontal respectively -> perpendicular -> +90, not -90 (verified the
-		// order isn't flipped: a flipped order would misclassify every normal spine as severe
-		// spondylolisthesis, since -90 is already past the -75 grade-2 threshold)
-		expect(params.p7.val).toBeCloseTo(90);
+		// S1's cranio-ventral corner (points[1], x=70) sits directly above L5's caudo-ventral
+		// corner (points[0], x=70) -- zero horizontal offset, so the line connecting them is
+		// perfectly vertical: 0 degrees of inclination, the true "no forward slip" reading.
+		// (Not -90/+90: that was the previous plate-vs-wall formula's artifact -- a horizontal
+		// plate compared to a vertical wall reads ~perpendicular regardless of any real slip.)
+		expect(params.p7.val).toBeCloseTo(0);
 		expect(params.p7.val as number).toBeGreaterThan(-35);
 	});
 
