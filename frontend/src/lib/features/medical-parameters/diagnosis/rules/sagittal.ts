@@ -316,24 +316,28 @@ export function gradeL5Spondylolisthesis(discInclinationDeg: number): Finding {
 		return {
 			id: '',
 			severity: 'grade1',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1', { angle })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade1', { angle }),
+			textIncludesValue: true
 		};
 	if (a >= -120)
 		return {
 			id: '',
 			severity: 'grade2',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2', { angle })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade2', { angle }),
+			textIncludesValue: true
 		};
 	if (a >= -140)
 		return {
 			id: '',
 			severity: 'grade3',
-			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3', { angle })
+			text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade3', { angle }),
+			textIncludesValue: true
 		};
 	return {
 		id: '',
 		severity: 'grade4',
-		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4', { angle })
+		text: resolve_localized('diagnosis.rules.sagittal.l5Spondylolisthesis.grade4', { angle }),
+		textIncludesValue: true
 	};
 }
 
@@ -403,7 +407,8 @@ export function gradeVertebralWedgingSagittal(angleDeg: number): Finding {
 			severity: 'grade1',
 			text: resolve_localized('diagnosis.rules.sagittal.wedging.posterior', {
 				angle: angleDeg.toFixed(1)
-			})
+			}),
+			textIncludesValue: true
 		};
 	}
 	if (angleDeg < -SAGITTAL_WEDGING_TOLERANCE_DEG) {
@@ -412,7 +417,8 @@ export function gradeVertebralWedgingSagittal(angleDeg: number): Finding {
 			severity: 'grade1',
 			text: resolve_localized('diagnosis.rules.sagittal.wedging.anterior', {
 				angle: Math.abs(angleDeg).toFixed(1)
-			})
+			}),
+			textIncludesValue: true
 		};
 	}
 	return {
@@ -792,7 +798,8 @@ export function gradeSagittalDiscAngle(gapId: string, angleDeg: number): Finding
 		severity: 'grade1',
 		text: resolve_localized('diagnosis.rules.sagittal.discAngle.abnormal', {
 			angle: angleDeg.toFixed(1)
-		})
+		}),
+		textIncludesValue: true
 	};
 }
 
@@ -836,7 +843,8 @@ export function gradeSagittalDisplacement(mm: number): Finding {
 		text: resolve_localized('diagnosis.rules.sagittal.displacement.displaced', {
 			mm: Math.abs(mm).toFixed(1),
 			direction
-		})
+		}),
+		textIncludesValue: true
 	};
 }
 
@@ -874,7 +882,8 @@ export function gradeSagittalDiscWedging(angleDeg: number): Finding {
 		severity: 'grade1',
 		text: resolve_localized('diagnosis.rules.sagittal.discWedging.abnormal', {
 			angle: angleDeg.toFixed(1)
-		})
+		}),
+		textIncludesValue: true
 	};
 }
 

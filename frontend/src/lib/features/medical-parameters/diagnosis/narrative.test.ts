@@ -12,9 +12,10 @@ import type { Finding } from './types';
 
 function fakeFinding(
 	text = 'Vertebral body wedge-deformed',
-	severity: Finding['severity'] = 'grade1'
+	severity: Finding['severity'] = 'grade1',
+	textIncludesValue = false
 ): Finding {
-	return { id: 'fake', text: { 'en-US': text, 'ru-RU': text }, severity };
+	return { id: 'fake', text: { 'en-US': text, 'ru-RU': text }, severity, textIncludesValue };
 }
 
 describe('vertebraLabel', () => {
@@ -114,6 +115,25 @@ describe('abnormalNarrativeSentence', () => {
 		const result = abnormalNarrativeSentence(graded);
 		expect(result?.['en-US']).toBe(
 			'Segment from Th1 to Th12: Sacral position tends toward vertical, 72.3° (normal 99 to 124°).'
+		);
+	});
+
+	it('does not duplicate the value when the Finding text already restates it (textIncludesValue)', () => {
+		// Mirrors gradeSagittalDiscAngle's real abnormal branch, whose text
+		// already interpolates the angle ("...outside normal range, 8.5°") —
+		// textIncludesValue: true must suppress the clause's own separate
+		// `value`, or the export/UI would show "8.5°, 8.5°" twice.
+		const narrative = buildParametersNarrative(identity, 'side', 'segments', params);
+		const finding = fakeFinding('Intervertebral angle outside normal range, 8.5°', 'grade1', true);
+		const graded = withClauseFinding(narrative, 'p3', finding, {
+			min: -9.5,
+			max: 6.3,
+			center: -1.6
+		});
+
+		const result = abnormalNarrativeSentence(graded);
+		expect(result?.['en-US']).toBe(
+			'Segment from Th1 to Th12: Intervertebral angle outside normal range, 8.5° (normal −1.6 ± 7.9°).'
 		);
 	});
 

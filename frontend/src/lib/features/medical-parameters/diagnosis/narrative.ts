@@ -138,7 +138,10 @@ export function buildParametersNarrative(
  * Replaces the clause for `key` (e.g. 'p3') with the grading rule's own
  * Finding text — the clinic doc's Описание-sourced clinical wording,
  * shown plain — and attaches its normal range as a separate colored
- * badge, setting the clause's severity to the Finding's real grade.
+ * badge, setting the clause's severity to the Finding's real grade. Drops
+ * the clause's own `value` when `finding.textIncludesValue` is set, so a
+ * rule whose Finding text already states the number (e.g. "angle 6.2°")
+ * doesn't end up restating it a second time next to the badge.
  * Returns a new narrative. A no-op (returns `narrative` as-is) if no
  * clause has that key, e.g. the parameter's value was null and so was
  * skipped when the narrative was built.
@@ -157,6 +160,7 @@ export function withClauseFinding(
 						...clause,
 						severity: finding.severity,
 						text: finding.text,
+						value: finding.textIncludesValue ? undefined : clause.value,
 						badge: formatRange(range, clause.type)
 					}
 				: clause

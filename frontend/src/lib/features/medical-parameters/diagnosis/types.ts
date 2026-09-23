@@ -18,6 +18,17 @@ export type Finding = {
 	id: string;
 	severity: Severity;
 	text: Localized;
+	/** True when `text` already restates the raw measurement itself (e.g.
+	 * "Vertebral body wedge-deformed, base posterior, angle 6.2°") — as
+	 * opposed to a purely qualitative wording like "Sacral position tends
+	 * toward vertical". Lets narrative.ts's withClauseFinding skip
+	 * attaching the clause's own separately-tracked `value` when the
+	 * Finding text would otherwise restate the same number a second time
+	 * (see narrative/types.ts's NarrativeClause.value). Only set on the
+	 * specific grading-rule branches that actually interpolate a number
+	 * into their text; omitted (falsy) everywhere else, including every
+	 * `severity: 'normal'` branch, none of which embed a value. */
+	textIncludesValue?: boolean;
 };
 
 /** One narrated parameter clause — either the generic fallback ("Arc

@@ -61,7 +61,8 @@ export function gradeRegionFrontal(centralAngleDeg: number): Finding {
 			side,
 			grade,
 			angle: magnitude.toFixed(1)
-		})
+		}),
+		textIncludesValue: true
 	};
 }
 
@@ -80,7 +81,8 @@ export function gradeVertebralWedgingFrontal(angleDeg: number): Finding {
 			severity: 'grade1',
 			text: resolve_localized('diagnosis.rules.frontal.wedging.right', {
 				angle: angleDeg.toFixed(1)
-			})
+			}),
+			textIncludesValue: true
 		};
 	}
 	if (angleDeg < -WEDGING_TOLERANCE_DEG) {
@@ -89,7 +91,8 @@ export function gradeVertebralWedgingFrontal(angleDeg: number): Finding {
 			severity: 'grade1',
 			text: resolve_localized('diagnosis.rules.frontal.wedging.left', {
 				angle: Math.abs(angleDeg).toFixed(1)
-			})
+			}),
+			textIncludesValue: true
 		};
 	}
 	return {
@@ -128,7 +131,8 @@ export function gradeLateralDisplacement(mm: number): Finding {
 		text: resolve_localized('diagnosis.rules.frontal.lateralDisplacement.displaced', {
 			mm: Math.abs(mm).toFixed(1),
 			direction
-		})
+		}),
+		textIncludesValue: true
 	};
 }
 
