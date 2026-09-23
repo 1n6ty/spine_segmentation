@@ -13,9 +13,9 @@ import type { Finding, Range, Severity } from './types';
  * (rules/congenital-kyphosis.ts, driven by the BIC/DP "computed regions"
  * rather than a clinic source table) are both represented below.
  *
- * The 5 "sag-slipped-dislocation" .. "sag-degenerative-disc" keys are filed
- * under a "шейного отдела" (cervical) heading in the source document, but
- * — confirmed against the document — are actually driven entirely by
+ * The 4 "sag-slipped-dislocation" .. "sag-disc-rupture" keys are filed under
+ * a "шейного отдела" (cervical) heading in the source document, but —
+ * confirmed against the document — are actually driven entirely by
  * whole-spine region-level parameters (thoracic sub-arc curves, lumbar
  * curve, chord tilts, L5 inclination, sacral slope), not a direct cervical
  * measurement. See evaluatePattern's call sites in diagnosis-store.svelte.ts.
@@ -38,7 +38,6 @@ export type DiagnosisKey =
 	| 'sag-subluxation'
 	| 'sag-cervical-fracture'
 	| 'sag-disc-rupture'
-	| 'sag-degenerative-disc'
 	| 'frontal-scoliosis-thoracic-right'
 	| 'frontal-scoliosis-thoracic-left'
 	| 'frontal-scoliosis-lumbar-right'
@@ -79,7 +78,6 @@ const DIAGNOSIS_LABEL_KEYS: Record<DiagnosisKey, string> = {
 	'sag-subluxation': 'diagnosis.conclusion.subluxation',
 	'sag-cervical-fracture': 'diagnosis.conclusion.cervicalFracture',
 	'sag-disc-rupture': 'diagnosis.conclusion.discRupture',
-	'sag-degenerative-disc': 'diagnosis.conclusion.degenerativeDisc',
 	'frontal-scoliosis-thoracic-right': 'diagnosis.conclusion.scoliosisThoracicRight',
 	'frontal-scoliosis-thoracic-left': 'diagnosis.conclusion.scoliosisThoracicLeft',
 	'frontal-scoliosis-lumbar-right': 'diagnosis.conclusion.scoliosisLumbarRight',

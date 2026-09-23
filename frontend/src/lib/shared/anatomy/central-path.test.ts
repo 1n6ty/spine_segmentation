@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCentralPath } from './central-path';
-import type { Polygon } from '$lib/shared/geometry/geometry.type';
+import type { Point, Polygon } from '$lib/shared/geometry/geometry.type';
 
 function square(id: string, cx: number, cy: number, h = 10): Polygon {
 	return {
@@ -70,13 +70,50 @@ describe('computeCentralPath', () => {
 		expect(s1Top.cornerIndices).toEqual([1, 2]);
 	});
 
-	it('samples points along every segment plus the final endpoint', () => {
+	it('samples points along every disk segment plus one point per body segment plus the final endpoint', () => {
 		const polygons = [square('S1', 0, 80), square('L5', 0, 40), square('L4', 0, 0)];
 		const path = computeCentralPath(polygons)!;
 
 		const samples = path.samplePoints(4);
-		// 6 control points -> 5 segments * 4 samples + 1 final point
-		expect(samples).toHaveLength(5 * 4 + 1);
+		// 6 control points -> 5 segments: 3 same-vertebra body segments (1 point each, no interior
+		// sampling) + 2 disk segments (4 samples each) + 1 final point.
+		expect(samples).toHaveLength(3 * 1 + 2 * 4 + 1);
+	});
+
+	it('draws a same-vertebra (body) segment as exactly its two control points, nothing in between', () => {
+		const polygons = [square('S1', 0, 40), square('L5', 0, 0)];
+		const path = computeCentralPath(polygons)!;
+		const [s1Bottom, s1Top] = path.controlPoints;
+
+		const samples = path.samplePoints(4);
+		// First segment (S1 bottom -> S1 top) is same-vertebra: just the start control point,
+		// followed immediately by the next segment's samples/final point.
+		expect(samples[0]).toEqual(s1Bottom.point);
+		expect(samples[1]).toEqual(s1Top.point);
+	});
+
+	it('draws a cross-vertebra (disk) segment as a curved, densely-sampled spline', () => {
+		const polygons = [
+			square('S1', -30, 80),
+			square('L5', 0, 40),
+			square('L4', 30, 0) // offset so the fitted spline visibly bows
+		];
+		const path = computeCentralPath(polygons)!;
+
+		const samples = path.samplePoints(4);
+		// Segment 1 (S1 top -> L5 bottom) is a disk: 4 interpolated samples, not collinear with its
+		// endpoints in general.
+		const [, s1Top] = path.controlPoints;
+		const [, , l5Bottom] = path.controlPoints;
+		const diskSamples = samples.slice(1, 5);
+		expect(diskSamples).toHaveLength(4);
+
+		const cross = (a: Point, b: Point, c: Point) =>
+			(b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+		const nonCollinear = diskSamples.some(
+			(p) => Math.abs(cross(s1Top.point, l5Bottom.point, p)) > 1e-6
+		);
+		expect(nonCollinear).toBe(true);
 	});
 
 	it('skips a malformed polygon (not exactly 4 points) rather than throwing', () => {

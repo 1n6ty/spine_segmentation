@@ -262,12 +262,7 @@ describe('evaluatePattern', () => {
 	it('records one matched symptom per included item', () => {
 		const tally: DiagnosisTally = new Map();
 		const upper = fakeFinding('Upper-thoracic kyphosis increased grade 1', 'grade1');
-		evaluatePattern(
-			tally,
-			'sag-degenerative-disc',
-			[{ code: 1, finding: upper }, item(0)],
-			[1, [0, 1]]
-		);
+		evaluatePattern(tally, 'sag-scheuermann', [{ code: 1, finding: upper }, item(0)], [1, [0, 1]]);
 		const symptoms = rankFromTally(tally)[0].symptoms;
 		expect(symptoms).toHaveLength(2);
 		expect(symptoms[0]).toEqual({ text: upper.text, severity: 'grade1' });
@@ -275,15 +270,15 @@ describe('evaluatePattern', () => {
 
 	it('supports an "any of" match for a single item position', () => {
 		const tally: DiagnosisTally = new Map();
-		evaluatePattern(tally, 'sag-degenerative-disc', [item(1), item(1)], [1, [0, 1]]);
+		evaluatePattern(tally, 'sag-scheuermann', [item(1), item(1)], [1, [0, 1]]);
 		expect(rankFromTally(tally)).toEqual([
-			expect.objectContaining({ key: 'sag-degenerative-disc', probability: 1 })
+			expect.objectContaining({ key: 'sag-scheuermann', probability: 1 })
 		]);
 	});
 
 	it('does not tally anything when every referenced item is null', () => {
 		const tally: DiagnosisTally = new Map();
-		evaluatePattern(tally, 'sag-degenerative-disc', [null, null], [1, [0, 1]]);
+		evaluatePattern(tally, 'sag-scheuermann', [null, null], [1, [0, 1]]);
 		expect(tally.size).toBe(0);
 	});
 
@@ -306,7 +301,7 @@ describe('evaluatePattern', () => {
 
 	it('gates an "any of" position too — a code outside the accepted set invalidates the match', () => {
 		const tally: DiagnosisTally = new Map();
-		evaluatePattern(tally, 'sag-degenerative-disc', [item(1), item(-1)], [1, [0, 1]]);
+		evaluatePattern(tally, 'sag-scheuermann', [item(1), item(-1)], [1, [0, 1]]);
 		expect(tally.size).toBe(0);
 	});
 

@@ -826,7 +826,7 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 				);
 			}
 
-			// The 5 whole-spine composite diagnoses below (see conclusion.ts's
+			// The 4 whole-spine composite diagnoses below (see conclusion.ts's
 			// doc comment) reference items 1-8 of TABLREHTG_Updated.docx's
 			// general parameter table — despite being filed under a "cervical"
 			// heading in the source, they're driven entirely by these
@@ -889,7 +889,6 @@ function computeProjectionDiagnosis(projection: Projection): ProjectionDiagnosis
 			evaluatePattern(tally, 'sag-subluxation', items, [1, 1, [-1, 1], 0, 1, 0, -1, -1]);
 			evaluatePattern(tally, 'sag-cervical-fracture', items, [0, 0, 0, -1, 1, 0, 0, 0]);
 			evaluatePattern(tally, 'sag-disc-rupture', items, [0, [0, 1], -1, 0, 1, 0, 0, 0]);
-			evaluatePattern(tally, 'sag-degenerative-disc', [item1, item8], [1, [0, 1]]);
 		}
 
 		if (projection === 'frontal' && region.id === 'lumbar') {

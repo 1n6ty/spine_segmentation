@@ -186,3 +186,46 @@ describe("getSegmentParams excludes S1's inferior plate / C2's superior plate", 
 		expect(params.p2.val as number).toBeCloseTo(expectedChord, 0);
 	});
 });
+
+describe('getSegmentParams on a near-straight (nearly parallel) segment', () => {
+	/** A real (non-point) vertebra, stacked almost perfectly vertically -- only a tiny x-drift
+	 * between levels, the kind of thing "nearly parallel vertebrae" looks like on a real image.
+	 * Regular-sized bodies, not near-points: this is exactly the shape that makes the algebraic
+	 * (Kåsa) fit numerically unstable -- see getSegmentParams's doc comment. */
+	function nearlyStackedVertebra(id: string, cx: number, cy: number): Vertebrae {
+		return {
+			uuid: id,
+			id,
+			points: [
+				{ x: cx - 60, y: cy + 40 },
+				{ x: cx - 60, y: cy - 40 },
+				{ x: cx + 60, y: cy - 40 },
+				{ x: cx + 60, y: cy + 40 }
+			]
+		};
+	}
+
+	const segment = [
+		nearlyStackedVertebra('L4', 0, 0),
+		nearlyStackedVertebra('L3', 1, 300),
+		nearlyStackedVertebra('L2', 2, 600),
+		nearlyStackedVertebra('L1', 3, 900)
+	];
+	const { params } = getSegmentParams('side', segment, 1);
+
+	// Before the chord-sagitta fallback: the algebraic fit converged to radius≈338 (way too
+	// small for an 820px-long, nearly-straight segment) and central angle≈+180° -- exactly
+	// backwards for data with almost no real curvature.
+	it('p3 central angle is near 0, not near +-180, and keeps the real (negative/lordotic) sign', () => {
+		expect(Math.abs(params.p3.val as number)).toBeLessThan(2);
+		expect(params.p3.val as number).toBeLessThan(0);
+	});
+
+	it('p1 radius is huge (nearly straight), not the algebraic fit\'s spurious small value', () => {
+		expect(params.p1.val as number).toBeGreaterThan(10000);
+	});
+
+	it('p2 chord is the true start-to-end distance, not capped by the spurious small radius', () => {
+		expect(params.p2.val as number).toBeCloseTo(820, 0);
+	});
+});

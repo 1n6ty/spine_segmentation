@@ -64,17 +64,27 @@ export function computeCentralPath(polygons: Polygon[]): CentralPath | null {
 	return {
 		controlPoints,
 		spline,
+		// Only a disk gap (a segment crossing into a different vertebra) is drawn as the fitted
+		// cubic spline; a segment within the same vertebra (its own bottom -> top plate midpoints)
+		// is a rigid body, so it's drawn as a straight line between its two control points instead.
+		// The spline itself is still fit through every control point (unchanged above) -- only how
+		// it's *sampled for drawing* differs -- so the disk curve's shape still reflects the whole
+		// chain's alignment, including the body segments' endpoints/tangents.
 		samplePoints(samplesPerSegment = 16): Point[] {
 			const { t } = spline;
 			const points: Point[] = [];
 
 			for (let i = 0; i < t.length - 1; i++) {
+				if (controlPoints[i].vertebraIndex === controlPoints[i + 1].vertebraIndex) {
+					points.push(controlPoints[i].point);
+					continue;
+				}
 				for (let s = 0; s < samplesPerSegment; s++) {
 					const u = t[i] + ((t[i + 1] - t[i]) * s) / samplesPerSegment;
 					points.push(spline.evaluate(u));
 				}
 			}
-			points.push(spline.evaluate(t[t.length - 1]));
+			points.push(controlPoints[controlPoints.length - 1].point);
 
 			return points;
 		}
