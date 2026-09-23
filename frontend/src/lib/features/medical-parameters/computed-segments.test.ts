@@ -43,7 +43,7 @@ function circle_fixture(): Polygon[] {
 
 describe('resolve_computed_regions', () => {
 	it('detects an arc and returns it as a kind: computed row', () => {
-		const rows = resolve_computed_regions(circle_fixture(), []);
+		const rows = resolve_computed_regions(circle_fixture());
 
 		expect(rows).toHaveLength(1);
 		expect(rows[0].kind).toBe('computed');
@@ -51,22 +51,16 @@ describe('resolve_computed_regions', () => {
 		expect(rows[0].polygons.map((v) => v.id).sort()).toEqual(['L3', 'L4', 'L5', 'S1'].sort());
 	});
 
-	it('excludes a detected arc that exactly matches an excludeRanges entry (e.g. a Default Region)', () => {
-		const rows = resolve_computed_regions(circle_fixture(), [{ topId: 'L3', bottomId: 'S1' }]);
-		expect(rows).toEqual([]);
-	});
-
-	it('excludes a detected arc that exactly matches a current User-Defined segment', () => {
-		const rows = resolve_computed_regions(circle_fixture(), [{ topId: 'L3', bottomId: 'S1' }]);
-		expect(rows).toEqual([]);
-	});
-
-	it('is unaffected by an excludeRanges entry that does not match any detected arc', () => {
-		const rows = resolve_computed_regions(circle_fixture(), [{ topId: 'C2', bottomId: 'C7' }]);
+	it('still returns a detected arc even when a Default Region or User-Defined segment covers the exact same range -- dedup is scoped to this subgroup only, not across the whole combined ranges-group', () => {
+		// S1-L3 is exactly the range a Default Region or User-Defined segment could also cover;
+		// resolve_computed_regions no longer takes or checks against either, so it must still
+		// surface its own independently-detected row regardless.
+		const rows = resolve_computed_regions(circle_fixture());
 		expect(rows).toHaveLength(1);
+		expect(rows[0].definitionId).toBe('computed:S1-L3');
 	});
 
 	it('returns nothing for too few annotated vertebrae', () => {
-		expect(resolve_computed_regions([], [])).toEqual([]);
+		expect(resolve_computed_regions([])).toEqual([]);
 	});
 });

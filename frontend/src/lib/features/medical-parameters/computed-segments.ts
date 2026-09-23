@@ -13,19 +13,20 @@ import type { ResolvedSegmentRow, Vertebrae } from './types';
  * never mutates or persists anything -- callers re-derive it on every reactive read, the same
  * way `structures[projection].vertebrae`/`.gaps` already work with no accompanying `$effect`.
  *
- * `excludeRanges` drops any detected arc that exactly matches a Default Region or a current
- * User-Defined segment, so the same vertebra range never appears twice in the table (previously
- * this dedup only checked against user-managed segments; it now also covers Default ranges,
- * since those no longer live in the same persisted list to be checked against directly).
+ * Deduplication is scoped to this function's own output only -- never against Default Regions
+ * or User-Defined segments. A previous version took a combined Default+User exclude list and
+ * dropped any detected arc matching an entry in it, treating dedup as one pass spanning all
+ * three subgroups. That silently hid a real, correctly detected computed range any time it
+ * happened to exactly coincide with a fixed Default Region or a user's own segment (e.g. a
+ * detected lumbar curve landing on exactly L1-S1, the same range as the Default "Lumbar"
+ * region) -- even though a curve-driven detection and a fixed anatomical grouping carry
+ * independently useful information and neither should suppress the other. Deduplication
+ * belongs within a subgroup, not across the whole combined ranges-group; computed ranges are
+ * already a non-overlapping partition of the annotated spine, so there is nothing to dedupe
+ * within this subgroup in the first place.
  */
-export function resolve_computed_regions(
-	polygons: Vertebrae[],
-	excludeRanges: { topId: string; bottomId: string }[]
-): ResolvedSegmentRow[] {
-	const excluded = new Set(excludeRanges.map((r) => `${r.topId}:${r.bottomId}`));
-
+export function resolve_computed_regions(polygons: Vertebrae[]): ResolvedSegmentRow[] {
 	const rows = computeGeneratedVertebraRanges(polygons)
-		.filter((range) => !excluded.has(`${range.topId}:${range.bottomId}`))
 		.map((range): ResolvedSegmentRow | null => {
 			const ids = expand_vertebra_id_range(range.topId, range.bottomId);
 			const matched = ids ? match_items_by_ids(polygons, ids) : null;

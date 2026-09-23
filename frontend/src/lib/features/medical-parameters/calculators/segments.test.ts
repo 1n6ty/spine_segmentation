@@ -111,3 +111,78 @@ describe('getSegmentParams chord inclination sign', () => {
 		expect(params.p4.val).toBeGreaterThan(0);
 	});
 });
+
+describe("getSegmentParams excludes S1's inferior plate / C2's superior plate", () => {
+	const R = 500;
+	const cx = 0;
+	const cy = 1000;
+	const circlePoint = (thetaDeg: number) => {
+		const theta = (thetaDeg * Math.PI) / 180;
+		return { x: cx + R * Math.sin(theta), y: cy - R * Math.cos(theta) };
+	};
+
+	/** A real (non-point) S1 whose superior plate sits exactly on the circle at `thetaDeg`, and
+	 * whose inferior plate is a wild outlier -- if the fit wrongly includes it, the recovered
+	 * radius will be nowhere near R; if it's correctly excluded, the fit stays close to R. */
+	function s1WithOutlierInferior(thetaDeg: number): Vertebrae {
+		const { x, y } = circlePoint(thetaDeg);
+		return {
+			uuid: 's1',
+			id: 'S1',
+			points: [
+				{ x: 9999, y: 9999 }, // AI -- outlier, must not enter the fit
+				{ x: x - 1, y }, // AS -- on the circle
+				{ x: x + 1, y }, // PS -- on the circle
+				{ x: 10001, y: 9999 } // PI -- outlier, must not enter the fit
+			]
+		};
+	}
+
+	/** Same idea for C2, outlier on its superior plate instead. */
+	function c2WithOutlierSuperior(thetaDeg: number): Vertebrae {
+		const { x, y } = circlePoint(thetaDeg);
+		return {
+			uuid: 'c2',
+			id: 'C2',
+			points: [
+				{ x: x - 1, y }, // AI -- on the circle
+				{ x: -9999, y: -9999 }, // AS -- outlier, must not enter the fit
+				{ x: -10001, y: -9999 }, // PS -- outlier, must not enter the fit
+				{ x: x + 1, y } // PI -- on the circle
+			]
+		};
+	}
+
+	it("S1's inferior-plate outlier doesn't corrupt the fit, and start substitutes S1's superior plate", () => {
+		const s1 = s1WithOutlierInferior(20);
+		const l5 = vertebraOnCircle('L5', cx, cy, R, 0);
+		const l4 = vertebraOnCircle('L4', cx, cy, R, -20);
+		const { params } = getSegmentParams('side', [s1, l5, l4], 1);
+
+		// A wild outlier in the fit would blow the radius far past R; exclusion keeps it tight.
+		expect(Math.abs((params.p1.val as number) - R)).toBeLessThan(5);
+
+		// p2 (chord) should be measured from S1's superior plate (on the circle), not its
+		// outlier inferior plate -- i.e. close to the true circlePoint(20)-circlePoint(-20) span.
+		const expectedChord = Math.hypot(
+			circlePoint(-20).x - circlePoint(20).x,
+			circlePoint(-20).y - circlePoint(20).y
+		);
+		expect(params.p2.val as number).toBeCloseTo(expectedChord, 0);
+	});
+
+	it("C2's superior-plate outlier doesn't corrupt the fit, and end substitutes C2's inferior plate", () => {
+		const s1 = vertebraOnCircle('S1', cx, cy, R, 20);
+		const l5 = vertebraOnCircle('L5', cx, cy, R, 0);
+		const c2 = c2WithOutlierSuperior(-20);
+		const { params } = getSegmentParams('side', [s1, l5, c2], 1);
+
+		expect(Math.abs((params.p1.val as number) - R)).toBeLessThan(5);
+
+		const expectedChord = Math.hypot(
+			circlePoint(-20).x - circlePoint(20).x,
+			circlePoint(-20).y - circlePoint(20).y
+		);
+		expect(params.p2.val as number).toBeCloseTo(expectedChord, 0);
+	});
+});

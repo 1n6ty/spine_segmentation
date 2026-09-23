@@ -1,6 +1,6 @@
 {
 	"header": {
-		"name": "Diagnostic Spondylography",
+		"name": "Automatic Diagnostic Spondylography",
 		"p": "Vertebralogical System for Spinal Disorder Diagnosis",
 		"logout": "Logout",
 		"login": "Log in",
@@ -56,7 +56,7 @@
 			"upload_failed": "Upload failed",
 			"parsing": "Uploading and parsing DICOM..."
 		},
-		"welcome_h2": "Welcome to Diagnostic Spondylography project",
+		"welcome_h2": "Welcome to Automatic Diagnostic Spondylography project",
 		"p": "Upload DICOM file to begin analyzing spinal disorders. This system provides automated detection and classification of vertebral compression fractures and other spinal abnormalities. It will also provide detailed diagnosis text.",
 		"key_features": {
 			"h3": "Key features:"
@@ -160,7 +160,7 @@
 		}
 	},
 	"footer": {
-		"p_up": "Diagnostic Spondylography project - Advanced Vertebralogical Platform",
+		"p_up": "Automatic Diagnostic Spondylography project - Advanced Vertebralogical Platform",
 		"p_down": "For research and decision making purposes only. Not intended for primary diagnostic use."
 	},
 	"no_file_loaded": {

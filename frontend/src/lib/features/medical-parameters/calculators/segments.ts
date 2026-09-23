@@ -3,7 +3,7 @@ import * as M from '$lib/shared/geometry/geometry';
 import { solveCircleFit } from '$lib/shared/geometry/circle-fit';
 import { getPlateMidpoint } from '$lib/shared/anatomy/central-path';
 import type { Point } from '$lib/shared/geometry/geometry.type';
-import type { Segment } from '../types';
+import type { Segment, Vertebrae } from '../types';
 
 const UP: Point = { x: 0, y: -1 };
 
@@ -18,16 +18,36 @@ const nullSegmentParams = (segment: Segment) => ({
 });
 
 /**
+ * `getPlateMidpoint`, but for the one anchor role (start/end) that must always resolve to a
+ * single point: S1's inferior plate and C2's superior plate aren't real disc-bearing endplates
+ * (S1's "bottom" is the sacral base, C2's "top" is the odontoid) -- the same exclusion
+ * vertebrae.ts's p1/p2 already apply (p1 null for C2, p2 null for S1) -- so silently substitute
+ * S1's superior plate / C2's inferior plate instead of the missing one. Central-path.ts's own
+ * drawing (central line, minimap, etc.) is untouched -- it deliberately keeps S1's true bottom
+ * and C2's true top; this substitution is scoped to segment parameters only.
+ */
+function segmentEndpointPlate(v: Vertebrae, plate: 'bottom' | 'top'): Point {
+	if (v.id === 'S1' && plate === 'bottom') return getPlateMidpoint(v, 'top');
+	if (v.id === 'C2' && plate === 'top') return getPlateMidpoint(v, 'bottom');
+	return getPlateMidpoint(v, plate);
+}
+
+/**
  * Fitted to each vertebra's own bottom/top plate midpoint (2 points/vertebra), not its 4 raw
  * corners -- corners mix the anterior and posterior margins, which trace two distinct radii
  * whenever a vertebra is wedged (see vertebrae.ts's p5/p6), while plate midpoints sit on one
  * consistent central locus. This also matches start/end below, which were already plate
  * midpoints -- the whole calculation now draws from the same point family.
+ *
+ * S1's inferior plate and C2's superior plate are excluded outright here (not substituted --
+ * substituting would push the same point twice and double-weight it in the fit): S1 only
+ * contributes its superior plate, C2 only its inferior, same non-endplate reasoning as above.
  */
 export const getSegmentParams = (projection: Projection, segment: Segment, mmPerPixel: number) => {
 	const points: Point[] = [];
 	segment.forEach((v) => {
-		points.push(getPlateMidpoint(v, 'bottom'), getPlateMidpoint(v, 'top'));
+		if (v.id !== 'S1') points.push(getPlateMidpoint(v, 'bottom'));
+		if (v.id !== 'C2') points.push(getPlateMidpoint(v, 'top'));
 	});
 
 	if (points.length < 3) {
@@ -51,8 +71,8 @@ export const getSegmentParams = (projection: Projection, segment: Segment, mmPer
 		return nullSegmentParams(segment);
 	}
 
-	const start = getPlateMidpoint(segment[0], 'bottom');
-	const end = getPlateMidpoint(segment[segment.length - 1], 'top');
+	const start = segmentEndpointPlate(segment[0], 'bottom');
+	const end = segmentEndpointPlate(segment[segment.length - 1], 'top');
 	const chord = Math.min(M.distance(start, end), 2 * radius);
 
 	// Signed central angle: the swept angle from the chord's start to its end around the

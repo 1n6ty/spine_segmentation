@@ -237,3 +237,42 @@ describe('params.activeStructure', () => {
 		expect(params.activeStructure).toBe('gaps');
 	});
 });
+
+/** A vertebra whose bottom/top plate midpoints sit on a shared circle at `degrees` -- enough of
+ * a real curve for the BIC arc-detector to find a clean single arc, unlike `make_vertebra`'s
+ * plain squares stacked on one vertical line. */
+function make_curved_vertebra(id: string, degrees: number): Vertebrae {
+	const cx = 0,
+		cy = 0,
+		r = 500,
+		spread = 3;
+	const rad = (deg: number) => (deg * Math.PI) / 180;
+	const at = (deg: number) => ({ x: cx + r * Math.cos(rad(deg)), y: cy + r * Math.sin(rad(deg)) });
+	const bottom = at(degrees - spread / 2);
+	const top = at(degrees + spread / 2);
+	const perp = { x: -(top.y - bottom.y), y: top.x - bottom.x };
+	const norm = Math.hypot(perp.x, perp.y) || 1;
+	const half = { x: (perp.x / norm) * 2, y: (perp.y / norm) * 2 };
+	return {
+		uuid: id,
+		id,
+		points: [
+			{ x: bottom.x - half.x, y: bottom.y - half.y },
+			{ x: top.x - half.x, y: top.y - half.y },
+			{ x: top.x + half.x, y: top.y + half.y },
+			{ x: bottom.x + half.x, y: bottom.y + half.y }
+		]
+	};
+}
+
+describe('structures.segments: Default and Computed rows covering the same range', () => {
+	it('shows both, end to end, when a detected arc exactly coincides with the Default "Lumbar" region (L1-S1)', () => {
+		const ids = ['S1', 'L5', 'L4', 'L3', 'L2', 'L1'];
+		project.session.projections.side.polygons = ids.map((id, i) => make_curved_vertebra(id, i * 10));
+
+		const kinds = structures.side.segments.map((r) => ({ definitionId: r.definitionId, kind: r.kind }));
+
+		expect(kinds).toContainEqual({ definitionId: 'default:lumbar', kind: 'default' });
+		expect(kinds).toContainEqual({ definitionId: 'computed:S1-L1', kind: 'computed' });
+	});
+});

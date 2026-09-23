@@ -8,7 +8,7 @@ import { getSegmentParams } from './calculators/segments';
 import { getSpineParams } from './calculators/spine';
 import { getVertebraeParams } from './calculators/vertebrae';
 import { match_items_by_ids } from './diagnosis/regions';
-import { DEFAULT_REGION_DEFINITIONS, resolve_default_regions } from './default-segments';
+import { resolve_default_regions } from './default-segments';
 import { resolve_computed_regions } from './computed-segments';
 import type { ResolvedSegmentRow, SegmentDefinition, Vertebrae } from './types';
 
@@ -72,11 +72,7 @@ function make_projection_structures(projection: 'side' | 'frontal') {
 
 			const defaultRows = resolve_default_regions(polygons);
 			const userRows = resolve_segments(polygons, userDefs);
-			const excludeRanges = [...DEFAULT_REGION_DEFINITIONS, ...userDefs].map((d) => ({
-				topId: d.topId,
-				bottomId: d.bottomId
-			}));
-			const computedRows = resolve_computed_regions(polygons, excludeRanges);
+			const computedRows = resolve_computed_regions(polygons);
 
 			return [...defaultRows, ...computedRows, ...userRows];
 		}

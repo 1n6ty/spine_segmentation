@@ -19,9 +19,12 @@ export function remove_segment(projection: Projection, id: string): void {
  * existing id-generation convention (`editor/core/controllers/tool.svelte.ts`,
  * `autofill/ref-points.ts`).
  *
- * A Computed Region already covering this exact same range is not a concern here -- it
- * dedups itself out at read time against the live `segments` list (see
- * `computed-segments.ts`'s `excludeRanges`), so no special-casing is needed on write.
+ * A Computed Region already covering this exact same range is not a concern here -- no
+ * special-casing needed on write. (Previously `computed-segments.ts` deduped a Computed Region
+ * away when it matched a User-Defined segment's range; that cross-subgroup dedup was removed --
+ * see `resolve_computed_regions`'s doc comment -- so the two rows now both display. That's a
+ * deliberate trade-off, not an oversight: a user adding this exact range is free to do so and
+ * will see both their own row and the independently-detected curve alongside it.)
  */
 export function add_segment(projection: Projection, topId: string, bottomId: string): void {
 	const slot = project.session.projections[projection];
